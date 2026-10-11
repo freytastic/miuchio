@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:miuchio/diagnostics/fx.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 
 class BlurScrim extends StatelessWidget {
@@ -21,14 +22,16 @@ class BlurScrim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget scrim = BackdropFilter(
-      blendMode: BlendMode.src,
-      filter: ui.ImageFilter.compose(
-        outer: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        inner: ui.ColorFilter.matrix(Warm.saturation(saturation)),
-      ),
-      child: ColoredBox(color: color),
-    );
+    Widget scrim = Fx.noBlur
+        ? ColoredBox(color: color)
+        : BackdropFilter(
+            blendMode: BlendMode.src,
+            filter: ui.ImageFilter.compose(
+              outer: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+              inner: ui.ColorFilter.matrix(Warm.saturation(saturation)),
+            ),
+            child: ColoredBox(color: color),
+          );
     if (onTap != null) {
       scrim = GestureDetector(
         behavior: HitTestBehavior.opaque,

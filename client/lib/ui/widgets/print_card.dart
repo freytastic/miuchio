@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:miuchio/diagnostics/fx.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/baked_paint.dart';
 
@@ -38,7 +39,8 @@ class PrintCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shadows = shadow ?? Warm.printShadow;
+    final shadows =
+        Fx.noShadow ? const <BoxShadow>[] : shadow ?? Warm.printShadow;
     final soft = [
       for (final s in shadows)
         if (s.blurRadius >= _bakeFromBlur) s

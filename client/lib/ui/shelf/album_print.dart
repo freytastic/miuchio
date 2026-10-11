@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:miuchio/data/models/album_summary.dart';
+import 'package:miuchio/diagnostics/fx.dart';
+import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/ui/shelf/print_style.dart';
 import 'package:miuchio/ui/shelf/shelf_copy.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
@@ -113,11 +115,12 @@ class _AlbumPrintState extends State<AlbumPrint> {
 
   @override
   Widget build(BuildContext context) {
+    PerfProbe.count('print');
     final edges = edgesFor(widget.mediaCount);
     final fanned = _riffled || widget.fanned;
     // Paper depth exists before lazy riffle images load
     final backs = [
-      for (var i = 0; i < fanFor(widget.mediaCount); i++)
+      for (var i = 0; i < (Fx.noBacks ? 0 : fanFor(widget.mediaCount)); i++)
         i < widget.behind.length ? widget.behind[i] : null,
     ];
     _Pose pose(int i, _Pose out, _Pose rest) =>
@@ -148,7 +151,7 @@ class _AlbumPrintState extends State<AlbumPrint> {
         ),
       },
       child: Transform.rotate(
-        angle: widget.tilted
+        angle: widget.tilted && !Fx.noTilt
             ? tiltFor(widget.albumId, small: _small) * _degrees
             : 0,
         child: AspectRatio(

@@ -1004,6 +1004,7 @@ class _MiuchioAppState extends State<MiuchioApp> with WidgetsBindingObserver {
       title: 'Miuchio',
       debugShowCheckedModeBanner: false,
       navigatorKey: rootNavigatorKey,
+      navigatorObservers: [PerfProbe.observer],
       scaffoldMessengerKey: rootMessengerKey,
       theme: Warm.theme,
       home: widget.resumeDeletion == null
