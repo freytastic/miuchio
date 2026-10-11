@@ -19,6 +19,15 @@ class EncryptedThumbnail extends StatefulWidget {
   final VoidCallback? onFirstFrame;
   final ValueChanged<DecryptedImagePreview>? onReady;
 
+  static ImageProvider imageFor(Uint8List bytes, double width, double dpr) {
+    final cacheWidth = width.isFinite ? (width * dpr).round() : null;
+    return ResizeImage.resizeIfNeeded(
+      cacheWidth == null || cacheWidth <= 0 ? null : cacheWidth,
+      null,
+      MemoryImage(bytes),
+    );
+  }
+
   const EncryptedThumbnail({
     super.key,
     required this.record,
@@ -168,15 +177,11 @@ class _EncryptedThumbnailState extends State<EncryptedThumbnail> {
     return LayoutBuilder(
       builder: (context, constraints) {
         // Decode the 640px thumbnail near its painted width
-        final width = constraints.maxWidth.isFinite
-            ? (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
-                .round()
-            : null;
-        return Image.memory(
-          _bytes!,
+        return Image(
+          image: EncryptedThumbnail.imageFor(_bytes!, constraints.maxWidth,
+              MediaQuery.devicePixelRatioOf(context)),
           fit: widget.fit,
           gaplessPlayback: true,
-          cacheWidth: width == null || width <= 0 ? null : width,
           frameBuilder: (context, child, frame, synchronouslyLoaded) {
             if (frame != null) _reportFirstFrame(synchronouslyLoaded);
             return child;
