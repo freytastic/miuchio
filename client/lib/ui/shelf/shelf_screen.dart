@@ -731,12 +731,17 @@ class _ShelfCardState extends State<_ShelfCard> {
       },
     );
     setState(() => _lifted = true);
+    void land() {
+      if (mounted && _lifted) setState(() => _lifted = false);
+    }
+
     // Stay hidden until the print has flown back or tucked away
-    unawaited(route.completed.then((_) {
-      if (mounted) setState(() => _lifted = false);
-    }));
-    final action =
-        await Navigator.of(context, rootNavigator: true).push(route);
+    unawaited(route.completed.then((_) => land()));
+    final pushed = Navigator.of(context, rootNavigator: true).push(route);
+    route.animation?.addStatusListener((status) {
+      if (status == AnimationStatus.dismissed) land();
+    });
+    final action = await pushed;
     if (!mounted) return;
     switch (action) {
       case ShelfPeekAction.open:

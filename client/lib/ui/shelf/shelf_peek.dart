@@ -8,6 +8,7 @@ import 'package:miuchio/ui/album/album_menu.dart';
 import 'package:miuchio/ui/shelf/shelf_copy.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/blur_scrim.dart';
+import 'package:miuchio/ui/widgets/peek_route.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 
 typedef PeekPrint = Widget Function({required bool fanned});
@@ -33,26 +34,22 @@ class ShelfPeek extends StatefulWidget {
   });
 
   // Resolves to the action picked, or null when dismissed
-  static PageRoute<ShelfPeekAction> route({
+  static PeekRoute<ShelfPeekAction> route({
     required AlbumModel album,
     required Rect from,
     required double tilt,
     required PeekPrint print,
   }) =>
-      PageRouteBuilder<ShelfPeekAction>(
-        opaque: false,
-        barrierColor: Colors.transparent,
+      PeekRoute<ShelfPeekAction>(
         transitionDuration: const Duration(milliseconds: 520),
         reverseTransitionDuration: Warm.springSnappy,
-        allowSnapshotting: false,
-        pageBuilder: (_, a, __) => ShelfPeek(
+        builder: (_, a, __) => ShelfPeek(
           album: album,
           from: from,
           tilt: tilt,
           print: print,
           entry: a,
         ),
-        transitionsBuilder: (_, __, ___, child) => child,
       );
 
   @override
