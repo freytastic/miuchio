@@ -31,6 +31,7 @@ import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/data/models/member_model.dart';
 import 'package:miuchio/crypto/uuid_bytes.dart';
+import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
@@ -223,7 +224,9 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   Future<void> _openPeek(
     MediaRecord record,
     DecryptedImagePreview preview,
+    ImageProvider onScreen,
   ) async {
+    final shown = Trace.start('peek.photoFrame');
     final cache = context.read<MediaCacheManager>();
     final name = _memberNames[record.uploaderToken];
     final resolved = _members
@@ -243,6 +246,23 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         preview.bytes,
         fit: BoxFit.cover,
         gaplessPlayback: true,
+        frameBuilder: (_, child, frame, sync) {
+          if (frame != null) {
+            shown.end(fields: {'sync': sync});
+            return child;
+          }
+          return Image(
+            image: onScreen,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            frameBuilder: (_, child, frame, sync) {
+              if (frame != null) {
+                shown.end(fields: {'sync': sync, 'grid': true});
+              }
+              return child;
+            },
+          );
+        },
       ),
       fullImageBuilder: (_, cacheWidth, cacheHeight, onReady) => EncryptedImage(
           record: record,
@@ -1081,7 +1101,8 @@ class _MediaGrid extends StatelessWidget {
   final Future<void> Function() onRetry;
   final String traceId;
   final VoidCallback onFirstThumbnailPaint;
-  final void Function(MediaRecord record, DecryptedImagePreview preview) onPeek;
+  final void Function(MediaRecord record, DecryptedImagePreview preview,
+      ImageProvider onScreen) onPeek;
   final void Function(MediaRecord record) onOpen;
 
   const _MediaGrid({
@@ -1170,7 +1191,8 @@ class _MediaTile extends StatefulWidget {
   final MediaCacheManager cache;
   final String traceId;
   final VoidCallback onFirstThumbnailPaint;
-  final void Function(MediaRecord record, DecryptedImagePreview preview) onPeek;
+  final void Function(MediaRecord record, DecryptedImagePreview preview,
+      ImageProvider onScreen) onPeek;
   final void Function(MediaRecord record) onOpen;
 
   const _MediaTile({
@@ -1202,11 +1224,19 @@ class _MediaTileState extends State<_MediaTile> {
 
   void _openPeek(LongPressStartDetails _) {
     final preview = _preview;
-    if (preview != null) widget.onPeek(widget.record, preview);
+    final size = context.size;
+    if (preview == null || size == null) return;
+    widget.onPeek(
+      widget.record,
+      preview,
+      EncryptedThumbnail.imageFor(
+          preview.bytes, size.width, MediaQuery.devicePixelRatioOf(context)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    PerfProbe.count('tile');
     return PhotoHold(
       onStart: _openPeek,
       child: GestureDetector(

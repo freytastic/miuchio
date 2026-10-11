@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/blur_scrim.dart';
+import 'package:miuchio/ui/widgets/peek_route.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 
 import 'album_copy.dart';
@@ -58,13 +59,10 @@ class PhotoPeek extends StatefulWidget {
     required WidgetBuilder previewBuilder,
     required PeekFullImageBuilder fullImageBuilder,
   }) =>
-      Navigator.of(context, rootNavigator: true).push(PageRouteBuilder<void>(
-        opaque: false,
-        barrierColor: Colors.transparent,
+      Navigator.of(context, rootNavigator: true).push(PeekRoute<void>(
         transitionDuration: Warm.quick,
         reverseTransitionDuration: Warm.quick,
-        allowSnapshotting: false,
-        pageBuilder: (_, a, __) => PhotoPeek(
+        builder: (_, a, __) => PhotoPeek(
           record: record,
           uploaderName: uploaderName,
           uploaderFace: uploaderFace,
@@ -75,7 +73,6 @@ class PhotoPeek extends StatefulWidget {
           fullImageBuilder: fullImageBuilder,
           entry: a,
         ),
-        transitionsBuilder: (_, __, ___, child) => child,
       ));
 
   @override

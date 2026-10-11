@@ -16,6 +16,7 @@ from pathlib import Path
 LINE = re.compile(r"\((\s*\d+)\):\s*miuchio\.trace\|(\d+)\|t=(\d+)\|([^|\s]+)(?:\|dur=(\d+))?(.*)$")
 FIELD = re.compile(r"(\w+)=(\S+)")
 HEADER = re.compile(r"#\s*miuchio\.capture\s+(.*)")
+BACKEND = re.compile(r"Impeller rendering backend \((\w+)\)")
 
 # Attribute frame timings to the most recent screen marker
 PHASES = [
@@ -40,12 +41,17 @@ class Capture:
         self.fails = defaultdict(int)
         self.events = defaultdict(list)
         self.frames = defaultdict(list)
+        self.firsts = defaultdict(list)
+        self.builds = defaultdict(lambda: defaultdict(int))
+        self.starts = []
         self.runs = 0
         self._parse()
 
     @property
     def label(self):
-        return self.meta.get("model") or self.path.stem
+        model = self.meta.get("model") or self.path.stem
+        run = self.meta.get("scenario")
+        return f"{model}/{run}" if run and run != "unlabelled" else model
 
     def _parse(self):
         phase = "startup"
@@ -55,10 +61,14 @@ class Capture:
             if h:
                 self.meta.update(FIELD.findall(h.group(1)))
                 continue
+            backend = BACKEND.search(raw)
+            if backend:
+                self.meta["backend"] = backend.group(1)
+                continue
             m = LINE.search(raw)
             if not m:
                 continue
-            pid, _seq, _t, name, dur, rest = m.groups()
+            pid, _seq, t, name, dur, rest = m.groups()
             fields = dict(FIELD.findall(rest))
             if pid != last_pid:
                 last_pid = pid
@@ -70,7 +80,15 @@ class Capture:
             elif name.endswith(".fail"):
                 self.fails[self._key(name[:-5], fields)] += 1
             elif name == "frames":
-                self.frames[phase].append(fields)
+                self.frames[fields.get("screen", phase)].append(fields)
+            elif name == "screen.first":
+                self.firsts[fields.get("name", "-")].append(fields)
+            elif name == "builds":
+                for k, v in fields.items():
+                    if k not in ("screen", "tid"):
+                        self.builds[fields.get("screen", "-")][k] += int(v)
+            elif name == "app.firstFrame":
+                self.starts.append(int(t))
             elif not name.endswith(".start"):
                 self.events[name].append(fields)
 
@@ -138,10 +156,15 @@ def report(a, b):
     caps = [a, b]
 
     section("Phones")
-    table(["phone", "android", "app launches"],
-          [[c.label, c.meta.get("android", "-"), c.runs] for c in caps])
+    table(["phone", "android", "chip", "renderer", "app launches"],
+          [[c.label, c.meta.get("android", "-"), c.meta.get("soc", "-"),
+            c.meta.get("backend", "-"), c.runs] for c in caps])
     print()
-    show_events(caps, "device", ["cores", "hz", "dpr", "px"])
+    show_events(caps, "device", ["cores", "hz", "dpr", "px", "fx"])
+    print()
+    show_events(caps, "frames.clock", ["skew"])
+    print("\ncold start to first frame (ms): " + " | ".join(
+        f"{c.label} {fmt(med(c.starts))} over {len(c.starts)}" for c in caps))
     print()
     show_events(caps, "keystore.probe", ["level", "bytes", "entries", "load_ms", "error"])
 
@@ -156,7 +179,10 @@ def report(a, b):
 
     section(f"Frame timing by screen (ms; late = missed the refresh deadline)")
     rows = []
-    for phase in PHASE_ORDER:
+    screens = list(PHASE_ORDER)
+    for c in caps:
+        screens += [s for s in c.frames if s not in screens]
+    for phase in screens:
         for c in caps:
             ws = c.frames.get(phase)
             if not ws:
@@ -169,6 +195,27 @@ def report(a, b):
                          fmt(med(val("raster50"))), fmt(med(val("raster90"))),
                          fmt(max(val("total90"), default=None))])
     table(["screen", "phone", "frames", "late", "build50", "build90", "raster50", "raster90", "worst total90"], rows)
+
+    section("Screen open: ms from push or pop until its first frame was on screen")
+    rows = []
+    for name in sorted(set(a.firsts) | set(b.firsts)):
+        for c in caps:
+            ws = c.firsts.get(name)
+            if not ws:
+                continue
+            val = lambda k: [float(w[k]) for w in ws if k in w]
+            rows.append([name, c.label, len(ws), fmt(med(val("wait"))), fmt(max(val("wait"), default=None)),
+                         fmt(med(val("build"))), fmt(med(val("raster"))), fmt(max(val("raster"), default=None))])
+    table(["screen", "phone", "opens", "wait50", "waitMax", "build50", "raster50", "rasterMax"], rows)
+
+    section("Widget rebuilds while on each screen")
+    rows = []
+    for screen in sorted(set(a.builds) | set(b.builds)):
+        for c in caps:
+            counts = c.builds.get(screen)
+            if counts:
+                rows.append([screen, c.label] + [counts.get(k, 0) for k in ("print", "tile")])
+    table(["screen", "phone", "print", "tile"], rows)
 
     section(f"Every timed step, biggest extra time on {b.label} first (ms)")
     names = set(a.spans) | set(b.spans)

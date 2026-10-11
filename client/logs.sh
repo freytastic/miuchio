@@ -106,8 +106,10 @@ for DEVICE in $DEVICES; do
     if [ -n "$TEE_DIR" ]; then
         MODEL=$(adb -s "$DEVICE" shell getprop ro.product.model 2>/dev/null | tr -d '\r' | tr ' ' '_')
         ANDROID=$(adb -s "$DEVICE" shell getprop ro.build.version.release 2>/dev/null | tr -d '\r' | tr ' ' '_')
-        printf '# miuchio.capture device=%s model=%s android=%s scenario=%s\n' \
-            "$LABEL" "${MODEL:-unknown}" "${ANDROID:-unknown}" "${RUN_LABEL:-unlabelled}" \
+        SOC=$(adb -s "$DEVICE" shell getprop ro.soc.model 2>/dev/null | tr -d '\r' | tr ' ' '_')
+        [ -z "$SOC" ] && SOC=$(adb -s "$DEVICE" shell getprop ro.board.platform 2>/dev/null | tr -d '\r' | tr ' ' '_')
+        printf '# miuchio.capture device=%s model=%s android=%s soc=%s scenario=%s\n' \
+            "$LABEL" "${MODEL:-unknown}" "${ANDROID:-unknown}" "${SOC:-unknown}" "${RUN_LABEL:-unlabelled}" \
             > "$TEE_DIR/$LABEL.log"
     fi
 
