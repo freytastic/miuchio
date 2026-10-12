@@ -9,6 +9,7 @@ import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/api/realtime_service.dart';
 import 'package:miuchio/data/shelf_sync.dart';
 import 'package:miuchio/data/storage/media_catalog.dart';
+import 'package:miuchio/diagnostics/fx.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
 import 'package:miuchio/e2ee/identity.dart';
@@ -103,9 +104,12 @@ class _LandingPageState extends State<LandingPage> {
 
     if (!mounted) return;
 
+    // Preview builds show the first page without signing out
+    final intro = !valid || Fx.intro;
     // Hide clip preparation behind the route fade
-    if (!valid) CameraStage.prewarm();
-    final destination = valid ? const MainShell() : const OnboardingScreen();
+    if (intro) CameraStage.prewarm();
+    final destination =
+        intro ? OnboardingScreen(preview: valid) : const MainShell();
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(

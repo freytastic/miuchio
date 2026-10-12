@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,11 +34,34 @@ const double _kCompactEmailCopyBox = 64;
 const double _kCompactOtpCopyBox = 88;
 const double _kCompactFootExtent = 148;
 const double _kCompactContentGap = 8;
+const double _kTrustGap = 20;
+const double _kCopyBox = 168;
+const double _kDotsExtent = 6;
+const double _kDotsGap = 22;
+// Space kept between the last line of copy and the dots
+const double _kFootClearance = 16;
+
+const String _kIntroLead =
+    'Shared photo albums for the people who were actually there.';
+const String _kEmailLead = 'We’ll send a one-time sign-in code to your email.';
+const String _kPreviewEmail = 'your.name@example.com';
+
+InlineSpan _otpLead(String email) => TextSpan(
+      style: Warm.lead,
+      children: [
+        const TextSpan(text: 'Enter the 6-digit code we sent to '),
+        TextSpan(text: email, style: const TextStyle(color: Warm.ink)),
+        const TextSpan(text: '.'),
+      ],
+    );
 
 enum _Phase { intro, email, otp, done }
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+  // Lays out every phase without contacting the server
+  final bool preview;
+
+  const OnboardingScreen({super.key, this.preview = false});
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -72,10 +96,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _onFieldChanged() => setState(() {});
 
-  String get _email => _emailCtrl.text.trim();
+  String get _email => widget.preview && _emailCtrl.text.trim().isEmpty
+      ? _kPreviewEmail
+      : _emailCtrl.text.trim();
   String get _code => _otpCtrl.text;
 
-  bool get _ready => switch (_phase) {
+  bool get _ready => widget.preview || switch (_phase) {
         _Phase.intro => true,
         _Phase.email => _kEmailRe.hasMatch(_email),
         _Phase.otp => _code.length == _kOtpLength,
@@ -90,6 +116,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _advance() async {
     if (!_ready || _busy) return;
+    if (widget.preview) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      setState(() => _phase = switch (_phase) {
+            _Phase.intro => _Phase.email,
+            _Phase.email => _Phase.otp,
+            _ => _Phase.intro,
+          });
+      return;
+    }
     switch (_phase) {
       case _Phase.intro:
         // Avoid opening the keyboard during the phase transition
@@ -305,6 +340,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ));
   }
 
+  // Measured with the phone's font scale so large text keeps its room
+  double _copyBody(BuildContext context, double width) {
+    final scaler = MediaQuery.textScalerOf(context);
+    TextPainter laid(InlineSpan span, double maxWidth) => TextPainter(
+          text: TextSpan(
+            style: const TextStyle(fontFamily: Warm.fontFamily),
+            children: [span],
+          ),
+          textAlign: TextAlign.center,
+          textDirection: TextDirection.ltr,
+          textScaler: scaler,
+        )..layout(maxWidth: maxWidth);
+    final leadWidth = math.min(Warm.leadMaxWidth, width);
+    switch (_phase) {
+      case _Phase.intro:
+        final mark = laid(
+            const TextSpan(text: 'Miuchio', style: Warm.wordmark),
+            double.infinity);
+        final markHeight = mark.width > width
+            ? mark.height * width / mark.width
+            : mark.height;
+        return markHeight +
+            Warm.headingToLead +
+            laid(const TextSpan(text: _kIntroLead, style: Warm.lead),
+                    leadWidth)
+                .height;
+      case _Phase.email:
+        return Warm.headingToLead +
+            laid(const TextSpan(text: _kEmailLead, style: Warm.lead),
+                    leadWidth)
+                .height;
+      case _Phase.otp:
+      case _Phase.done:
+        return Warm.headingToLead + laid(_otpLead(_email), leadWidth).height;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
@@ -338,6 +410,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final compactCopyTop =
         compactHeroBottom + _kCompactContentGap + compactSlack / 2;
 
+    // Fractions alone let the foot land on the copy on shorter screens
+    final copyBody = _copyBody(context, size.width - Warm.pagePad * 2);
+    final footExtent = _kDotsExtent +
+        _kDotsGap +
+        (onIntro ? 0 : Warm.fieldHeight + _kDotsGap) +
+        Warm.ctaHeight;
+    final footTop =
+        size.height - size.height * Warm.ctaBottomInset - footExtent;
+    final copyTop = math.min(
+      topInset + size.height * Warm.topAir,
+      footTop -
+          _kFootClearance -
+          _kTrustMarkExtent -
+          _kTrustGap -
+          copyBody,
+    );
+    final stageScale = CameraStage.scaleToFit(
+      context,
+      maxVisualBottom: copyTop - _kFootClearance,
+    );
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Warm.overlayOnGround,
       child: Scaffold(
@@ -357,15 +450,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 context,
                 shrink: keyboardOpen,
                 shrunkScale: compactStageScale,
+                scale: stageScale,
               ),
 
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeOutCubic,
-                top: topInset +
-                    (keyboardOpen
-                        ? compactCopyTop - topInset
-                        : size.height * Warm.topAir),
+                top: keyboardOpen ? compactCopyTop : copyTop,
                 left: Warm.pagePad,
                 right: Warm.pagePad,
                 child: AnimatedOpacity(
@@ -376,6 +467,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     phase: _phase,
                     email: _email,
                     compact: keyboardOpen,
+                    box: math.max(_kCopyBox, copyBody),
                   ),
                 ),
               ),
@@ -469,11 +561,13 @@ class _Copy extends StatelessWidget {
     required this.phase,
     required this.email,
     required this.compact,
+    required this.box,
   });
 
   final _Phase phase;
   final String email;
   final bool compact;
+  final double box;
 
   @override
   Widget build(BuildContext context) {
@@ -485,13 +579,13 @@ class _Copy extends StatelessWidget {
           height: _kTrustMarkExtent,
           child: _TrustMark(),
         ),
-        SizedBox(height: compact ? _kCompactTrustGap : 20),
+        SizedBox(height: compact ? _kCompactTrustGap : _kTrustGap),
         SizedBox(
           height: compact
               ? (phase == _Phase.otp
                   ? _kCompactOtpCopyBox
                   : _kCompactEmailCopyBox)
-              : 168,
+              : box,
           child: AnimatedSwitcher(
             duration: Warm.crossfade,
             switchInCurve: Warm.easeSoft,
@@ -547,7 +641,7 @@ class _IntroCopy extends StatelessWidget {
         SizedBox(
           width: Warm.leadMaxWidth,
           child: Text(
-            'Shared photo albums for the people who were actually there.',
+            _kIntroLead,
             textAlign: TextAlign.center,
             style: Warm.lead,
           ),
@@ -576,24 +670,11 @@ class _PhaseCopy extends StatelessWidget {
       margin: EdgeInsets.only(top: compact ? 4 : Warm.headingToLead),
       child: phase == _Phase.email
           ? const Text(
-              'We’ll send a one-time sign-in code to your email.',
+              _kEmailLead,
               textAlign: TextAlign.center,
               style: Warm.lead,
             )
-          : Text.rich(
-              TextSpan(
-                style: Warm.lead,
-                children: [
-                  const TextSpan(text: 'Enter the 6-digit code we sent to '),
-                  TextSpan(
-                    text: email,
-                    style: const TextStyle(color: Warm.ink),
-                  ),
-                  const TextSpan(text: '.'),
-                ],
-              ),
-              textAlign: TextAlign.center,
-            ),
+          : Text.rich(_otpLead(email), textAlign: TextAlign.center),
     );
   }
 }

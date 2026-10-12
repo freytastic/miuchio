@@ -42,6 +42,7 @@ const double _kCameraXInImage = 0.3566;
 
 const double _kStageTopFactorShrunk = 0.01;
 const double _kStageShrunkScale = 0.5;
+const double _kStageMinScale = 0.6;
 const Duration _kShrinkDuration = Duration(milliseconds: 280);
 const Curve _kShrinkCurve = Curves.easeOutCubic;
 
@@ -55,6 +56,7 @@ class CameraStage extends StatefulWidget {
     VoidCallback? onComplete,
     bool shrink = false,
     double shrunkScale = _kStageShrunkScale,
+    double scale = 1,
   }) {
     final size = MediaQuery.sizeOf(context);
     final width = size.width * _kStageWidthFactor;
@@ -73,7 +75,7 @@ class CameraStage extends StatefulWidget {
         curve: _kShrinkCurve,
         // Scale around the camera rather than the photo fan
         alignment: Alignment(2 * _kCameraXInImage - 1, -1),
-        scale: shrink ? shrunkScale : 1,
+        scale: shrink ? shrunkScale : scale,
         child: CameraStage(onComplete: onComplete),
       ),
     );
@@ -90,6 +92,21 @@ class CameraStage extends StatefulWidget {
     if (unscaledHeight <= 0) return _kStageShrunkScale;
     return ((maxVisualBottom - top) / unscaledHeight)
         .clamp(0.0, _kStageShrunkScale)
+        .toDouble();
+  }
+
+  // Short screens trade some camera size for room under the copy
+  static double scaleToFit(
+    BuildContext context, {
+    required double maxVisualBottom,
+  }) {
+    final size = MediaQuery.sizeOf(context);
+    final top = MediaQuery.viewPaddingOf(context).top +
+        size.height * _kStageTopFactor;
+    final unscaledHeight = size.width * _kStageWidthFactor / _kStageAspect;
+    if (unscaledHeight <= 0) return 1;
+    return ((maxVisualBottom - top) / unscaledHeight)
+        .clamp(_kStageMinScale, 1.0)
         .toDouble();
   }
 
