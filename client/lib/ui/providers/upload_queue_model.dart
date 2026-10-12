@@ -121,6 +121,15 @@ class UploadQueueModel extends ChangeNotifier {
   List<UploadItemView> overlaysFor(String albumId) =>
       _state.overlaysFor(albumId);
 
+  UploadItemView? item(String itemId) {
+    for (final batch in _state.batches) {
+      for (final item in batch.items) {
+        if (item.id == itemId) return item;
+      }
+    }
+    return null;
+  }
+
   Uint8List? preview(MediaId id) => _previews[id.value];
 
   // Refuse plaintext previews the queue no longer owns

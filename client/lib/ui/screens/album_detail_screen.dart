@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -11,7 +12,6 @@ import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/media_catalog.dart';
 import 'package:miuchio/data/storage/name_cache.dart';
 import 'package:miuchio/domain/upload/upload_ports.dart';
-import 'package:miuchio/domain/upload/upload_snapshot.dart';
 import 'package:miuchio/ui/album/add_people_sheet.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_foot.dart';
@@ -912,7 +912,20 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final id = widget.album.id;
+    // Rebuild for this album's state only, not every app-wide notification
+    context.select<AppState, Object>((s) => (
+          s.isSyncing(id),
+          s.keyBlockFor(id),
+          s.rotationFor(id)?.phase,
+          s.rotationFor(id)?.failure,
+          s.albumDisplayName(id),
+          [
+            for (final m in widget.album.memberPreviews)
+              s.memberDisplayName(id, m.memberToken) ?? '',
+          ].join('\u0000'),
+        ));
+    final state = _appState!;
     final syncing = state.isSyncing(widget.album.id);
     // Uploads stay blocked until catch up reaches the refused epoch
     final keyBlock = state.keyBlockFor(widget.album.id);
@@ -996,9 +1009,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
               if (_feed == AlbumFeedState.staleOffline && _items.isNotEmpty)
                 SliverToBoxAdapter(
                     child: _StaleBanner(onRetry: () => _loadMedia())),
-              Consumer<UploadQueueModel>(
-                builder: (context, queue, _) {
-                  final overlays = queue.overlaysFor(widget.album.id);
+              Selector<UploadQueueModel, List<_Pending>>(
+                selector: (_, queue) => [
+                  for (final o in queue.overlaysFor(widget.album.id))
+                    (id: o.id, mediaId: o.mediaId.value),
+                ],
+                shouldRebuild: (a, b) => !listEquals(a, b),
+                builder: (context, overlays, _) {
                   if (syncing && _items.isEmpty && overlays.isEmpty) {
                     return const SliverFillRemaining(
                         hasScrollBody: false, child: _SyncingPlaceholder());
@@ -1006,7 +1023,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   return _MediaGrid(
                     items: shown,
                     overlays: _filterToken == null ? overlays : const [],
-                    uploads: queue,
                     state: _feed,
                     onRetry: _loadMedia,
                     traceId: _openTraceId,
@@ -1093,10 +1109,11 @@ class _SyncingPlaceholder extends StatelessWidget {
   }
 }
 
+typedef _Pending = ({String id, String mediaId});
+
 class _MediaGrid extends StatelessWidget {
   final List<MediaRecord> items;
-  final List<UploadItemView> overlays;
-  final UploadQueueModel uploads;
+  final List<_Pending> overlays;
   final AlbumFeedState state;
   final Future<void> Function() onRetry;
   final String traceId;
@@ -1108,7 +1125,6 @@ class _MediaGrid extends StatelessWidget {
   const _MediaGrid({
     required this.items,
     required this.overlays,
-    required this.uploads,
     required this.state,
     required this.onRetry,
     required this.traceId,
@@ -1137,7 +1153,7 @@ class _MediaGrid extends StatelessWidget {
     final landed = {for (final r in items) r.id};
     final pending = [
       for (final o in overlays)
-        if (!landed.contains(o.mediaId.value)) o
+        if (!landed.contains(o.mediaId)) o
     ];
 
     // Preserve tile elements when pending and confirmed rows shift
@@ -1161,9 +1177,8 @@ class _MediaGrid extends StatelessWidget {
             final item = pending[i];
             return UploadTile(
               key: ValueKey('p:${item.id}'),
-              item: item,
-              model: uploads,
-              onRetry: () => uploads.retry(item.id),
+              itemId: item.id,
+              onRetry: () => context.read<UploadQueueModel>().retry(item.id),
             );
           }
           final cache = context.read<MediaCacheManager>();
