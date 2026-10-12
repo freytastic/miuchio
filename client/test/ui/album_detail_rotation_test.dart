@@ -81,8 +81,8 @@ void main() {
     await _pumpScreen(tester, _status(RotationPhase.waiting));
 
     expect(
-        find.textContaining('Waiting for secure key rotation'), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Retry key rotation'), findsNothing);
+        find.textContaining('until the owner opens Miuchio'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Try again'), findsNothing);
   });
 
   testWidgets('photos can still be picked while a rotation is owed',
@@ -97,16 +97,16 @@ void main() {
   testWidgets('the admin sees a rotation in progress', (tester) async {
     await _pumpScreen(tester, _status(RotationPhase.rotating));
 
-    expect(find.textContaining('Securing this album'), findsOneWidget);
+    expect(
+        find.textContaining('Locking out the person who left'), findsOneWidget);
   });
 
   testWidgets('a failed rotation offers a retry', (tester) async {
     await _pumpScreen(
         tester, _status(RotationPhase.failed, RotationFailure.unavailable));
 
-    expect(find.textContaining('could not be sent yet'), findsOneWidget);
-    expect(
-        find.widgetWithText(TextButton, 'Retry key rotation'), findsOneWidget);
+    expect(find.textContaining('Try again in a moment'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Try again'), findsOneWidget);
   });
 
   testWidgets('an unconfirmed identity says why the key was not sent',
@@ -114,15 +114,15 @@ void main() {
     await _pumpScreen(tester,
         _status(RotationPhase.failed, RotationFailure.identityUnconfirmed));
 
-    expect(find.textContaining('identity key could not be confirmed'),
-        findsOneWidget);
+    expect(find.textContaining('couldn’t confirm someone’s'), findsOneWidget);
   });
 
   testWidgets('an album that owes nothing shows no rotation banner',
       (tester) async {
     await _pumpScreen(tester, null);
 
-    expect(find.textContaining('key rotation'), findsNothing);
-    expect(find.textContaining('Securing this album'), findsNothing);
+    expect(find.textContaining('New photos are paused'), findsNothing);
+    expect(
+        find.textContaining('Locking out the person who left'), findsNothing);
   });
 }

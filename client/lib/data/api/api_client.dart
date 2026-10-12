@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:miuchio/data/constants.dart';
 import 'package:miuchio/data/storage/storage_service.dart';
+import 'package:miuchio/diagnostics/debug_log.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 import 'api_error.dart';
 import 'session_refresher.dart';
@@ -91,6 +92,13 @@ class ApiClient {
         'bytes': response.bodyBytes.length,
         if (refreshed) 'refreshed': true,
       });
+      // 4xx answers are ordinary outcomes such as an unknown handle
+      if (response.statusCode >= 500) {
+        DebugLog.record(DebugEvent.requestFailed,
+            reason: 'http_${response.statusCode}',
+            stage: method.toLowerCase(),
+            route: _routeOf(path));
+      }
       final err = ApiError.fromResponse(response);
       final album = _albumIdRe.firstMatch(path)?.group(1);
       if (album != null) {
@@ -100,6 +108,12 @@ class ApiClient {
       throw err;
     } catch (error) {
       span.fail(Trace.reasonOf(error));
+      if (error is! ApiError) {
+        DebugLog.record(DebugEvent.requestFailed,
+            reason: Trace.reasonOf(error),
+            stage: method.toLowerCase(),
+            route: _routeOf(path));
+      }
       rethrow;
     }
   }

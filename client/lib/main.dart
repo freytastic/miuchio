@@ -23,6 +23,7 @@ import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/data/api/media_api.dart';
 import 'package:miuchio/data/native/image_transcoder.dart';
 import 'package:miuchio/data/upload/upload_adapters.dart';
+import 'package:miuchio/diagnostics/debug_log.dart';
 import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/data/upload/upload_outbox.dart';
@@ -95,6 +96,7 @@ final GlobalKey<ScaffoldMessengerState> rootMessengerKey =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   PerfProbe.start();
+  DebugLog.start();
 
   // Use libsodium for curve operations and cryptography_flutter for AEAD
   final sodium = await SodiumSumoInit.init();
@@ -106,6 +108,9 @@ void main() async {
     final err = details.exception;
     if (err is ApiError) {
       _showApiError(err);
+    } else {
+      DebugLog.record(DebugEvent.appError,
+          reason: Trace.reasonOf(err), stage: 'flutter');
     }
   };
 
@@ -114,6 +119,8 @@ void main() async {
       _showApiError(error);
       return true;
     }
+    DebugLog.record(DebugEvent.appError,
+        reason: Trace.reasonOf(error), stage: 'async');
     return false;
   };
 
@@ -184,6 +191,7 @@ void main() async {
   );
   final mediaApi = MediaApi(apiClient);
   final cacheRootKey = await loadOrCreateCacheRootKey(secureKeyStore);
+  unawaited(DebugLog.attach(cacheRootKey));
   final nameCache = await NameCache.open(cacheRootKey: cacheRootKey);
   final ownAvatar = await OwnAvatarStore.open(cacheRootKey: cacheRootKey);
   final avatarApi = AvatarApi(apiClient);
@@ -456,6 +464,8 @@ void main() async {
       'epoch': b.epoch,
       'reason': b.reason.name,
     });
+    DebugLog.record(DebugEvent.albumBlocked,
+        reason: b.reason.name, op: DebugLog.op(hexAlbumId(b.albumId)));
     appState.setKeyBlock(_uuidStringFromBytes(b.albumId), b);
   });
   late final RotationRecoveryScheduler rotationRecovery;
@@ -743,6 +753,7 @@ void main() async {
       (name: 'own avatar', run: ownAvatar.wipe),
       (name: 'pins', run: identityPinStore.clear),
       (name: 'seen', run: seenStore.clear),
+      (name: 'debug log', run: DebugLog.shutdown),
       // Block late key installs before deleting the keystore
       (name: 'key handles', run: () async => albumKeyStore.forgetAll()),
       (name: 'labels', run: labelMap.clearAll),
@@ -1014,6 +1025,7 @@ class _MiuchioAppState extends State<MiuchioApp> with WidgetsBindingObserver {
         state == AppLifecycleState.detached) {
       widget.mediaCacheManager.onAppPaused();
       widget.shelfCovers.suspend();
+      unawaited(DebugLog.flush());
     } else if (state == AppLifecycleState.resumed) {
       widget.shelfCovers.resume();
       // Refresh proactively because an expired session cannot be renewed

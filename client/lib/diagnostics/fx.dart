@@ -10,4 +10,5 @@ abstract class Fx {
   static final bool noEntry = _on.contains('noentry');
   static final bool noDevelop = _on.contains('nodevelop');
   static final bool bench = _on.contains('bench');
+  static final bool intro = _on.contains('intro');
 }

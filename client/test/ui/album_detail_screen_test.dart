@@ -261,7 +261,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('No media yet'), findsOneWidget);
+    expect(find.text('No photos yet'), findsOneWidget);
   });
 
   testWidgets('a successful realtime reload advances the seen watermark',

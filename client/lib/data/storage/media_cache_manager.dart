@@ -1,11 +1,13 @@
 import 'dart:typed_data';
 
+import 'package:miuchio/data/api/api_error.dart';
 import 'package:miuchio/data/api/media_api.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/file_decryptor.dart';
 import 'package:miuchio/e2ee/file_pipeline.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 
+import 'package:miuchio/diagnostics/debug_log.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 
 import 'media_cache_key.dart';
@@ -177,6 +179,14 @@ class MediaCacheManager {
       return pt;
     } catch (e) {
       span.fail(e is FileDecryptError ? e.reason : e.runtimeType.toString());
+      DebugLog.record(DebugEvent.downloadFailed,
+          reason: switch (e) {
+            FileDecryptError() => e.reason,
+            ApiError() => 'http_${e.httpStatus}',
+            _ => Trace.reasonOf(e),
+          },
+          stage: tag,
+          op: DebugLog.op('${k.albumId}/${k.mediaId}'));
       rethrow;
     }
   }

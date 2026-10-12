@@ -22,6 +22,8 @@ import 'package:miuchio/ui/shelf/avatar_crop_screen.dart';
 import 'package:miuchio/ui/shelf/safety_summary.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/settings/delete_account_screen.dart';
+import 'package:miuchio/ui/settings/debug_log_copy.dart';
+import 'package:miuchio/ui/settings/debug_log_page.dart';
 import 'package:miuchio/ui/settings/settings_page.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/print_card.dart';
@@ -230,9 +232,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: _openStorage,
                     ),
                   ]),
-                  const _Group(children: [
-                    _Row(title: 'Send feedback', href: '$_repoUrl/issues/new'),
-                    _Row(title: 'Privacy policy', href: '$_siteUrl/privacy'),
+                  _Group(children: [
+                    const _Row(
+                        title: 'Send feedback', href: '$_repoUrl/issues/new'),
+                    _Row(
+                      title: DebugLogCopy.title,
+                      onTap: () => _open(const DebugLogPage()),
+                    ),
+                    const _Row(
+                        title: 'Privacy policy', href: '$_siteUrl/privacy'),
                   ]),
                   _Group(children: [
                     _Row(

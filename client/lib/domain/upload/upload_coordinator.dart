@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:miuchio/diagnostics/debug_log.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/file_pipeline.dart';
 import 'package:uuid/uuid.dart';
@@ -34,6 +35,7 @@ class UploadCoordinator {
   final List<UploadItem> _items = [];
   final Map<String, PauseReason> _paused = {};
   final Map<String, DateTime> _startedAt = {};
+  final Set<String> _retried = {};
   final Map<String, EtaEstimator> _batchEta = {};
   // Wait before reserving again because abort uses only album and media ID
   final Map<String, Future<void>> _pendingAborts = {};
@@ -90,6 +92,8 @@ class UploadCoordinator {
         mediaId: MediaId.fresh(),
         sourcePath: s.path,
       ));
+      // Without an op so a batch folds into one row
+      DebugLog.record(DebugEvent.uploadQueued);
     }
     _mimeTypes[batchId] = {
       for (final s in sources) s.path: s.mimeType,
@@ -402,6 +406,8 @@ class UploadCoordinator {
             await _uploader.confirm(start.albumId, start.mediaId));
         await _finishDone(start.id, envelope: null);
         span.end(fields: {'stage': 'confirm_only'});
+        DebugLog.record(DebugEvent.uploadRecovered,
+            stage: 'confirm', op: DebugLog.op(start.id));
         return;
       }
 
@@ -491,6 +497,15 @@ class UploadCoordinator {
       _confirmed(start, await _uploader.confirm(start.albumId, start.mediaId));
       await _finishDone(start.id, envelope: env);
       span.end(fields: {'bytes': payload, 'wire': wireBytes});
+      if (start.manualRetries > 0 ||
+          start.prepareAttempt > 0 ||
+          _retried.contains(start.id)) {
+        DebugLog.record(DebugEvent.uploadRecovered,
+            op: DebugLog.op(start.id),
+            ms: _now()
+                .difference(_startedAt[start.id] ?? _now())
+                .inMilliseconds);
+      }
     } catch (error) {
       if (cancel.isCancelled) {
         span.fail('cancelled');
@@ -501,6 +516,7 @@ class UploadCoordinator {
       await _park(start.id, failure);
     } finally {
       _startedAt.remove(start.id);
+      _retried.remove(start.id);
     }
   }
 
@@ -545,6 +561,12 @@ class UploadCoordinator {
           continue;
         }
         if (attempt >= transferAttempts || !_autoRetryable(kind)) rethrow;
+        _retried.add(item.id);
+        DebugLog.record(DebugEvent.uploadRetrying,
+            reason: _codeOf(error),
+            stage: _byId(item.id)?.phase.name,
+            attempt: attempt,
+            op: DebugLog.op(item.id));
         await _sleep(_backoff(attempt));
       }
     }
@@ -575,8 +597,11 @@ class UploadCoordinator {
   Future<void> _park(String itemId, UploadFailure failure) async {
     final item = _byId(itemId);
     if (item == null) return;
+    void log(DebugEvent event) => DebugLog.record(event,
+        reason: failure.code, stage: item.phase.name, op: DebugLog.op(itemId));
 
     if (pausesAlbum(failure.kind)) {
+      log(DebugEvent.uploadPaused);
       _paused[item.albumId] = failure.kind == UploadFailureKind.rotationPending
           ? PauseReason.rotationPending
           : PauseReason.noAlbumKey;
@@ -591,6 +616,7 @@ class UploadCoordinator {
     // Reprepare with the same media ID under the newest album key
     if (failure.kind == UploadFailureKind.epochStale &&
         item.prepareAttempt < prepareAttempts) {
+      log(DebugEvent.uploadRetrying);
       _beginAbort(item);
       _set(itemId,
           phase: UploadPhase.queued,
@@ -601,6 +627,7 @@ class UploadCoordinator {
       return;
     }
 
+    log(DebugEvent.uploadFailed);
     if (isTerminal(failure.kind)) {
       if (!item.sourceDiscarded) await _discard(item.sourcePath);
       await _guard(() => _preparer.discardSealed(itemId));
@@ -645,9 +672,12 @@ class UploadCoordinator {
       kind == UploadFailureKind.server ||
       kind == UploadFailureKind.presignExpired;
 
+  String _codeOf(Object error) =>
+      error is UploadStageException ? error.code : 'unknown';
+
   UploadFailure _classify(Object error, UploadPhase? phase) {
     final kind = _kindOf(error);
-    final code = error is UploadStageException ? error.code : 'unknown';
+    final code = _codeOf(error);
     // Retry confirm only when the server result is ambiguous
     final ambiguousConfirm = phase == UploadPhase.confirming &&
         (kind == UploadFailureKind.transport ||

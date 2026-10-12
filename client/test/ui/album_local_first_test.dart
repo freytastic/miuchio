@@ -173,8 +173,8 @@ void main() {
     await settle(tester);
 
     expect(find.byType(SliverGrid), findsOneWidget);
-    expect(find.textContaining('No media yet'), findsNothing);
-    expect(find.text('Retry'), findsOneWidget,
+    expect(find.textContaining('No photos yet'), findsNothing);
+    expect(find.text('Try again'), findsOneWidget,
         reason: 'stale content should offer an explicit refresh');
   });
 
@@ -186,7 +186,7 @@ void main() {
     await settle(tester);
 
     expect(find.byType(SliverGrid), findsNothing);
-    expect(find.textContaining('No media yet'), findsOneWidget);
+    expect(find.textContaining('No photos yet'), findsOneWidget);
   });
 
   testWidgets('a cold album with a failed refresh does not claim to be empty',
@@ -196,9 +196,9 @@ void main() {
     await tester.pumpWidget(wrap(api));
     await settle(tester);
 
-    expect(find.textContaining('No media yet'), findsNothing);
+    expect(find.textContaining('No photos yet'), findsNothing);
     expect(find.textContaining("Couldn't load"), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets('a successful refresh writes the catalog for the next open',

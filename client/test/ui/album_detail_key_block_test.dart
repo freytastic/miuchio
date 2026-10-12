@@ -101,17 +101,16 @@ void main() {
       (tester) async {
     await _pumpScreen(tester, block: _block(EpochBlockReason.signerMismatch));
 
-    expect(find.widgetWithText(TextButton, 'Verify safety number'),
+    expect(find.widgetWithText(TextButton, 'Check security codes'),
         findsOneWidget);
   });
 
   testWidgets('an unfetchable wrap offers a retry instead', (tester) async {
     await _pumpScreen(tester, block: _block(EpochBlockReason.wrapUnavailable));
 
-    expect(find.widgetWithText(TextButton, 'Retry encryption sync'),
-        findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Try again'), findsOneWidget);
     expect(
-        find.widgetWithText(TextButton, 'Verify safety number'), findsNothing);
+        find.widgetWithText(TextButton, 'Check security codes'), findsNothing);
   });
 
   // Our own key cannot be confirmed by a human : there is nothing to compare
@@ -121,9 +120,8 @@ void main() {
         block: _block(EpochBlockReason.selfSignerMismatch));
 
     expect(
-        find.widgetWithText(TextButton, 'Verify safety number'), findsNothing);
-    expect(find.widgetWithText(TextButton, 'Retry encryption sync'),
-        findsOneWidget);
+        find.widgetWithText(TextButton, 'Check security codes'), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Try again'), findsOneWidget);
   });
 
   // A token without signer authority is resolved like a mismatch: compare its
@@ -131,23 +129,21 @@ void main() {
   testWidgets('an unknown signer points at the safety number', (tester) async {
     await _pumpScreen(tester, block: _block(EpochBlockReason.unknownSigner));
 
-    expect(find.widgetWithText(TextButton, 'Verify safety number'),
+    expect(find.widgetWithText(TextButton, 'Check security codes'),
         findsOneWidget);
   });
 
   testWidgets('a missing local prekey offers a retry', (tester) async {
     await _pumpScreen(tester, block: _block(EpochBlockReason.localKeyMissing));
 
-    expect(find.widgetWithText(TextButton, 'Retry encryption sync'),
-        findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Try again'), findsOneWidget);
     expect(find.textContaining('New photos are paused'), findsOneWidget);
   });
 
   testWidgets('a refused replay offers a retry', (tester) async {
     await _pumpScreen(tester, block: _block(EpochBlockReason.replayRejected));
 
-    expect(find.widgetWithText(TextButton, 'Retry encryption sync'),
-        findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Try again'), findsOneWidget);
     expect(find.textContaining('New photos are paused'), findsOneWidget);
   });
 

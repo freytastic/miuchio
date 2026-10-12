@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:miuchio/data/api/api_client.dart';
 import 'package:miuchio/data/constants.dart';
+import 'package:miuchio/diagnostics/debug_log.dart';
+import 'package:miuchio/diagnostics/trace.dart';
 
 class RealtimeEvent {
   final String type;
@@ -36,8 +38,10 @@ class RealtimeService {
     while (_active) {
       try {
         await _connectOnce();
-      } catch (_) {
+        if (_active) DebugLog.record(DebugEvent.liveDropped, reason: 'closed');
+      } catch (e) {
         if (!_active) return;
+        DebugLog.record(DebugEvent.liveDropped, reason: Trace.reasonOf(e));
         // Back off before retrying after a connection failure
         await Future.delayed(const Duration(seconds: 3));
       }
@@ -54,6 +58,11 @@ class RealtimeService {
     _channel =
         WebSocketChannel.connect(buildWsUri(AppConstants.baseURL, ticket));
     _connectedController.add(null);
+    // Connected fires before the upgrade settles, so log only a real handshake
+    unawaited(_channel!.ready.then(
+      (_) => DebugLog.record(DebugEvent.liveConnected),
+      onError: (_) {},
+    ));
 
     await for (final raw in _channel!.stream) {
       if (!_active) break;
