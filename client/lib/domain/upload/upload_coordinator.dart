@@ -22,6 +22,7 @@ class UploadCoordinator {
   final StagedUploader _uploader;
   final UploadSink _sink;
   final void Function(String albumId)? _onRotationPending;
+  final void Function(String albumId, int generation)? _onConfirmed;
   final DateTime Function() _now;
   final Future<void> Function(Duration) _sleep;
   final Duration Function(int) _backoff;
@@ -55,6 +56,7 @@ class UploadCoordinator {
     required StagedUploader uploader,
     required UploadSink sink,
     void Function(String albumId)? onRotationPending,
+    void Function(String albumId, int generation)? onConfirmed,
     DateTime Function()? now,
     Future<void> Function(Duration)? sleep,
     Duration Function(int)? backoff,
@@ -67,6 +69,7 @@ class UploadCoordinator {
         _uploader = uploader,
         _sink = sink,
         _onRotationPending = onRotationPending,
+        _onConfirmed = onConfirmed,
         _now = now ?? DateTime.now,
         _sleep = sleep ?? Future<void>.delayed,
         _backoff = backoff ?? _defaultBackoff;
@@ -395,7 +398,7 @@ class UploadCoordinator {
       if (start.failure?.resumeFrom == ResumePoint.confirm) {
         _set(start.id, phase: UploadPhase.confirming, clearFailure: true);
         _emitNow();
-        _recordGeneration(start.batchId,
+        _confirmed(start,
             await _uploader.confirm(start.albumId, start.mediaId));
         await _finishDone(start.id, envelope: null);
         span.end(fields: {'stage': 'confirm_only'});
@@ -485,8 +488,7 @@ class UploadCoordinator {
       if (cancel.isCancelled) return;
       _set(start.id, phase: UploadPhase.confirming, logicalBytesSent: payload);
       _emitNow();
-      _recordGeneration(
-          start.batchId, await _uploader.confirm(start.albumId, start.mediaId));
+      _confirmed(start, await _uploader.confirm(start.albumId, start.mediaId));
       await _finishDone(start.id, envelope: env);
       span.end(fields: {'bytes': payload, 'wire': wireBytes});
     } catch (error) {
@@ -719,6 +721,11 @@ class UploadCoordinator {
       ));
     }
     return UploadState(snapshots);
+  }
+
+  void _confirmed(UploadItem item, int generation) {
+    if (generation > 0) _onConfirmed?.call(item.albumId, generation);
+    _recordGeneration(item.batchId, generation);
   }
 
   // Ignore confirmations for batches removed while awaiting the server

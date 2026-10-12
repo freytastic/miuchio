@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:miuchio/diagnostics/fx.dart';
+import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
@@ -10,6 +12,7 @@ import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/shelf/album_print.dart';
 import 'package:miuchio/ui/shelf/develop_store.dart';
 import 'package:miuchio/ui/shelf/print_style.dart';
+import 'package:miuchio/ui/shelf/shelf_bench.dart';
 import 'package:miuchio/ui/shelf/shelf_copy.dart';
 import 'package:miuchio/ui/shelf/shelf_data.dart';
 import 'package:miuchio/ui/shelf/shelf_layout.dart';
@@ -63,14 +66,44 @@ class _ShelfScreenState extends State<ShelfScreen>
     }
   }
 
-  late final DevelopStore _develop =
-      DevelopStore(vsync: this, duration: Warm.develop);
+  late final DevelopStore _develop = DevelopStore(
+      vsync: this, duration: Warm.develop, visible: () => _current);
+
+  bool _current = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Turns true as a page over the shelf starts closing
+    _current = ModalRoute.isCurrentOf(context) ?? true;
+    if (_current) _develop.play();
+  }
 
   // Prevents entry animation replay after layout remounts
   final Set<String> _entered = {};
 
+  final ScrollController? _benchScroll = Fx.bench ? ScrollController() : null;
+  int _benchRound = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final scroll = _benchScroll;
+    if (scroll == null) return;
+    unawaited(ShelfBench(
+      scroll: scroll,
+      replayEntry: () => setState(() {
+        _entered.clear();
+        _benchRound++;
+      }),
+      replayDevelop: _develop.replay,
+      idle: () => mounted && (ModalRoute.of(context)?.isCurrent ?? true),
+    ).run());
+  }
+
   @override
   void dispose() {
+    _benchScroll?.dispose();
     _develop.dispose();
     super.dispose();
   }
@@ -97,6 +130,7 @@ class _ShelfScreenState extends State<ShelfScreen>
       generation: a.mediaGeneration,
       lastSeen: store.lastSeen(a.id),
       mediaCount: a.mediaCount,
+      own: store.ownThrough(a.id, a.mediaGeneration),
     );
   }
 
@@ -136,6 +170,8 @@ class _ShelfScreenState extends State<ShelfScreen>
           children: [
             const _Ground(),
             _Scroll(
+              key: Fx.bench ? ValueKey(_benchRound) : null,
+              controller: _benchScroll,
               view: view,
               albums: albums,
               headline: headline,
@@ -184,6 +220,7 @@ class _Ground extends StatelessWidget {
 }
 
 class _Scroll extends StatelessWidget {
+  final ScrollController? controller;
   final ShelfView view;
   final List<AlbumModel> albums;
   final Headline headline;
@@ -196,6 +233,8 @@ class _Scroll extends StatelessWidget {
   final VoidCallback? onCreateAlbum;
 
   const _Scroll({
+    super.key,
+    this.controller,
     required this.view,
     required this.albums,
     required this.headline,
@@ -253,6 +292,7 @@ class _Scroll extends StatelessWidget {
       bottom: false,
       // Slivers prevent offscreen cards from requesting covers
       child: CustomScrollView(
+        controller: controller,
         physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics()),
         slivers: [
@@ -649,6 +689,7 @@ class _ShelfCardState extends State<_ShelfCard> {
         if (!mounted) return;
         widget.onEntered();
         setState(() => _entered = true);
+        PerfProbe.window('shelf.entry', Warm.springSoft);
       });
     }
     _requestCover();
@@ -761,6 +802,17 @@ class _ShelfCardState extends State<_ShelfCard> {
     if (covers != null) context.watch<ShelfCovers>();
     context.watch<AppState>();
 
+    final card = Opacity(
+      opacity: _lifted ? 0 : 1,
+      child: _print(
+        size: widget.size,
+        onHold: () =>
+            covers?.ensureRiffle(widget.album.id, widget.album.previewMedia),
+        onTap: widget.onTap,
+        onPeek: _peek,
+      ),
+    );
+    if (Fx.noEntry) return card;
     return AnimatedSlide(
       offset: _entered ? Offset.zero : const Offset(0, 0.07),
       duration: Warm.springSoft,
@@ -769,16 +821,7 @@ class _ShelfCardState extends State<_ShelfCard> {
         opacity: _entered ? 1 : 0,
         duration: Warm.springSoft,
         curve: Warm.easeSoft,
-        child: Opacity(
-          opacity: _lifted ? 0 : 1,
-          child: _print(
-            size: widget.size,
-            onHold: () => covers?.ensureRiffle(
-                widget.album.id, widget.album.previewMedia),
-            onTap: widget.onTap,
-            onPeek: _peek,
-          ),
-        ),
+        child: card,
       ),
     );
   }

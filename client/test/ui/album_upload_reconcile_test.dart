@@ -66,6 +66,10 @@ class _BrokenSeenStore extends ChangeNotifier implements SeenStore {
   Future<void> markSeen(String albumId, int generation) async =>
       throw StateError('seen store unwritable');
   @override
+  Future<void> markOwn(String albumId, int generation) async {}
+  @override
+  int ownThrough(String albumId, int generation) => 0;
+  @override
   Future<void> forget(String albumId) async {}
 }
 

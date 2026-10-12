@@ -106,8 +106,9 @@ int unseenCount({
   required int generation,
   required int lastSeen,
   required int mediaCount,
+  int own = 0,
 }) {
-  final raw = generation - lastSeen;
+  final raw = generation - lastSeen - own;
   if (raw <= 0) return 0;
   // The monotonic counter can exceed mediaCount after deletions
   return raw > mediaCount ? mediaCount : raw;
