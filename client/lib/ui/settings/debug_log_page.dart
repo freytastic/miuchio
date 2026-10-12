@@ -8,7 +8,6 @@ import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/settings/debug_log_copy.dart';
 import 'package:miuchio/ui/settings/settings_page.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
-import 'package:miuchio/ui/widgets/warm_button.dart';
 
 const String _mono = 'monospace';
 
@@ -104,24 +103,19 @@ class _DebugLogPageState extends State<DebugLogPage> {
       ],
       children: [
         const SettingsLead(DebugLogCopy.lead),
-        const SizedBox(height: 22),
-        Row(
-          children: [
-            WarmButton(
-              label: DebugLogCopy.shareLog,
-              small: true,
-              onTap: all.isEmpty ? null : _review,
-            ),
-            const SizedBox(width: 4),
-            WarmTextButton(
-              label: DebugLogCopy.clear,
-              onTap: all.isEmpty ? null : _clear,
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const _SendSoon(),
         const SizedBox(height: 18),
+        _ActionRow(
+          title: DebugLogCopy.shareLog,
+          onTap: all.isEmpty ? null : _review,
+        ),
+        const _ActionRow(title: DebugLogCopy.send, value: DebugLogCopy.soon),
+        _ActionRow(
+          title: DebugLogCopy.clear,
+          warn: true,
+          chevron: false,
+          onTap: all.isEmpty ? null : _clear,
+        ),
+        const SizedBox(height: 22),
         _Filter(
           problemsOnly: _problemsOnly,
           onChanged: (v) => setState(() => _problemsOnly = v),
@@ -158,10 +152,11 @@ class _EntryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final e = entry;
     final cause = DebugLogCopy.cause(e);
-    final when = e.count > 1
-        ? '${_clock(e.first)} to ${_clock(e.last)} · '
-            '${DebugLogCopy.times(e.count)}'
-        : _clock(e.first);
+    final start = _clock(e.first);
+    final end = _clock(e.last);
+    final span = start == end ? start : '$start to $end';
+    final when =
+        e.count > 1 ? '$span · ${DebugLogCopy.times(e.count)}' : start;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -287,28 +282,58 @@ class _Filter extends StatelessWidget {
   }
 }
 
-class _SendSoon extends StatelessWidget {
-  const _SendSoon();
+// Same shape as the profile rows, so a disabled or upcoming action reads as
+// a muted row instead of a stray button
+class _ActionRow extends StatelessWidget {
+  final String title;
+  final String? value;
+  final bool warn;
+  final bool chevron;
+  final VoidCallback? onTap;
+
+  const _ActionRow({
+    required this.title,
+    this.value,
+    this.warn = false,
+    this.chevron = true,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 12),
-      child: Row(
-        children: [
-          Text(DebugLogCopy.send,
-              style: Warm.textAction.copyWith(color: Warm.inkFaint)),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Warm.inkGhost),
-            ),
-            child: Text(DebugLogCopy.soon,
-                style: Warm.meta.copyWith(color: Warm.inkFaint, fontSize: 11)),
+    final enabled = onTap != null;
+    final color = !enabled
+        ? Warm.inkFaint
+        : warn
+            ? Warm.warn
+            : Warm.ink;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onTap!();
+              },
+        child: SizedBox(
+          height: 48,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(title, style: Warm.rowTitle.copyWith(color: color)),
+              ),
+              if (value != null)
+                Text(value!,
+                    style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
+              if (enabled && chevron)
+                const Icon(Icons.chevron_right_rounded,
+                    size: 17, color: Warm.inkGhost),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -378,22 +403,16 @@ class _DebugLogPreviewPageState extends State<DebugLogPreviewPage> {
           (Icons.lock_outline_rounded, DebugLogCopy.previewNoContent),
           (Icons.schedule_rounded, DebugLogCopy.previewIncludes),
         ]),
-        Row(
-          children: [
-            Builder(
-              builder: (anchor) => WarmButton(
-                label: DebugLogCopy.share,
-                small: true,
-                onTap: text == null ? null : () => _share(anchor),
-              ),
-            ),
-            const SizedBox(width: 4),
-            WarmTextButton(
-              label: DebugLogCopy.copy,
-              color: Warm.ink,
-              onTap: text == null ? null : _copy,
-            ),
-          ],
+        Builder(
+          builder: (anchor) => _ActionRow(
+            title: DebugLogCopy.share,
+            onTap: text == null ? null : () => _share(anchor),
+          ),
+        ),
+        _ActionRow(
+          title: DebugLogCopy.copy,
+          chevron: false,
+          onTap: text == null ? null : _copy,
         ),
         Container(
           margin: const EdgeInsets.only(top: 18),
