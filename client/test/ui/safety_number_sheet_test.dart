@@ -66,7 +66,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(verified, isFalse, reason: 'one tap must not be enough');
-    expect(find.textContaining('match exactly'), findsOneWidget);
+    expect(find.textContaining('match on both phones'), findsOneWidget);
   });
 
   testWidgets('confirming the prompt fires onVerify', (tester) async {
@@ -82,8 +82,7 @@ void main() {
     expect(verified, isTrue);
   });
 
-  testWidgets('They match waits until the digits have landed',
-      (tester) async {
+  testWidgets('They match waits until the digits have landed', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SafetyNumberSheet(
@@ -98,12 +97,12 @@ void main() {
 
     await tester.tap(find.text('They match'));
     await tester.pump();
-    expect(find.textContaining('match exactly'), findsNothing);
+    expect(find.textContaining('match on both phones'), findsNothing);
 
     await tester.pumpAndSettle();
     await tester.tap(find.text('They match'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('match exactly'), findsOneWidget);
+    expect(find.textContaining('match on both phones'), findsOneWidget);
   });
 
   testWidgets('dismissing the prompt leaves the key unverified',
@@ -135,7 +134,7 @@ void main() {
       (tester) async {
     await _pump(tester, state: TrustState.changed);
 
-    expect(find.textContaining('security key changed'), findsOneWidget);
+    expect(find.textContaining('security code changed'), findsOneWidget);
     expect(find.text('They match'), findsOneWidget);
     expect(find.textContaining("It's them"), findsNothing);
     expect(find.textContaining('new phone'), findsNothing);

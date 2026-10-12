@@ -108,10 +108,10 @@ void main() {
         SafetyNumberChanged(id: 't', albumId: 'a', at: at, peerToken: 'noor'));
     await pump(tester);
 
-    expect(find.text("Noor's safety number changed"), findsOneWidget);
+    expect(find.text("Noor's security code changed"), findsOneWidget);
     expect(find.text('Compare'), findsOneWidget);
     expect(find.text('1 security update to review.'), findsOneWidget);
-    expect(find.text("One is Noor's changed safety number."), findsOneWidget);
+    expect(find.text("One is Noor's new security code."), findsOneWidget);
     expect(find.bySemanticsLabel('Security, 1 to review'), findsOneWidget);
   });
 
@@ -134,7 +134,7 @@ void main() {
         id: 'p', albumId: 'a', at: at, count: 5, uploaderToken: 'noor'));
     await pump(tester);
 
-    expect(find.text('Nothing has changed about who can read your albums.'),
+    expect(find.text('Nothing has changed about who can see your albums.'),
         findsOneWidget);
 
     await tester.tap(find.text('Albums'));
@@ -217,7 +217,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Compare'), findsNothing);
-    expect(find.textContaining('safety number changed', findRichText: true),
+    expect(find.textContaining('security code changed', findRichText: true),
         findsOneWidget);
     expect(find.text("You haven't compared it yet."), findsOneWidget);
   });
@@ -310,7 +310,7 @@ void main() {
     expect(find.text('No security activity yet.'), findsOneWidget);
     expect(find.bySemanticsLabel('Security, Up to date'), findsOneWidget);
     expect(
-      find.text('Nothing has changed about who can read your albums.'),
+      find.text('Nothing has changed about who can see your albums.'),
       findsOneWidget,
     );
   });

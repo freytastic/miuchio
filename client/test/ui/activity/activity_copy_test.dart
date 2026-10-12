@@ -18,13 +18,13 @@ void main() {
         names,
       );
 
-      expect(copy.title, "Noor's safety number changed");
+      expect(copy.title, "Noor's security code changed");
       expect(copy.where, 'Birthday');
       // In this build a new phone cannot keep the same membership (the
       // account gate refuses it), so "probably a new phone" was false comfort
       expect(copy.body.toLowerCase(), isNot(contains('new phone')));
       expect(copy.body.toLowerCase(), isNot(contains('probably')));
-      expect(copy.body, contains("shouldn't happen"));
+      expect(copy.body, contains('in person'));
       expect(copy.body, contains('pretending'));
       expect(copy.body.toLowerCase(), isNot(contains('fingerprint')));
       expect(copy.body.toLowerCase(), isNot(contains('identity key')));
@@ -50,7 +50,7 @@ void main() {
         names,
       );
 
-      expect(copy.title, contains('no longer have access'));
+      expect(copy.title, contains('no longer in'));
       // Cleanup can lag while offline
       expect(copy.body, contains('being removed from this phone'));
       expect(copy.body, isNot(contains('rotated')));
@@ -154,7 +154,7 @@ void main() {
       final say =
           sayForSecurity(needs: 2, happened: 4, changedSafetyNumber: 'Noor');
       expect(say.title, '2 security updates to review.');
-      expect(say.sub, "One is Noor's changed safety number.");
+      expect(say.sub, "One is Noor's new security code.");
     });
 
     test('security without an alarm points at access changes', () {

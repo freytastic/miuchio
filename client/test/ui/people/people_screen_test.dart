@@ -48,7 +48,7 @@ void main() {
     expect(top(tester, 'cy'), lessThan(top(tester, 'bea')));
     expect(top(tester, 'bea'), lessThan(top(tester, 'ana')));
     expect(top(tester, 'ana'), lessThan(top(tester, 'dan')));
-    expect(find.text('Safety number changed'), findsOneWidget);
+    expect(find.text('Security code changed'), findsOneWidget);
     expect(find.text('Cabin · 1 of 3 verified'), findsOneWidget);
   });
 

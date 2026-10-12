@@ -25,7 +25,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    expect(find.text('You administer 2 shared albums'), findsOneWidget);
+    expect(find.text('You own 2 shared albums'), findsOneWidget);
     expect(find.text('Trip · 3 members'), findsOneWidget);
 
     final delete = find.widgetWithText(TextButton, 'Delete everything');
