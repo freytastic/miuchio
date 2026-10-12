@@ -2,13 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:cryptography/cryptography.dart' as cg;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:miuchio/crypto/blob_digest.dart';
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/crypto/wire_format.dart';
+import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/file_pipeline.dart';
 
 class OutboxRecord {
@@ -98,7 +99,12 @@ class UploadOutboxStore {
           ? await thumbFile.readAsBytes()
           : null;
       final sha = base64Decode(meta['sha'] as String);
-      if (!_ctEq(await _sha256(cipher), sha)) return null;
+      final actual = await Trace.measure<Uint8List>(
+        'media.outboxVerify',
+        () => BlobDigest.sha256(cipher),
+        fields: {'bytes': cipher.length},
+      );
+      if (!_ctEq(actual, sha)) return null;
       return EncryptedMedia(
         mediaId: uuidToBytes(meta['media'] as String)!,
         cipherBytes: cipher,
@@ -257,9 +263,6 @@ class UploadOutboxStore {
     } catch (_) {}
   }
 }
-
-Future<Uint8List> _sha256(Uint8List bytes) async =>
-    Uint8List.fromList((await cg.Sha256().hash(bytes)).bytes);
 
 bool _ctEq(Uint8List a, Uint8List b) {
   if (a.length != b.length) return false;
