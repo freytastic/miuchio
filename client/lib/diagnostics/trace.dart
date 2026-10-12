@@ -55,6 +55,8 @@ abstract class Trace {
     return type;
   }
 
+  static Iterable<String> get reasonWords => _kReasonVocabulary.values;
+
   static String id(String? value) {
     if (value == null || value.isEmpty) return '-';
     return value.length <= 8 ? value : value.substring(0, 8);

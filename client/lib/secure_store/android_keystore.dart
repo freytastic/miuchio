@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:miuchio/diagnostics/debug_log.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 
 import 'key_handle.dart';
@@ -74,6 +75,11 @@ class AndroidKeystore extends SecureKeyStore {
       return result as R;
     } on PlatformException catch (e) {
       span.fail(e.code);
+      // A missing key is an ordinary lookup miss for most callers
+      if (e.code != 'E_KEY_NOT_FOUND') {
+        DebugLog.record(DebugEvent.keystoreFailed,
+            reason: e.code, stage: method);
+      }
       throw KeyStoreException.fromPlatform(method, e);
     }
   }
