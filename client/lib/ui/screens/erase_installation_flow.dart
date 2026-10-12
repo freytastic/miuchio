@@ -13,11 +13,10 @@ Future<void> confirmAndEraseInstallation(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Erase this Miuchio?'),
+      title: const Text('Erase Miuchio on this phone?'),
       content: const Text(
-          'Every photo and key the other account kept on this phone is '
-          'removed. Their account itself is not touched, and this cannot be '
-          'undone.'),
+          'Everything the other account saved on this phone is removed. Their '
+          'account isn’t affected. This can’t be undone.'),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),

@@ -427,7 +427,7 @@ class _SecurityPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (needs.isEmpty && rest.isEmpty)
-          const _Blank('Nothing has changed about who can read your albums.'),
+          const _Blank('Nothing has changed about who can see your albums.'),
         if (needs.isNotEmpty) const SizedBox(height: 30),
         for (var i = 0; i < needs.length; i++)
           _Enter(

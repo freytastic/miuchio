@@ -67,7 +67,7 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen> {
     final messenger = ScaffoldMessenger.of(context);
 
     if (userId == null) {
-      setState(() => _error = 'Not signed in');
+      setState(() => _error = 'You’re signed out. Sign in again.');
       return;
     }
     setState(() {

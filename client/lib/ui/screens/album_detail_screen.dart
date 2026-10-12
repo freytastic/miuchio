@@ -264,7 +264,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             : null,
         note: _viewerIsAdmin
             ? AlbumCopy.ownerNote
-            : 'Only the person who made this album can add people.',
+            : 'Only the owner can add people.',
       ),
     ));
   }
@@ -304,7 +304,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   void _notYet() {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(_note('Coming in a later release.'));
+        .showSnackBar(_note('Coming soon.'));
   }
 
   Future<void> _openAlbumInfo() async {
@@ -1009,7 +1009,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       sources: staged,
     );
     if (picked.length > _maxBatch) {
-      messenger.showSnackBar(_note('Adding the first $_maxBatch for now.'));
+      messenger.showSnackBar(_note('Adding the first $_maxBatch. Add the rest after.'));
     }
     await UploadSheet.show(context,
         batchId: batchId, onPickMore: _pickAndUpload, onDismiss: _dismissBatch);
@@ -1215,7 +1215,7 @@ class _SyncingPlaceholder extends StatelessWidget {
         children: [
           const CircularProgressIndicator(strokeWidth: 2),
           const SizedBox(height: 12),
-          Text('Syncing encryption keys…',
+          Text('Getting the album ready…',
               style: Theme.of(context).textTheme.bodyMedium),
         ],
       ),
@@ -1402,7 +1402,7 @@ class _SyncingBanner extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 1.5),
           ),
           const SizedBox(width: 10),
-          Text('Syncing encryption keys…',
+          Text('Getting the album ready…',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -1428,13 +1428,14 @@ class _StaleBanner extends StatelessWidget {
           const Icon(Icons.cloud_off_outlined, size: 14, color: Warm.inkSoft),
           const SizedBox(width: 8),
           Expanded(
-            child: Text("Showing saved photos : couldn't reach the server",
+            child: Text('You’re offline. Showing photos saved on this phone.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
                     ?.copyWith(color: Warm.inkSoft)),
           ),
-          TextButton(onPressed: () => onRetry(), child: const Text('Retry')),
+          TextButton(
+              onPressed: () => onRetry(), child: const Text('Try again')),
         ],
       ),
     );
@@ -1456,7 +1457,8 @@ class _MediaUnavailable extends StatelessWidget {
           Text("Couldn't load this album",
               style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 8),
-          TextButton(onPressed: () => onRetry(), child: const Text('Retry')),
+          TextButton(
+              onPressed: () => onRetry(), child: const Text('Try again')),
         ],
       ),
     );
@@ -1475,13 +1477,13 @@ class _MediaEmpty extends StatelessWidget {
           const Icon(Icons.photo_library_outlined,
               size: 48, color: Warm.inkFaint),
           const SizedBox(height: 12),
-          const Text('No media yet',
+          const Text('No photos yet',
               style: TextStyle(
                   color: Warm.inkSoft,
                   fontSize: 16,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
-          const Text('Tap + to upload an encrypted photo',
+          const Text('Tap + to add photos',
               style: TextStyle(color: Warm.inkFaint, fontSize: 13)),
         ],
       ),
@@ -1505,8 +1507,8 @@ class _KeyChangeBanner extends StatelessWidget {
     const red = Color(0xFFF87171);
     final names = members.map(nameOf).toList();
     final who = names.length == 1
-        ? "${names.first}'s security key changed"
-        : '${names.length} members’ security keys changed';
+        ? '${names.first}’s security code changed'
+        : '${names.length} people’s security codes changed';
     return InkWell(
       onTap: () => onTap(members.first),
       child: Container(
@@ -1524,7 +1526,7 @@ class _KeyChangeBanner extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '$who. Verify with them directly if that was unexpected.',
+                '$who. Check it with them in person.',
                 style: const TextStyle(
                     color: Warm.ink, fontSize: 12, height: 1.35),
               ),
@@ -1547,15 +1549,14 @@ class _RotationBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     const amber = Color(0xFFF59E0B);
     final text = switch (status.phase) {
-      RotationPhase.rotating => 'Securing this album’s keys…',
+      RotationPhase.rotating => 'Locking out the person who left…',
       RotationPhase.failed =>
         status.failure == RotationFailure.identityUnconfirmed
-            ? 'New photos are paused. A member’s identity key could not be '
-                'confirmed, so this album’s new key was not sent.'
-            : 'New photos are paused. This album’s new key could not be '
-                'sent yet.',
-      _ => 'Waiting for secure key rotation. New photos are shared once the '
-          'album admin’s phone is online.',
+            ? 'New photos are paused. Miuchio couldn’t confirm someone’s '
+                'security code. Check codes with the people in this album, '
+                'then try again.'
+            : 'New photos are paused. Try again in a moment.',
+      _ => 'New photos are paused until the owner opens Miuchio.',
     };
     return Container(
       width: double.infinity,
@@ -1595,7 +1596,7 @@ class _RotationBanner extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: onRetry,
-                child: const Text('Retry key rotation',
+                child: const Text('Try again',
                     style: TextStyle(fontSize: 12)),
               ),
             ),
@@ -1622,29 +1623,8 @@ class _KeyBlockBanner extends StatelessWidget {
     // Only peer identity failures can be resolved by comparing safety numbers
     final verifiable = block.reason == EpochBlockReason.signerMismatch ||
         block.reason == EpochBlockReason.unknownSigner;
-    final text = switch (block.reason) {
-      EpochBlockReason.signerMismatch =>
-        'New photos are paused. The key that signed this album’s latest '
-            'encryption update is not the one we trust for that member.',
-      EpochBlockReason.unknownSigner =>
-        'New photos are paused. This album’s latest encryption update was '
-            'signed by someone this device has no identity for.',
-      EpochBlockReason.selfSignerMismatch =>
-        'New photos are paused. The server described this device’s own '
-            'identity key incorrectly.',
-      EpochBlockReason.wrapUnavailable =>
-        'New photos are paused. An encryption update for this album could not '
-            'be downloaded, and later ones cannot be applied without it.',
-      EpochBlockReason.verificationFailed =>
-        'New photos are paused. An encryption update for this album failed its '
-            'integrity check.',
-      EpochBlockReason.localKeyMissing =>
-        'New photos are paused. A one time key this album’s encryption update '
-            'was addressed to is no longer on this device.',
-      EpochBlockReason.replayRejected =>
-        'New photos are paused. An encryption update for this album was '
-            'refused as a replay of one already installed.',
-    };
+    const text = 'New photos are paused. Something about this album’s '
+        'security didn’t check out.';
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -1676,12 +1656,12 @@ class _KeyBlockBanner extends StatelessWidget {
             child: verifiable
                 ? TextButton(
                     onPressed: onVerify,
-                    child: const Text('Verify safety number',
+                    child: const Text('Check security codes',
                         style: TextStyle(fontSize: 12)),
                   )
                 : TextButton(
                     onPressed: onRetry,
-                    child: const Text('Retry encryption sync',
+                    child: const Text('Try again',
                         style: TextStyle(fontSize: 12)),
                   ),
           ),

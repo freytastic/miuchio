@@ -38,8 +38,7 @@ String sheetTitle(UploadBatchSnapshot b, String? albumName) {
 
 String? pauseNote(UploadBatchSnapshot b) {
   if (b.paused == null) return null;
-  return 'Waiting to send. Your photos are safe on this phone and go up in a '
-      'moment.';
+  return 'Waiting to send. Your photos are safe on this phone.';
 }
 
 String failureHeadline(int count) =>

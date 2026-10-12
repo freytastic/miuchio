@@ -155,7 +155,7 @@ class _Roster {
         displayName: entry.name,
         digits: digits,
         state: entry.trust,
-        subtitle: withInvites ? title : 'Number for $title',
+        subtitle: withInvites ? title : 'Code for $title',
         face: _face(p, 46),
         onVerify: () {
           verifying = () async {
@@ -181,7 +181,7 @@ Future<void> openEveryone(BuildContext context, {AlbumService? service}) {
       albums: () => state.albums, withInvites: false, service: service);
   return Navigator.of(context).push(MaterialPageRoute<void>(
     builder: (_) => PeopleScreen(
-      title: 'Safety numbers',
+      title: 'Security codes',
       subtitle: 'Everyone you share an album with',
       load: roster.load,
       onOpen: (e) => roster.open(context, e),
@@ -224,7 +224,7 @@ Future<void> openAlbumPeople(BuildContext context, AlbumModel album,
       onOpen: (e) => roster.open(context, e),
       onAdd: admin ? add : null,
       note:
-          admin ? null : 'Only the person who made this album can add people.',
+          admin ? null : 'Only the owner can add people.',
     ),
   ));
 }

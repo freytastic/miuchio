@@ -206,8 +206,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           case AccountGateOutcome.unclaimedVault:
             _showBelongsToAnother();
           case AccountGateOutcome.connectionRequired:
-            _showError(
-                'Miuchio could not reach the server. Try again when you are back online.');
+            _showError('Couldn’t connect. Try again when you’re online.');
           case AccountGateOutcome.proceed:
           case AccountGateOutcome.adoptUnbound:
           case AccountGateOutcome.newAccount:
@@ -260,15 +259,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } on BootstrapAccountConflictException {
       messenger.showSnackBar(const SnackBar(
         content: Text(
-          "This account's photos are locked to the phone it was set up on, "
-          'and cannot be opened here.',
+          'This account’s photos only open on the phone it was set up on.',
         ),
         duration: Duration(seconds: 6),
       ));
       return;
     } catch (_) {
       messenger.showSnackBar(const SnackBar(
-        content: Text('Encryption setup failed. Please reopen the app.'),
+        content: Text('Something went wrong. Close Miuchio and open it again.'),
         duration: Duration(seconds: 5),
       ));
       return;
@@ -468,6 +466,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     email: _email,
                     compact: keyboardOpen,
                     box: math.max(_kCopyBox, copyBody),
+                  ),
+                ),
+              ),
+
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: MediaQuery.viewPaddingOf(context).bottom + 12,
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: onIntro && !keyboardOpen ? 1 : 0,
+                    duration: Warm.quick,
+                    child: Text('Beta 1.0',
+                        textAlign: TextAlign.center, style: Warm.footMark),
                   ),
                 ),
               ),

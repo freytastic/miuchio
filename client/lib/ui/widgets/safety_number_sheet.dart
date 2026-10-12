@@ -81,9 +81,8 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: Text('Did every digit match?', style: Warm.sheetTitle),
         content: Text(
-          'Only confirm if all ${_count > 0 ? _count : 30} digits match '
-          "exactly on both phones. This can't be undone, and it tells Miuchio "
-          'to trust this key from now on.',
+          'Only confirm if all ${_count > 0 ? _count : 30} digits match on '
+          "both phones. You can't undo this.",
           style: Warm.pageSoft.copyWith(color: Warm.inkSoft),
         ),
         actionsAlignment: MainAxisAlignment.end,
@@ -180,9 +179,8 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
                     )
                   : Text(
                       changed
-                          ? "$name's security key changed. Miuchio stopped "
-                              'trusting it until you compare these numbers '
-                              'in person.'
+                          ? "$name's security code changed. Compare it with "
+                              'them in person before trusting new photos.'
                           : "Compare this with $name's screen, in person.",
                       textAlign: TextAlign.center,
                       style: Warm.acCardBody
@@ -196,9 +194,9 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
                   ? Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: Text(
-                        'These numbers come from keys only your two phones '
-                        'hold. If they match, nobody is in between you. '
-                        "Miuchio isn't told when you check.",
+                        'If the numbers match on both phones, no one else '
+                        "can see your photos. Miuchio isn't told when you "
+                        'check.',
                         textAlign: TextAlign.center,
                         style: Warm.pageSoft,
                       ),

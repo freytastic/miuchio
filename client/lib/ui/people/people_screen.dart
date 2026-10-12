@@ -176,7 +176,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     owner: p.owner,
                     verified: p.trust == TrustState.verified,
                     status: p.trust == TrustState.changed
-                        ? 'Safety number changed'
+                        ? 'Security code changed'
                         : p.detail,
                     alarm: p.trust == TrustState.changed,
                     onTap: p.invited && widget.onOpenInvited == null

@@ -28,8 +28,8 @@ class _DeleteSharedAlbumsDialogState extends State<DeleteSharedAlbumsDialog> {
     final n = widget.albums.length;
     return AlertDialog(
       title: Text(n == 1
-          ? 'You administer 1 shared album'
-          : 'You administer $n shared albums'),
+          ? 'You own 1 shared album'
+          : 'You own $n shared albums'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -41,10 +41,10 @@ class _DeleteSharedAlbumsDialogState extends State<DeleteSharedAlbumsDialog> {
                 child: Text('Your albums changed. Review them again.'),
               ),
             Text(n == 1
-                ? 'Deleting your account will permanently remove this album '
-                    'for all members.'
-                : 'Deleting your account will permanently remove these albums '
-                    'for all members.'),
+                ? 'Deleting your account deletes this album for everyone in '
+                    'it.'
+                : 'Deleting your account deletes these albums for everyone in '
+                    'them.'),
             const SizedBox(height: 12),
             for (final a in widget.albums)
               Padding(
