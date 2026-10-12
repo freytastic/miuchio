@@ -11,45 +11,67 @@ class SettingsPage extends StatelessWidget {
   final String title;
   final IconData? glyph;
   final List<Widget> children;
+  // Long content built lazily below the children
+  final List<Widget> slivers;
 
   const SettingsPage({
     super.key,
     required this.title,
     required this.children,
     this.glyph,
+    this.slivers = const [],
   });
+
+  static const _physics =
+      BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
 
   @override
   Widget build(BuildContext context) {
+    final head = [
+      const Align(alignment: Alignment.centerLeft, child: WarmBack()),
+      Padding(
+        padding: const EdgeInsets.only(left: 8, top: 22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (glyph != null) ...[
+              Icon(glyph, size: 30, color: Warm.inkSoft),
+              const SizedBox(height: 18),
+            ],
+            Text(title, style: Warm.pageTitle),
+            ...children,
+          ],
+        ),
+      ),
+    ];
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Warm.overlayOnGround,
       child: Scaffold(
         backgroundColor: Warm.ground,
         body: SafeArea(
           bottom: false,
-          child: ListView(
-            physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(
-                Warm.pagePad - 8, 16, Warm.pagePad, 56),
-            children: [
-              const Align(alignment: Alignment.centerLeft, child: WarmBack()),
-              Padding(
-                padding: const EdgeInsets.only(left: 8, top: 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (glyph != null) ...[
-                      Icon(glyph, size: 30, color: Warm.inkSoft),
-                      const SizedBox(height: 18),
-                    ],
-                    Text(title, style: Warm.pageTitle),
-                    ...children,
+          child: slivers.isEmpty
+              ? ListView(
+                  physics: _physics,
+                  padding: const EdgeInsets.fromLTRB(
+                      Warm.pagePad - 8, 16, Warm.pagePad, 56),
+                  children: head,
+                )
+              : CustomScrollView(
+                  physics: _physics,
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                          Warm.pagePad - 8, 16, Warm.pagePad, 0),
+                      sliver: SliverList.list(children: head),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                          Warm.pagePad, 0, Warm.pagePad, 56),
+                      sliver: SliverMainAxisGroup(slivers: slivers),
+                    ),
                   ],
                 ),
-              ),
-            ],
-          ),
         ),
       ),
     );
