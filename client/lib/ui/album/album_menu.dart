@@ -13,6 +13,9 @@ class AlbumMenu extends StatelessWidget {
   final VoidCallback? onPeople;
   // Null unless the viewer may invite
   final VoidCallback? onAddSomeone;
+  // Owners delete, everyone else leaves, so at most one is set
+  final VoidCallback? onLeave;
+  final VoidCallback? onDeleteAlbum;
 
   const AlbumMenu({
     super.key,
@@ -21,6 +24,8 @@ class AlbumMenu extends StatelessWidget {
     required this.onAlbumInfo,
     this.onPeople,
     this.onAddSomeone,
+    this.onLeave,
+    this.onDeleteAlbum,
   });
 
   static Future<void> show(
@@ -30,6 +35,8 @@ class AlbumMenu extends StatelessWidget {
     required VoidCallback onAlbumInfo,
     VoidCallback? onPeople,
     VoidCallback? onAddSomeone,
+    VoidCallback? onLeave,
+    VoidCallback? onDeleteAlbum,
   }) =>
       Navigator.of(context).push(PageRouteBuilder<void>(
         opaque: false,
@@ -42,6 +49,8 @@ class AlbumMenu extends StatelessWidget {
           onAlbumInfo: onAlbumInfo,
           onPeople: onPeople,
           onAddSomeone: onAddSomeone,
+          onLeave: onLeave,
+          onDeleteAlbum: onDeleteAlbum,
         ),
         transitionsBuilder: (_, a, __, child) {
           final curve = CurvedAnimation(parent: a, curve: Warm.easeOut);
@@ -106,6 +115,21 @@ class AlbumMenu extends StatelessWidget {
                 label: AlbumCopy.albumInfo,
                 onTap: () => _pick(context, onAlbumInfo),
               ),
+              if (onLeave != null || onDeleteAlbum != null) ...[
+                const MenuSeparator(),
+                if (onLeave != null)
+                  MenuItem(
+                    label: AlbumCopy.leaveAlbum,
+                    danger: true,
+                    onTap: () => _pick(context, onLeave!),
+                  ),
+                if (onDeleteAlbum != null)
+                  MenuItem(
+                    label: AlbumCopy.deleteAlbum,
+                    danger: true,
+                    onTap: () => _pick(context, onDeleteAlbum!),
+                  ),
+              ],
             ],
           ),
         ),
@@ -146,9 +170,14 @@ class MenuItem extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
   final IconData? icon;
+  final bool danger;
 
   const MenuItem(
-      {super.key, required this.label, required this.onTap, this.icon});
+      {super.key,
+      required this.label,
+      required this.onTap,
+      this.icon,
+      this.danger = false});
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +194,11 @@ class MenuItem extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14.5,
                   fontWeight: FontWeight.w500,
-                  color: enabled ? Warm.ink : Warm.inkFaint,
+                  color: !enabled
+                      ? Warm.inkFaint
+                      : danger
+                          ? Warm.warn
+                          : Warm.ink,
                 ),
               ),
             ),

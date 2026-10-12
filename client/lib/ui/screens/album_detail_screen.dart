@@ -20,6 +20,7 @@ import 'package:miuchio/ui/album/album_info_screen.dart';
 import 'package:miuchio/ui/album/album_menu.dart';
 import 'package:miuchio/ui/album/album_stats.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
+import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/album/photo_hold.dart';
 import 'package:miuchio/ui/album/photo_peek.dart';
 import 'package:miuchio/ui/providers/latest_only.dart';
@@ -37,6 +38,7 @@ import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
 import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/e2ee/invite.dart';
+import 'package:miuchio/e2ee/member_removal.dart';
 import 'package:miuchio/e2ee/rotation_recovery.dart';
 import 'package:miuchio/e2ee/sealed_name.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
@@ -144,7 +146,102 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         onAlbumInfo: _openAlbumInfo,
         onPeople: _openPeople,
         onAddSomeone: _viewerIsAdmin ? _openAddMember : null,
+        onLeave: _me == null || _viewerIsAdmin ? null : _leave,
+        onDeleteAlbum: _viewerIsAdmin ? _deleteAlbum : null,
       );
+
+  AlbumMember? get _owner =>
+      _members.where((m) => m.role == 'admin' && !m.revoked).firstOrNull;
+
+  Future<void> _leave() async {
+    final albumId = uuidToBytes(widget.album.id);
+    final myToken = widget.album.memberToken;
+    if (albumId == null || myToken == null) return;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final removal = context.read<MemberRemovalCoordinator>();
+    if (!await confirmSheet(
+      context,
+      key: 'album-leave',
+      title: AlbumCopy.leaveTitle,
+      body: AlbumCopy.leaveBody,
+      confirm: AlbumCopy.leaveAlbum,
+      cancel: AlbumCopy.leaveCancel,
+    )) {
+      return;
+    }
+    // We pop ourselves, so the removal notice must not pop again
+    _accessLost = true;
+    try {
+      await removal.leave(albumId, base64.decode(base64.normalize(myToken)));
+    } on MemberRemovalException {
+      _accessLost = false;
+      messenger.showSnackBar(_note(AlbumCopy.leaveFailed));
+      return;
+    } catch (_) {
+      // The server already let us go, a failed local wipe is retried by cleanup
+    }
+    if (mounted) navigator.pop();
+  }
+
+  Future<void> _deleteAlbum() async {
+    final albumId = uuidToBytes(widget.album.id);
+    if (albumId == null) return;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final removal = context.read<MemberRemovalCoordinator>();
+    if (!await confirmSheet(
+      context,
+      key: 'album-delete',
+      title: AlbumCopy.deleteAlbumTitle,
+      body: AlbumCopy.deleteAlbumBody,
+      confirm: AlbumCopy.deleteForEveryone,
+      cancel: AlbumCopy.deleteCancel,
+    )) {
+      return;
+    }
+    _accessLost = true;
+    if (!await widget.albumService.deleteAlbum(widget.album.id)) {
+      _accessLost = false;
+      messenger.showSnackBar(_note(AlbumCopy.deleteAlbumFailed));
+      return;
+    }
+    try {
+      await removal.onSelfRemoved(albumId);
+    } catch (_) {
+      // The album is gone on the server, a failed local wipe is retried by cleanup
+    }
+    if (mounted) navigator.pop();
+  }
+
+  Future<void> _removeMember(AlbumMember m, {required bool invited}) async {
+    final albumId = uuidToBytes(widget.album.id);
+    if (albumId == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final removal = context.read<MemberRemovalCoordinator>();
+    if (!await confirmSheet(
+      context,
+      key: 'member-remove',
+      title: invited
+          ? AlbumCopy.cancelInviteTitle
+          : AlbumCopy.removeTitle(_memberName(m)),
+      body: invited ? AlbumCopy.cancelInviteBody : AlbumCopy.removeBody,
+      confirm: invited ? AlbumCopy.cancelInvite : AlbumCopy.remove,
+      cancel: AlbumCopy.deleteCancel,
+    )) {
+      return;
+    }
+    try {
+      await removal.kick(
+          albumId, base64.decode(base64.normalize(m.memberToken)));
+    } on MemberRemovalException {
+      messenger.showSnackBar(_note(AlbumCopy.removeFailed));
+      return;
+    } catch (_) {
+      // Revoked already, rotation recovery finishes the key change
+    }
+    if (mounted) await _loadMembers();
+  }
 
   Future<void> _openPeople() async {
     final state = context.read<AppState>();
@@ -158,8 +255,15 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           if (m != null) await _openSafetyNumber(m);
         },
         onAdd: _viewerIsAdmin ? _openAddMember : null,
+        onOpenInvited: _viewerIsAdmin
+            ? (p) async {
+                final m =
+                    _members.where((m) => m.memberToken == p.id).firstOrNull;
+                if (m != null) await _removeMember(m, invited: true);
+              }
+            : null,
         note: _viewerIsAdmin
-            ? null
+            ? AlbumCopy.ownerNote
             : 'Only the person who made this album can add people.',
       ),
     ));
@@ -182,6 +286,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
               : PersonEntry(
                   id: m.memberToken,
                   name: names[m.memberToken] ?? AlbumCopy.unknownMember,
+                  owner: m.role == 'admin',
                   face: _face(m.memberToken, names[m.memberToken], 40),
                   trust: _trust[m.memberToken] ?? TrustState.unverified,
                 ),
@@ -209,6 +314,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       if (e != null && e.ct == m.profile.nameCt) names[m.memberToken] = e.name;
     }
     final people = _members.where((m) => !m.revoked).length;
+    final owner = _owner;
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => AlbumInfoScreen(
@@ -217,6 +323,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         createdAt: widget.album.createdAt,
         stats: AlbumStats.of(_items, peopleCount: people),
         nameOf: (token) => names[token],
+        madeBy: owner == null
+            ? null
+            : owner.memberToken == widget.album.memberToken
+                ? AlbumCopy.madeByYou
+                : names[owner.memberToken],
       ),
     ));
   }
@@ -534,6 +645,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     if (!mounted) return;
 
     Future<void>? verifying;
+    var remove = false;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Warm.ground,
@@ -546,6 +658,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         state: state,
         subtitle: _appState?.albumDisplayName(widget.album.id),
         face: _face(m.memberToken, _resolvedNames()[m.memberToken], 46),
+        onRemove: _viewerIsAdmin ? () => remove = true : null,
         // Bind verification to the displayed key even if the roster changes
         onVerify: () {
           verifying = () async {
@@ -564,6 +677,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     );
     // The sheet closes before its verification writes finish
     await verifying?.catchError((_) {});
+    if (remove && mounted) await _removeMember(m, invited: false);
   }
 
   Future<void> _retryKeySync() async {
