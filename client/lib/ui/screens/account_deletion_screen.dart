@@ -77,7 +77,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
         ),
       _Phase.offline => (
           "Couldn't reach Miuchio",
-          'Your deletion may already be underway. Connect to the internet and '
+          'Your account may already be deleting. Connect to the internet and '
               'try again.',
         ),
       _Phase.stuck => (
@@ -87,8 +87,8 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
         ),
       _Phase.unconfirmed => (
           'Finish deleting your account?',
-          "Miuchio hasn't confirmed your deletion yet. Continue to send it "
-              'again, or keep your account.',
+          "Your account isn't fully deleted yet. Continue, or keep your "
+              'account.',
         ),
     };
     return PopScope(

@@ -33,13 +33,13 @@ AppErrorUx mapApiError(ApiError err) {
   switch (err.code) {
     case 'E_AUTH':
       return const AppErrorUx(
-        userMessage: 'Your session has expired. Please sign in again.',
+        userMessage: 'You’ve been signed out. Sign in again.',
         action: ErrorRecovery.abortAndReauth,
         isTransient: false,
       );
     case 'E_FORBIDDEN':
       return const AppErrorUx(
-        userMessage: 'You do not have permission to do that.',
+        userMessage: 'You can’t do that in this album.',
         action: ErrorRecovery.none,
         isTransient: false,
       );
@@ -51,26 +51,26 @@ AppErrorUx mapApiError(ApiError err) {
       );
     case 'E_MEMBER_REVOKED':
       return const AppErrorUx(
-        userMessage: 'Your access to this album has been revoked.',
+        userMessage: 'You were removed from this album.',
         action: ErrorRecovery.none,
         isTransient: false,
       );
     case 'E_VALIDATION':
       return AppErrorUx(
-        userMessage:
-            err.message.isEmpty ? 'That request was malformed.' : err.message,
+        // Server messages are written for developers, not people
+        userMessage: 'Something went wrong. Try again.',
         action: ErrorRecovery.none,
         isTransient: true,
       );
     case 'E_NOT_FOUND':
       return const AppErrorUx(
-        userMessage: 'That item could not be found.',
+        userMessage: 'That’s no longer here.',
         action: ErrorRecovery.none,
         isTransient: true,
       );
     case 'E_CONFLICT':
       return const AppErrorUx(
-        userMessage: 'The state changed while you were working try again.',
+        userMessage: 'Something changed. Try again.',
         action: ErrorRecovery.retry,
         isTransient: true,
       );
@@ -83,13 +83,13 @@ AppErrorUx mapApiError(ApiError err) {
     case 'E_OPK_EXHAUSTED':
       return const AppErrorUx(
         userMessage:
-            'No one-time keys are available for this user try again shortly.',
+            'Couldn’t reach them right now. Try again soon.',
         action: ErrorRecovery.retry,
         isTransient: true,
       );
     case 'E_EPOCH_REPLAY':
       return const AppErrorUx(
-        userMessage: 'Album state out of sync refreshing…',
+        userMessage: 'Updating the album…',
         action: ErrorRecovery.retry,
         isTransient: true,
       );
@@ -107,20 +107,20 @@ AppErrorUx mapApiError(ApiError err) {
       );
     case 'E_SIG_INVALID':
       return const AppErrorUx(
-        userMessage: 'Could not verify the signature on a key delivery. '
-            'This may indicate a security issue , verify the safety number with the sender.',
+        userMessage: 'Something about this invite didn’t check out. Check your '
+            'security code with the person who added you.',
         action: ErrorRecovery.abortAndShowTofu,
         isTransient: false,
       );
     case 'E_MANIFEST_TAMPER':
       return const AppErrorUx(
-        userMessage: 'Album integrity check failed.',
+        userMessage: 'Something about this album didn’t check out.',
         action: ErrorRecovery.abortAndShowTofu,
         isTransient: false,
       );
     case 'E_RATE_LIMITED':
       return const AppErrorUx(
-        userMessage: 'Too many requests , please wait a moment.',
+        userMessage: 'Too many tries. Wait a moment and try again.',
         action: ErrorRecovery.retry,
         isTransient: true,
       );
@@ -139,8 +139,7 @@ AppErrorUx mapApiError(ApiError err) {
       );
     default:
       return AppErrorUx(
-        userMessage:
-            err.message.isEmpty ? 'Request failed (${err.code}).' : err.message,
+        userMessage: 'Something went wrong. Try again.',
         action: ErrorRecovery.none,
         isTransient: true,
       );

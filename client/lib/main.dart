@@ -24,6 +24,7 @@ import 'package:miuchio/data/api/media_api.dart';
 import 'package:miuchio/data/native/image_transcoder.dart';
 import 'package:miuchio/data/upload/upload_adapters.dart';
 import 'package:miuchio/diagnostics/perf_probe.dart';
+import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/data/upload/upload_outbox.dart';
 import 'package:miuchio/data/storage/storage_service.dart';
 import 'package:miuchio/domain/account/account_deletion.dart';
@@ -206,12 +207,12 @@ void main() async {
     remove: avatarApi.remove,
   );
   appState.attachAlbumNameResolver((albumId, nameCt) async {
-    if (nameCt == null || nameCt.isEmpty) return 'Untitled Album';
+    if (nameCt == null || nameCt.isEmpty) return 'Untitled album';
     final key = NameCache.albumKey(albumId);
     final cached = nameCache.get(key, nameCt);
     if (cached != null) return cached;
     final b = _uuidStringToBytes(albumId);
-    if (b == null) return 'Untitled Album';
+    if (b == null) return 'Untitled album';
     final opened = await SealedName.openAlbumName(albumKeyStore, b, nameCt);
     if (opened != null) {
       // An album wipe may finish while the title is decrypting
@@ -436,6 +437,12 @@ void main() async {
     invites: inviteApi,
   );
   epochProcessor.blocked.listen((b) {
+    // The album banner shows one plain message, so the reason lives here
+    Trace.event('epoch.blocked', fields: {
+      'album': Trace.id(_uuidStringFromBytes(b.albumId)),
+      'epoch': b.epoch,
+      'reason': b.reason.name,
+    });
     appState.setKeyBlock(_uuidStringFromBytes(b.albumId), b);
   });
   late final RotationRecoveryScheduler rotationRecovery;

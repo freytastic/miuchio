@@ -53,11 +53,9 @@ class AccountBelongsToAnotherScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _Dead(
-      title: 'This Miuchio belongs to another account',
-      body: 'Nothing was signed in. Miuchio keeps one account per phone so that '
-          "one person's albums and keys can never end up under someone "
-          "else's name.\n\nSign in with the account that set up this phone, or "
-          'erase what Miuchio stores here and start fresh.',
+      title: 'This phone is set up for another account',
+      body: 'Miuchio allows one account per phone. Sign in with that account, '
+          'or erase Miuchio on this phone and start fresh.',
       actions: [
         FilledButton(
           onPressed: () => onUseOwnerAccount(context),
@@ -66,7 +64,7 @@ class AccountBelongsToAnotherScreen extends StatelessWidget {
         const SizedBox(height: 8),
         TextButton(
           onPressed: () => onEraseInstallation(context),
-          child: const Text('Erase this Miuchio and start fresh'),
+          child: const Text('Erase and start fresh'),
         ),
       ],
     );
@@ -88,12 +86,9 @@ class AccountKeysLostScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Dead(
       title: 'Your photos are locked to your old phone',
-      body:
-          'This account was set up on a different install of Miuchio. The keys '
-          'that open its photos only ever existed there, and they cannot be '
-          'rebuilt here.\n\nIf you still have that phone, open Miuchio on it. '
-          'Otherwise you can delete this account and start over, which gives up '
-          'the old photos for good.',
+      body: 'This account’s photos only open on the phone it was set up on.'
+          '\n\nUse Miuchio on that phone, or delete this account and start '
+          'over. Starting over loses the old photos.',
       actions: [
         FilledButton(
           onPressed: () => onDismiss(context),
@@ -144,18 +139,18 @@ class _EraseInstallationScreenState extends State<EraseInstallationScreen> {
   Widget build(BuildContext context) {
     final (title, body) = switch (_phase) {
       _ErasedPhase.working => (
-          'Erasing this Miuchio',
+          'Erasing…',
           'Removing everything the previous account kept on this phone.'
         ),
       _ErasedPhase.done => (
-          'This Miuchio is erased',
+          'This phone is clear',
           'Everything the previous account kept on this phone is gone. Close '
               'Miuchio and open it again to sign in.'
         ),
       _ErasedPhase.stuck => (
-          'Some of it is still here',
-          'Miuchio could not remove everything on this phone, so the previous '
-              "account's keys may still be stored. Try again before signing in."
+          'Couldn’t erase everything',
+          'Some of the other account’s data is still here. Try again before '
+              'signing in.'
         ),
     };
 
@@ -177,9 +172,9 @@ class ConnectionRequiredScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const _Dead(
-      title: 'Miuchio needs to reach the server',
-      body: 'This phone has not finished setting up your account yet, so '
-          'Miuchio cannot open it offline. Reconnect and open Miuchio again.',
+      title: 'Miuchio needs the internet',
+      body: 'Your account isn’t fully set up on this phone yet. Connect and '
+          'open Miuchio again.',
       actions: [],
     );
   }

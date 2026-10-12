@@ -51,8 +51,6 @@ class AlbumInfoScreen extends StatelessWidget {
               label: AlbumCopy.infoSize,
               value: AlbumStats.formatBytes(stats.totalBytes)),
           _Fact(label: AlbumCopy.infoPeople, value: '${stats.peopleCount}'),
-          const SizedBox(height: 10),
-          Text(AlbumCopy.infoExactBytes, style: _note),
           const SizedBox(height: 30),
           Text(AlbumCopy.infoStorage, style: _section),
           const SizedBox(height: 12),

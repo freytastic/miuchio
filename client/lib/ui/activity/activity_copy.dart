@@ -48,13 +48,13 @@ CardCopy cardCopyFor(ActivityEvent e, ActivityNames names) {
   return switch (e) {
     SafetyNumberChanged() => CardCopy(
         title:
-            "${names.memberName(e.albumId, e.peerToken)}'s safety number changed",
+            "${names.memberName(e.albumId, e.peerToken)}'s security code changed",
         where: where,
         // Account binding rules out a same-membership phone change, so this is
         // never "probably a new phone"
-        body: "This shouldn't happen. It can mean someone is pretending to be "
-            '${names.memberName(e.albumId, e.peerToken)}. Compare your numbers '
-            'before you trust new photos from them.',
+        body: 'This can mean someone is pretending to be '
+            '${names.memberName(e.albumId, e.peerToken)}. Check the code with '
+            'them in person before trusting new photos.',
         go: 'Compare',
         quiet: 'Not now',
       ),
@@ -68,7 +68,7 @@ CardCopy cardCopyFor(ActivityEvent e, ActivityNames names) {
       ),
     // Covers removal and deletion while offline cleanup may still be queued
     RemovedFromAlbum() => CardCopy(
-        title: 'You no longer have access to $where',
+        title: "You're no longer in $where",
         where: 'No longer on your shelf',
         body: 'You were removed, or the album was deleted. Its photos are '
             'being removed from this phone.',
@@ -108,7 +108,7 @@ LineCopy lineFor(ActivityEvent e, ActivityNames names) {
       ),
     SafetyNumberChanged() => LineCopy(
         lead: names.memberName(e.albumId, e.peerToken),
-        rest: "'s safety number changed",
+        rest: "'s security code changed",
         where: where,
         aside: e.verified
             ? 'You compared it and it matched.'
@@ -119,7 +119,7 @@ LineCopy lineFor(ActivityEvent e, ActivityNames names) {
         lead: 'You', rest: ' were added to $where', where: 'On your shelf'),
     RemovedFromAlbum() => LineCopy(
         lead: 'You',
-        rest: ' no longer have access to $where',
+        rest: "'re no longer in $where",
         where: 'No longer on your shelf',
       ),
   };
@@ -159,7 +159,7 @@ Say sayForSecurity({
   return Say(
     '$needs security update${needs == 1 ? '' : 's'} to review.',
     changedSafetyNumber != null
-        ? "One is $changedSafetyNumber's changed safety number."
+        ? "One is $changedSafetyNumber's new security code."
         : "Someone's access to your albums changed.",
   );
 }

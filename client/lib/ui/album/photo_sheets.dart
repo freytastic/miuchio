@@ -303,7 +303,7 @@ class _DetailsSheet extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(AlbumCopy.encryptedOn(name, mine: mine),
+                    child: Text(AlbumCopy.privateNote,
                         style: Warm.note),
                   ),
                 ],

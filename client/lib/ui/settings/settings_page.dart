@@ -122,7 +122,7 @@ class NotificationsPage extends StatelessWidget {
         children: [
           SettingsLead('For now, everything new shows up in Activity when you '
               'open Miuchio.'),
-          SettingsLead('Push notifications are coming in the next beta.'),
+          SettingsLead('Notifications on your lock screen are coming soon.'),
         ],
       );
 }
@@ -153,7 +153,7 @@ class BackupPage extends StatelessWidget {
                   'again.'
             ),
           ]),
-          SettingsSoft('Backup is coming in a later beta.'),
+          SettingsSoft('Backup is coming soon.'),
         ],
       );
 }
@@ -209,7 +209,7 @@ class _StoragePageState extends State<StoragePage> {
     return SettingsPage(
       title: 'Storage',
       children: [
-        const SettingsLead("Miuchio's cache on this phone"),
+        const SettingsLead('Photos saved on this phone'),
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Text(u == null ? '…' : formatBytes(total),
@@ -218,11 +218,11 @@ class _StoragePageState extends State<StoragePage> {
         const SizedBox(height: 16),
         _Meter(thumbs: thumbs, full: full),
         const SizedBox(height: 14),
-        _Line(label: 'Thumbnails', bytes: thumbs, dark: true),
+        _Line(label: 'Small previews', bytes: thumbs, dark: true),
         _Line(label: 'Full photos', bytes: full, dark: false),
-        const SettingsSoft('Thumbnails stay so your albums open offline. Full '
-            'photos download again when you open them. Photos you saved to '
-            'your gallery are not part of this and are never cleared.'),
+        const SettingsSoft('Previews stay so albums open without internet. '
+            'Full photos download again when you open them. Photos in your '
+            "gallery aren't touched."),
         const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerLeft,

@@ -16,7 +16,7 @@ abstract final class AlbumCopy {
   static const addTitle = 'Add someone';
   static String addTo(String album) => 'to $album';
   static const addHelp =
-      "Ask for their miuchio ID. It's on their profile, under their name.";
+      "Ask for their Miuchio ID. It's on their profile, under their name.";
   static const addPaste = 'Paste';
   static const addGo = 'Add to album';
   static const addFinding = 'Finding them…';
@@ -24,20 +24,18 @@ abstract final class AlbumCopy {
   static const addCopy = 'Copy';
   static const addCopied = 'Copied';
   static const addUnknown =
-      'Nobody has this ID. Check it with them, one letter at a time.';
+      'No one has this ID. Check it with them.';
   static const addSelf = "That's your own ID. Theirs is on their profile.";
   static const addAlready = "They're already in this album.";
   static const addFull = 'This album is full. It can hold 10 people.';
   static const addRotating =
-      "This album's key is being updated. Try again in a minute.";
+      'This album is being updated. Try again in a minute.';
   static const addFailed = "Couldn't add them right now. Try again.";
   static const addDoneTitle = 'Invited';
   static String addDoneBody(String album) =>
       ' can open $album the next time they open Miuchio, with every photo '
       'already in it.';
-  static const addDoneNote =
-      "The album's key went to their phone, locked so only that phone can "
-      'open it. Their name shows up here once they do.';
+  static const addDoneNote = 'Their name shows up here once they open it.';
   static const addAnother = 'Add another';
   static const addDone = 'Done';
   static const invitedPending = "Invited, hasn't opened it yet";
@@ -75,8 +73,6 @@ abstract final class AlbumCopy {
       'able to open it';
   static const infoStorage = 'Who added what';
   static const infoStorageEmpty = 'Nothing has been added yet.';
-  static const infoExactBytes = 'Exact, because sizes are stored alongside '
-      'each photo. Nothing is unwrapped on a server to count it.';
 
   static const save = 'Save';
   static const delete = 'Delete';
@@ -84,53 +80,50 @@ abstract final class AlbumCopy {
   static const sayAdd = 'Add';
   static const deleteTitle = 'Delete this photo?';
   static const deleteBody =
-      'It goes for everyone in the album, and it cannot be undone.';
+      "It's deleted for everyone. This can't be undone.";
   static const deleteConfirm = 'Delete';
   static const deleteCancel = 'Keep';
-  static const deleteFailed = 'Could not delete that photo.';
+  static const deleteFailed = "Couldn't delete that photo.";
   static const unknownMember = 'Someone';
 
   static const saveToPhone = 'Save to phone';
-  static const saveSoon = 'Saving to your phone comes in beta v2.';
-  static const heartSoon = 'Hearts come in beta v2.';
+  static const saveSoon = 'Saving to your phone is coming soon.';
+  static const heartSoon = 'Hearts are coming soon.';
   static const heart = 'Heart';
   static const deleteForEveryone = 'Delete for everyone';
-  static const betaV2 = 'Beta v2';
+  static const betaV2 = 'Soon';
   static const hearts = 'Hearts';
-  static const heartsLater = "You'll be able to heart photos here.";
+  static const heartsLater = 'Hearts are coming soon.';
   static const comments = 'Comments';
-  static const commentsLater = 'Comments will live here, next to the photo.';
+  static const commentsLater = 'Comments are coming soon.';
   static const factSize = 'Size';
-  static const factFormat = 'Format';
+  static const factFormat = 'Type';
   static const factAdded = 'Added';
   static String sharedBy(String? name, {required bool mine}) => mine
       ? 'Shared by you'
       : 'Shared by ${name ?? 'someone'}';
-  static String encryptedOn(String? name, {required bool mine}) {
-    final whose = mine ? 'your' : (name == null ? "the uploader's" : "$name's");
-    return 'Encrypted on $whose phone. Location and camera details were '
-        'removed before upload.';
-  }
+  static const privateNote = 'Only people in this album can see it. Location '
+      'and camera details were removed.';
 
   static const leaveAlbum = 'Leave album';
   static const leaveTitle = 'Leave this album?';
   static const leaveBody = 'It disappears from this phone and you need a new '
       'invite to come back. The photos you added stay for everyone else.';
   static const leaveCancel = 'Stay';
-  static const leaveFailed = 'Could not leave the album.';
+  static const leaveFailed = "Couldn't leave the album.";
 
   static const deleteAlbum = 'Delete album';
   static const deleteAlbumTitle = 'Delete this album?';
-  static const deleteAlbumBody = 'Every photo in it is deleted for everyone, '
-      'and it cannot be undone.';
-  static const deleteAlbumFailed = 'Could not delete the album.';
+  static const deleteAlbumBody =
+      "Every photo in it is deleted for everyone. This can't be undone.";
+  static const deleteAlbumFailed = "Couldn't delete the album.";
 
   static const removeFromAlbum = 'Remove from album';
   static String removeTitle(String name) => 'Remove $name?';
   static const removeBody = 'The album disappears from their phone and they '
       "can't see anything added after now. The photos they added stay.";
   static const remove = 'Remove';
-  static const removeFailed = 'Could not remove them.';
+  static const removeFailed = "Couldn't remove them.";
   static const cancelInviteTitle = 'Cancel this invite?';
   static const cancelInviteBody = "They won't be able to join with it.";
   static const cancelInvite = 'Cancel invite';

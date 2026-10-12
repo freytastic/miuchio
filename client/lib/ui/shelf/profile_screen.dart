@@ -211,7 +211,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _Group(top: 30, children: [
                     _IdRow(handle: state.miuchioId),
                     _Row(
-                      title: 'Safety numbers',
+                      title: 'Security codes',
                       value: _verified,
                       onTap: widget.onSafetyNumbers,
                     ),
@@ -472,7 +472,7 @@ class _IdRowState extends State<_IdRow> {
         children: [
           const SizedBox(width: 8),
           Expanded(
-            child: Text(_copied ? 'Copied' : 'miuchio ID', style: Warm.rowTitle),
+            child: Text(_copied ? 'Copied' : 'Miuchio ID', style: Warm.rowTitle),
           ),
           Text(value, style: Warm.idValue.copyWith(color: Warm.inkSoft)),
           const SizedBox(width: 4),
@@ -480,12 +480,12 @@ class _IdRowState extends State<_IdRow> {
             icon: _shown
                 ? Icons.visibility_off_outlined
                 : Icons.visibility_outlined,
-            label: _shown ? 'Hide miuchio ID' : 'Reveal miuchio ID',
+            label: _shown ? 'Hide Miuchio ID' : 'Show Miuchio ID',
             onTap: h == null ? null : _toggle,
           ),
           _IconButton(
             icon: Icons.copy_outlined,
-            label: 'Copy miuchio ID',
+            label: 'Copy Miuchio ID',
             onTap: h == null ? null : _copy,
           ),
         ],
@@ -634,7 +634,7 @@ class _Foot extends StatelessWidget {
                   child: SvgPicture.string(_octocat, width: 14, height: 14),
                 ),
                 const SizedBox(width: 7),
-                Text('miuchio 1.0.0 beta', style: Warm.footMark),
+                Text('Miuchio 1.0 beta', style: Warm.footMark),
               ],
             ),
           ),
