@@ -1,33 +1,54 @@
+import 'dart:math' as math;
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:miuchio/domain/upload/upload_item.dart';
-import 'package:miuchio/domain/upload/upload_snapshot.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:provider/provider.dart';
+
+typedef _Look = ({
+  UploadPhase phase,
+  int percent,
+  bool retryable,
+  Uint8List? preview,
+});
 
 class UploadTile extends StatelessWidget {
-  final UploadItemView item;
-  final UploadQueueModel model;
+  final String itemId;
   final VoidCallback? onRetry;
 
   const UploadTile({
     super.key,
-    required this.item,
-    required this.model,
+    required this.itemId,
     this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
-    final failed = item.phase == UploadPhase.failed;
+    // Every snapshot recreates its items, so compare values not objects
+    final look = context.select<UploadQueueModel, _Look?>((model) {
+      final item = model.item(itemId);
+      if (item == null) return null;
+      return (
+        phase: item.phase,
+        percent:
+            item.fraction <= 0 ? 0 : math.max(1, (item.fraction * 100).round()),
+        retryable: item.failure?.retryable ?? false,
+        preview: model.preview(item.mediaId),
+      );
+    });
+    if (look == null) return const ColoredBox(color: Warm.wellEmpty);
+    final failed = look.phase == UploadPhase.failed;
     // Undecodable bytes are not retryable
-    final canRetry = failed && (item.failure?.retryable ?? false);
+    final canRetry = failed && look.retryable;
     return GestureDetector(
       onTap: canRetry ? onRetry : null,
       child: Stack(
         fit: StackFit.expand,
         children: [
           Container(color: Warm.wellEmpty),
-          Opacity(opacity: failed ? 0.35 : 0.62, child: _image()),
+          Opacity(opacity: failed ? 0.35 : 0.62, child: _image(look.preview)),
           if (failed)
             Center(
               child: Icon(
@@ -40,7 +61,7 @@ class UploadTile extends StatelessWidget {
             Positioned(
               right: 5,
               bottom: 5,
-              child: _Ring(value: item.fraction),
+              child: _Ring(value: look.percent / 100),
             ),
         ],
       ),
@@ -48,8 +69,7 @@ class UploadTile extends StatelessWidget {
   }
 
   // Never decode the original camera file for a pending tile
-  Widget _image() {
-    final preview = model.preview(item.mediaId);
+  Widget _image(Uint8List? preview) {
     if (preview == null) return const SizedBox.shrink();
     return Image.memory(preview, fit: BoxFit.cover, gaplessPlayback: true);
   }

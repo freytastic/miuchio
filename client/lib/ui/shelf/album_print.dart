@@ -172,7 +172,7 @@ class _AlbumPrintState extends State<AlbumPrint> {
                   child: backs[0],
                 ),
               PrintCard(
-                develop: _hasCover ? widget.develop : null,
+                develop: _hasCover && !Fx.noDevelop ? widget.develop : null,
                 blank: !_hasCover,
                 shadow: _small ? Warm.printShadowSmall : Warm.printShadow,
                 well: widget.cover,

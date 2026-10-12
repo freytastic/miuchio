@@ -683,6 +683,8 @@ void main() async {
       final b = _uuidStringToBytes(albumId);
       if (b != null) unawaited(rotationRecovery.request(b));
     },
+    onConfirmed: (albumId, generation) =>
+        unawaited(seenStore.markOwn(albumId, generation)),
     preparer: mediaPreparer,
     uploader: StagedMediaUploader(mediaApi),
     sink: UploadCacheSink(

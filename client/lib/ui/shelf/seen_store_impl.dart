@@ -15,6 +15,7 @@ class SealedSeenStore extends ChangeNotifier implements SeenStore {
   final File _file;
   final Uint8List _cacheKey;
   final Map<String, int> _seen = {};
+  final OwnUploads _own = OwnUploads();
 
   Timer? _flush;
   Future<void> _inFlight = Future.value();
@@ -41,16 +42,23 @@ class SealedSeenStore extends ChangeNotifier implements SeenStore {
       if (!await _file.exists()) return;
       final wire = await _file.readAsBytes();
       final pt = await Aead.decrypt(wire: wire, key: _cacheKey, aad: _aad);
-      final map = jsonDecode(utf8.decode(pt)) as Map<String, dynamic>;
+      final json = jsonDecode(utf8.decode(pt)) as Map<String, dynamic>;
+      final seen = json['seen'];
+      // Older files hold only the watermark map
+      final map = seen is Map<String, dynamic> ? seen : json;
       _seen.clear();
+      _own.clear();
       map.forEach((k, v) {
         final n = (v as num).toInt();
         // Zero preserves knowledge of an album seen while empty
         if (n >= 0) _seen[k] = n;
       });
+      final own = json['own'];
+      if (seen is Map && own is Map<String, dynamic>) _own.load(own);
     } catch (_) {
       // Fail toward showing frames as unseen
       _seen.clear();
+      _own.clear();
     }
   }
 
@@ -65,13 +73,29 @@ class SealedSeenStore extends ChangeNotifier implements SeenStore {
     // Generation zero still records that an empty album is known
     final cur = _seen[albumId];
     if (cur != null && (generation <= 0 || cur >= generation)) return;
-    _seen[albumId] = generation < 0 ? 0 : generation;
+    _seen[albumId] = _own.absorb(albumId, generation < 0 ? 0 : generation);
     notifyListeners();
     _scheduleFlush();
   }
 
   @override
+  Future<void> markOwn(String albumId, int generation) async {
+    // Unknown albums are seeded at their current generation instead
+    final cur = _seen[albumId];
+    if (cur == null || cur >= generation) return;
+    _own.add(albumId, generation);
+    _seen[albumId] = _own.absorb(albumId, cur);
+    notifyListeners();
+    _scheduleFlush();
+  }
+
+  @override
+  int ownThrough(String albumId, int generation) =>
+      _own.through(albumId, generation);
+
+  @override
   Future<void> forget(String albumId) async {
+    _own.remove(albumId);
     if (_seen.remove(albumId) == null && !_writeFailed) return;
     notifyListeners();
     // Awaited so album removal can see whether the watermark left the disk
@@ -86,6 +110,7 @@ class SealedSeenStore extends ChangeNotifier implements SeenStore {
   Future<void> clear() async {
     _flush?.cancel();
     _seen.clear();
+    _own.clear();
     try {
       await _inFlight;
     } catch (_) {}
@@ -110,7 +135,8 @@ class SealedSeenStore extends ChangeNotifier implements SeenStore {
 
   Future<void> _write() async {
     try {
-      final pt = Uint8List.fromList(utf8.encode(jsonEncode(_seen)));
+      final pt = Uint8List.fromList(
+          utf8.encode(jsonEncode({'seen': _seen, 'own': _own.toJson()})));
       final wire = await Aead.encrypt(
           version: kVerAesGcm, key: _cacheKey, plaintext: pt, aad: _aad);
       final tmp = File('${_file.path}.tmp');

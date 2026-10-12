@@ -1,11 +1,12 @@
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:cryptography/cryptography.dart' as cg;
 import 'package:image/image.dart' as img;
 import 'package:miuchio/crypto/aead_stream.dart';
+import 'package:miuchio/crypto/blob_digest.dart';
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/wire_format.dart';
+import 'package:miuchio/diagnostics/aes_path.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 import 'package:uuid/uuid.dart';
 
@@ -275,22 +276,20 @@ abstract class FilePipeline {
 
     switch (outcome) {
       case TranscodeDone(:final photo):
-        final file = Trace.measureSync<SanitizedJpeg?>(
-          'media.jpegSanitize',
-          () => JpegSanity.sanitize(photo.jpeg),
-          fields: {...traceFields, 'bytes': photo.jpeg.length},
-        );
-        final thumb = Trace.measureSync<SanitizedJpeg?>(
-          'media.jpegSanitizeThumb',
-          () => JpegSanity.sanitize(photo.thumb),
-          fields: {...traceFields, 'bytes': photo.thumb.length},
-        );
+        // A worker failure throws here, so the original bytes never upload
+        final checked = await _sanitizeInWorker(photo.jpeg, photo.thumb);
+        Trace.replay('media.jpegSanitize', checked.fileMs,
+            fields: {...traceFields, 'bytes': photo.jpeg.length});
+        Trace.replay('media.jpegSanitizeThumb', checked.thumbMs,
+            fields: {...traceFields, 'bytes': photo.thumb.length});
+        final file = checked.file;
+        final thumb = checked.thumb;
         if (file == null || thumb == null) {
           // Log only the marker where validation stopped
           Trace.event('media.imageSanitizeRefused', fields: {
             ...traceFields,
-            'file': file == null ? JpegSanity.describe(photo.jpeg) : 'ok',
-            'thumb': thumb == null ? JpegSanity.describe(photo.thumb) : 'ok',
+            'file': checked.fileRefusal ?? 'ok',
+            'thumb': checked.thumbRefusal ?? 'ok',
           });
           throw const UnprocessableImageException(
               'transcoded photo is not a whole JPEG');
@@ -376,6 +375,10 @@ abstract class FilePipeline {
           ...traceFields,
           'bytes': bytesToEncrypt.length,
           'mode': bytesToEncrypt.length < kSegmentSize ? 'single' : 'stream',
+          if (Trace.enabled)
+            'path': aesPath(bytesToEncrypt.length < kSegmentSize
+                ? bytesToEncrypt.length
+                : kSegmentSize),
         },
         endFields: (result) => {'output_bytes': result.length},
       );
@@ -635,9 +638,35 @@ String _markerList(List<int> markers) => markers.isEmpty
     ? 'none'
     : markers.map((m) => '0x${m.toRadixString(16)}').join(',');
 
-Future<Uint8List> _sha256(Uint8List bytes) async {
-  final h = await cg.Sha256().hash(bytes);
-  return Uint8List.fromList(h.bytes);
+Future<Uint8List> _sha256(Uint8List bytes) => BlobDigest.sha256(bytes);
+
+typedef _Sanitized = ({
+  SanitizedJpeg? file,
+  SanitizedJpeg? thumb,
+  String? fileRefusal,
+  String? thumbRefusal,
+  int fileMs,
+  int thumbMs,
+});
+
+// Separate from cleanPhoto so the worker captures only these two buffers
+Future<_Sanitized> _sanitizeInWorker(Uint8List jpeg, Uint8List thumb) =>
+    Isolate.run(() => _sanitizeBoth(jpeg, thumb));
+
+_Sanitized _sanitizeBoth(Uint8List jpeg, Uint8List thumbJpeg) {
+  final watch = Stopwatch()..start();
+  final file = JpegSanity.sanitize(jpeg);
+  final fileMs = watch.elapsedMilliseconds;
+  watch.reset();
+  final thumb = JpegSanity.sanitize(thumbJpeg);
+  return (
+    file: file,
+    thumb: thumb,
+    fileRefusal: file == null ? JpegSanity.describe(jpeg) : null,
+    thumbRefusal: thumb == null ? JpegSanity.describe(thumbJpeg) : null,
+    fileMs: fileMs,
+    thumbMs: watch.elapsedMilliseconds,
+  );
 }
 
 // _newUuidBytes : v4 UUID as raw 16 bytes. Server expects the same bytes

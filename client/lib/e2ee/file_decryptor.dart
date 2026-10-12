@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:cryptography/cryptography.dart' as cg;
 import 'package:miuchio/crypto/aead_stream.dart';
+import 'package:miuchio/crypto/blob_digest.dart';
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/wire_format.dart';
+import 'package:miuchio/diagnostics/aes_path.dart';
+import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 
 import 'album_keys.dart';
@@ -75,10 +77,12 @@ abstract class FileDecryptor {
 
     Uint8List dek;
     try {
-      dek =
-          await aks.useMk<Uint8List>(albumIdBytes, record.epochTag, (mk) async {
-        return Aead.decrypt(wire: wrapWire, key: mk, aad: wrapAad);
-      });
+      dek = await Trace.measure<Uint8List>(
+        'media.keyUnwrap',
+        () => aks.useMk<Uint8List>(albumIdBytes, record.epochTag, (mk) async {
+          return Aead.decrypt(wire: wrapWire, key: mk, aad: wrapAad);
+        }),
+      );
     } on StateError catch (e) {
       // useMk throws StateError when no MK exists for that (album, epoch)
       // Caller may want to trigger catchUpAll and retry
@@ -106,8 +110,12 @@ abstract class FileDecryptor {
         throw FileDecryptError(
             'wrong_size', 'got ${cipher.length}, want ${record.blobSize}');
       }
-      final sha = await cg.Sha256().hash(cipher);
-      if (!_constTimeEq(Uint8List.fromList(sha.bytes), record.blobSha256)) {
+      final sha = await Trace.measure<Uint8List>(
+        'media.verifyHash',
+        () => BlobDigest.sha256(cipher),
+        fields: {'bytes': cipher.length},
+      );
+      if (!_constTimeEq(sha, record.blobSha256)) {
         throw FileDecryptError('sha256_mismatch');
       }
 
@@ -116,12 +124,26 @@ abstract class FileDecryptor {
       // a half decrypted JPEG already on screen when the tag fails is worse
       // than a clean error honestly
       final ver = cipher[0];
+      final aeadFields = {
+        'bytes': cipher.length,
+        'ver': ver,
+        if (Trace.enabled)
+          'path': aesPath(ver == kVerStreamGcm ? kSegmentSize : cipher.length),
+      };
       try {
         if (ver == kVerAesGcm || ver == kVerChaPo) {
-          return await Aead.decrypt(wire: cipher, key: dek, aad: mediaIdBytes);
+          return await Trace.measure<Uint8List>(
+            'media.aead',
+            () => Aead.decrypt(wire: cipher, key: dek, aad: mediaIdBytes),
+            fields: aeadFields,
+          );
         } else if (ver == kVerStreamGcm) {
-          return await AeadStream.decryptBytes(
-              dek: dek, wire: cipher, mediaId: mediaIdBytes);
+          return await Trace.measure<Uint8List>(
+            'media.aead',
+            () => AeadStream.decryptBytes(
+                dek: dek, wire: cipher, mediaId: mediaIdBytes),
+            fields: aeadFields,
+          );
         } else {
           throw FileDecryptError(
               'unknown_ver', '0x${ver.toRadixString(16).padLeft(2, '0')}');
@@ -198,8 +220,8 @@ abstract class FileDecryptor {
         throw FileDecryptError(
             'wrong_size', 'thumb got ${cipher.length}, want $thumbSize');
       }
-      final sha = await cg.Sha256().hash(cipher);
-      if (!_constTimeEq(Uint8List.fromList(sha.bytes), thumbSha)) {
+      final sha = await BlobDigest.sha256(cipher);
+      if (!_constTimeEq(sha, thumbSha)) {
         throw FileDecryptError('sha256_mismatch');
       }
       try {

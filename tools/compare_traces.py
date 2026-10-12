@@ -98,6 +98,8 @@ class Capture:
             route = re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}", "{id}", fields["route"])
             route = re.sub(r"/\d+(?=/|$)", "/{n}", route)
             return f"api {fields.get('method', '')} {route}"
+        if "path" in fields:
+            return f"{name} [{fields['path']}]"
         return name
 
 
@@ -177,7 +179,7 @@ def report(a, b):
     print(f"\nload to first frame (ms): {a.label} {fmt(med(a.spans.get('onboarding.load', [])))}"
           f" | {b.label} {fmt(med(b.spans.get('onboarding.load', [])))}")
 
-    section(f"Frame timing by screen (ms; late = missed the refresh deadline)")
+    section("Frame timing by screen (ms; missed = build or raster over budget, stalls = started late, late = total latency over budget)")
     rows = []
     screens = list(PHASE_ORDER)
     for c in caps:
@@ -189,12 +191,19 @@ def report(a, b):
                 continue
             n = sum(int(w["n"]) for w in ws)
             late = sum(int(w["late"]) for w in ws)
+            missed = sum(int(w.get("missed", 0)) for w in ws)
+            stalls = sum(int(w.get("stalls", 0)) for w in ws)
+            pct = lambda x: f"{100 * x / n:.0f}%" if n else "-"
             val = lambda k: [float(w[k]) for w in ws if k in w]
-            rows.append([phase, c.label, n, f"{100 * late / n:.0f}%" if n else "-",
+            probed = any("missed" in w for w in ws)
+            rows.append([phase, c.label, n, pct(missed) if probed else "-",
+                         pct(stalls) if probed else "-", pct(late),
                          fmt(med(val("build50"))), fmt(med(val("build90"))),
                          fmt(med(val("raster50"))), fmt(med(val("raster90"))),
-                         fmt(max(val("total90"), default=None))])
-    table(["screen", "phone", "frames", "late", "build50", "build90", "raster50", "raster90", "worst total90"], rows)
+                         fmt(max(val("total90"), default=None)),
+                         fmt(sum(val("rasterSum"))) if val("rasterSum") else "-"])
+    table(["screen", "phone", "frames", "missed", "stalls", "late", "build50", "build90", "raster50", "raster90", "worst total90", "raster total"], rows)
+    print("rows named during:<animation> cover only the frames drawn while that animation ran")
 
     section("Screen open: ms from push or pop until its first frame was on screen")
     rows = []
@@ -207,6 +216,16 @@ def report(a, b):
             rows.append([name, c.label, len(ws), fmt(med(val("wait"))), fmt(max(val("wait"), default=None)),
                          fmt(med(val("build"))), fmt(med(val("raster"))), fmt(max(val("raster"), default=None))])
     table(["screen", "phone", "opens", "wait50", "waitMax", "build50", "raster50", "rasterMax"], rows)
+
+    section("Drawing thread frozen for 48 ms or more")
+    rows = []
+    for c in caps:
+        by_screen = defaultdict(list)
+        for e in c.events.get("ui.blocked", []):
+            by_screen[e.get("screen", "-")].append(int(e["ms"]))
+        for screen, xs in sorted(by_screen.items()):
+            rows.append([screen, c.label, len(xs), fmt(med(xs)), max(xs), sum(xs)])
+    table(["screen", "phone", "freezes", "median", "max", "total ms"], rows) if rows else print("none")
 
     section("Widget rebuilds while on each screen")
     rows = []
