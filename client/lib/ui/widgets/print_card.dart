@@ -33,8 +33,8 @@ class PrintCard extends StatelessWidget {
   static const double _wellAspect = 260 / 278;
   static const double _chinPadRatio = 0.037;
 
-  // Cache broad blurs while retaining crisp shadows at display resolution
-  static const double _bakeFromBlur = 30;
+  // Live blurs cost slow phones frames, so only the crisp edge stays live
+  static const double _bakeFromBlur = 4;
   static const BorderRadius _radius = BorderRadius.all(Radius.circular(8));
 
   @override
