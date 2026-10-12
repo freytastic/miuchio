@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/foot_bar.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 class PersonEntry {
@@ -12,6 +13,7 @@ class PersonEntry {
   final TrustState trust;
   // Invited but not joined: no key yet, so nothing to compare
   final bool invited;
+  final bool owner;
   final String? detail;
 
   const PersonEntry({
@@ -20,6 +22,7 @@ class PersonEntry {
     required this.face,
     this.trust = TrustState.unverified,
     this.invited = false,
+    this.owner = false,
     this.detail,
   });
 }
@@ -32,6 +35,8 @@ class PeopleScreen extends StatefulWidget {
   final Future<List<PersonEntry>> Function() load;
   final Future<void> Function(PersonEntry entry) onOpen;
   final Future<void> Function()? onAdd;
+  // Null leaves invited rows inert
+  final Future<void> Function(PersonEntry entry)? onOpenInvited;
   final String? note;
 
   const PeopleScreen({
@@ -41,6 +46,7 @@ class PeopleScreen extends StatefulWidget {
     required this.load,
     required this.onOpen,
     this.onAdd,
+    this.onOpenInvited,
     this.note,
   });
 
@@ -84,7 +90,8 @@ class _PeopleScreenState extends State<PeopleScreen> {
 
   Future<void> _open(PersonEntry p) async {
     HapticFeedback.selectionClick();
-    await widget.onOpen(p);
+    final open = p.invited ? widget.onOpenInvited : widget.onOpen;
+    await open?.call(p);
     await _reload();
   }
 
@@ -131,7 +138,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
               const SizedBox(height: 22),
               if (widget.onAdd != null)
                 _Row(
-                  face: const _AddFace(),
+                  face: MakeButton(size: 40, onTap: _add),
                   name: 'Add someone',
                   onTap: _add,
                 ),
@@ -166,12 +173,15 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     key: ValueKey('person-${p.id}'),
                     face: p.invited ? const DashedCircle(size: 40) : p.face,
                     name: p.name,
+                    owner: p.owner,
                     verified: p.trust == TrustState.verified,
                     status: p.trust == TrustState.changed
                         ? 'Safety number changed'
                         : p.detail,
                     alarm: p.trust == TrustState.changed,
-                    onTap: p.invited ? null : () => _open(p),
+                    onTap: p.invited && widget.onOpenInvited == null
+                        ? null
+                        : () => _open(p),
                   ),
               if (widget.note != null)
                 Padding(
@@ -190,6 +200,7 @@ class _Row extends StatelessWidget {
   final Widget face;
   final String name;
   final String? status;
+  final bool owner;
   final bool verified;
   final bool alarm;
   final VoidCallback? onTap;
@@ -199,6 +210,7 @@ class _Row extends StatelessWidget {
     required this.face,
     required this.name,
     this.status,
+    this.owner = false,
     this.verified = false,
     this.alarm = false,
     this.onTap,
@@ -210,6 +222,7 @@ class _Row extends StatelessWidget {
       button: onTap != null,
       label: [
         name,
+        if (owner) 'owner',
         if (verified) 'verified',
         if (status != null) status!,
       ].join(', '),
@@ -240,6 +253,10 @@ class _Row extends StatelessWidget {
                           const Icon(Icons.check_rounded,
                               size: 15, color: Warm.ink),
                         ],
+                        if (owner) ...[
+                          const SizedBox(width: 8),
+                          const _OwnerTag(),
+                        ],
                       ],
                     ),
                     if (status != null) ...[
@@ -265,15 +282,17 @@ class _Row extends StatelessWidget {
   }
 }
 
-class _AddFace extends StatelessWidget {
-  const _AddFace();
+class _OwnerTag extends StatelessWidget {
+  const _OwnerTag();
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: Warm.ctaFill,
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: Warm.inkGhost,
+          borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(Icons.add_rounded, size: 18, color: Warm.ctaInk),
+        child: Text('OWNER',
+            style: Warm.sectionLabel.copyWith(letterSpacing: 0.3)),
       );
 }

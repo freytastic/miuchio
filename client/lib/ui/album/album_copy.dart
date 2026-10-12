@@ -111,4 +111,32 @@ abstract final class AlbumCopy {
     return 'Encrypted on $whose phone. Location and camera details were '
         'removed before upload.';
   }
+
+  static const leaveAlbum = 'Leave album';
+  static const leaveTitle = 'Leave this album?';
+  static const leaveBody = 'It disappears from this phone and you need a new '
+      'invite to come back. The photos you added stay for everyone else.';
+  static const leaveCancel = 'Stay';
+  static const leaveFailed = 'Could not leave the album.';
+
+  static const deleteAlbum = 'Delete album';
+  static const deleteAlbumTitle = 'Delete this album?';
+  static const deleteAlbumBody = 'Every photo in it is deleted for everyone, '
+      'and it cannot be undone.';
+  static const deleteAlbumFailed = 'Could not delete the album.';
+
+  static const removeFromAlbum = 'Remove from album';
+  static String removeTitle(String name) => 'Remove $name?';
+  static const removeBody = 'The album disappears from their phone and they '
+      "can't see anything added after now. The photos they added stay.";
+  static const remove = 'Remove';
+  static const removeFailed = 'Could not remove them.';
+  static const cancelInviteTitle = 'Cancel this invite?';
+  static const cancelInviteBody = "They won't be able to join with it.";
+  static const cancelInvite = 'Cancel invite';
+
+  static const madeBy = 'Made by';
+  static const madeByYou = 'You';
+  static const ownerNote =
+      'You made this album, so you can add and remove people.';
 }

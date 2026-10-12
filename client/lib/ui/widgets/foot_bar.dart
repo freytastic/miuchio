@@ -36,8 +36,10 @@ class FootScrim extends StatelessWidget {
 class MakeButton extends StatefulWidget {
   final VoidCallback? onTap;
   final String? tooltip;
+  final double size;
 
-  const MakeButton({super.key, required this.onTap, this.tooltip});
+  const MakeButton(
+      {super.key, required this.onTap, this.tooltip, this.size = 58});
 
   @override
   State<MakeButton> createState() => _MakeButtonState();
@@ -63,8 +65,8 @@ class _MakeButtonState extends State<MakeButton> {
         duration: Warm.quick,
         curve: Warm.easeOut,
         child: SizedBox(
-          width: 58,
-          height: 58,
+          width: widget.size,
+          height: widget.size,
           child: Stack(
             alignment: Alignment.center,
             clipBehavior: Clip.none,
@@ -84,23 +86,25 @@ class _MakeButtonState extends State<MakeButton> {
                   ),
                 ),
               ),
-              const DecoratedBox(
-                decoration: BoxDecoration(
+              DecoratedBox(
+                decoration: const BoxDecoration(
                   gradient: Warm.ctaFill,
                   shape: BoxShape.circle,
                 ),
-                child: SizedBox(width: 58, height: 58),
+                child: SizedBox.square(dimension: widget.size),
               ),
-              Positioned.fill(child: WarmGlow(lit: _pressed, radius: 29)),
-              const Positioned(
+              Positioned.fill(
+                  child: WarmGlow(lit: _pressed, radius: widget.size / 2)),
+              Positioned(
                 top: 1,
                 left: 1,
                 right: 1,
-                height: 58 * 0.4,
-                child: IgnorePointer(child: WarmSheen(radius: 28)),
+                height: widget.size * 0.4,
+                child: IgnorePointer(
+                    child: WarmSheen(radius: widget.size / 2 - 1)),
               ),
               Icon(Icons.add_rounded,
-                  size: 21,
+                  size: widget.size * 0.36,
                   color: widget.onTap == null
                       ? Warm.ctaInk.withValues(alpha: 0.45)
                       : Warm.ctaInk),

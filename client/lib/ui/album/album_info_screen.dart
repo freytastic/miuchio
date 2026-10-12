@@ -15,6 +15,7 @@ class AlbumInfoScreen extends StatelessWidget {
   final DateTime createdAt;
   final AlbumStats stats;
   final MemberNameLookup nameOf;
+  final String? madeBy;
 
   const AlbumInfoScreen({
     super.key,
@@ -23,6 +24,7 @@ class AlbumInfoScreen extends StatelessWidget {
     required this.createdAt,
     required this.stats,
     required this.nameOf,
+    this.madeBy,
   });
 
   @override
@@ -42,6 +44,7 @@ class AlbumInfoScreen extends StatelessWidget {
         children: [
           Text(albumName, style: _title),
           const SizedBox(height: 22),
+          if (madeBy != null) _Fact(label: AlbumCopy.madeBy, value: madeBy!),
           _Fact(label: AlbumCopy.infoCreated, value: _formatDate(createdAt)),
           _Fact(label: AlbumCopy.infoPhotos, value: '${stats.photoCount}'),
           _Fact(

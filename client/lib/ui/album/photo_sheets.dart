@@ -69,8 +69,34 @@ class _PaperSheetRoute<T> extends ModalBottomSheetRoute<T> {
       );
 }
 
-Future<bool> confirmPhotoDelete(BuildContext context) async =>
-    await _paperSheet<bool>(context, (_) => const _DeleteSheet()) ?? false;
+Future<bool> confirmPhotoDelete(BuildContext context) => confirmSheet(
+      context,
+      key: 'photo-delete',
+      title: AlbumCopy.deleteTitle,
+      body: AlbumCopy.deleteBody,
+      confirm: AlbumCopy.deleteForEveryone,
+      cancel: AlbumCopy.deleteCancel,
+    );
+
+Future<bool> confirmSheet(
+  BuildContext context, {
+  required String key,
+  required String title,
+  required String body,
+  required String confirm,
+  required String cancel,
+}) async =>
+    await _paperSheet<bool>(
+      context,
+      (_) => _ConfirmSheet(
+        keyPrefix: key,
+        title: title,
+        body: body,
+        confirm: confirm,
+        cancel: cancel,
+      ),
+    ) ??
+    false;
 
 Future<void> showPhotoDetails(
   BuildContext context, {
@@ -124,8 +150,20 @@ class _Grab extends StatelessWidget {
       );
 }
 
-class _DeleteSheet extends StatelessWidget {
-  const _DeleteSheet();
+class _ConfirmSheet extends StatelessWidget {
+  final String keyPrefix;
+  final String title;
+  final String body;
+  final String confirm;
+  final String cancel;
+
+  const _ConfirmSheet({
+    required this.keyPrefix,
+    required this.title,
+    required this.body,
+    required this.confirm,
+    required this.cancel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -139,23 +177,23 @@ class _DeleteSheet extends StatelessWidget {
           children: [
             const _Grab(),
             const SizedBox(height: 20),
-            Text(AlbumCopy.deleteTitle, style: Warm.cardTitle),
+            Text(title, style: Warm.cardTitle),
             const SizedBox(height: 6),
-            Text(AlbumCopy.deleteBody, style: Warm.note),
+            Text(body, style: Warm.note),
             const SizedBox(height: 22),
             WarmButton(
-              key: const Key('photo-delete-confirm'),
-              label: AlbumCopy.deleteForEveryone,
+              key: Key('$keyPrefix-confirm'),
+              label: confirm,
               onTap: () => Navigator.of(context).pop(true),
             ),
             const SizedBox(height: 6),
             PressableScale(
-              key: const Key('photo-delete-keep'),
+              key: Key('$keyPrefix-keep'),
               onTap: () => Navigator.of(context).pop(false),
               child: SizedBox(
                 height: 46,
                 child: Center(
-                  child: Text(AlbumCopy.deleteCancel,
+                  child: Text(cancel,
                       style: Warm.acBtnQuiet.copyWith(fontSize: 15)),
                 ),
               ),
