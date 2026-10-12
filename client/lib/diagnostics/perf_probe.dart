@@ -24,6 +24,7 @@ abstract class PerfProbe {
   static final List<_Mark> _marks = [];
   static final Expando<String> _names = Expando();
   static final Map<String, int> _builds = {};
+  static final List<({int from, int to, String name})> _windows = [];
   static final RegExp _screenType =
       RegExp(r'(Screen|Page|Peek|Shell|Sheet|Dialog)$');
   static const Set<String> _wrappers = {
@@ -34,6 +35,16 @@ abstract class PerfProbe {
   };
 
   static final NavigatorObserver observer = _ScreenObserver();
+
+  static void window(String name, Duration length,
+      {Map<String, Object?> fields = const {}}) {
+    if (!_started) return;
+    final from = Timeline.now;
+    _windows.add((from: from, to: from + length.inMicroseconds, name: name));
+    if (_windows.length > 64) _windows.removeAt(0);
+    final span = Trace.start(name, fields: fields);
+    Timer(length, () => span.end());
+  }
 
   static void count(String key) {
     if (!_started) return;
@@ -100,11 +111,32 @@ abstract class PerfProbe {
     _started = true;
     Trace.event('app.main');
     SchedulerBinding.instance.addTimingsCallback(_onTimings);
+    _watchUiThread();
     unawaited(WidgetsBinding.instance.waitUntilFirstFrameRasterized.then((_) {
       Trace.event('app.firstFrame');
       _device();
       unawaited(_probeKeystore());
     }));
+  }
+
+  static const Duration _beat = Duration(milliseconds: 50);
+  static const int _blockedMs = 48;
+
+  // Catches freezes even when no frame was requested during them
+  static void _watchUiThread() {
+    final clock = Stopwatch()..start();
+    Timer.periodic(_beat, (_) {
+      final late = clock.elapsedMilliseconds - _beat.inMilliseconds;
+      clock.reset();
+      if (late < _blockedMs) return;
+      if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
+      }
+      Trace.event('ui.blocked', fields: {
+        'ms': late,
+        'screen': _marks.isEmpty ? 'startup' : _marks.last.name,
+      });
+    });
   }
 
   static void _device() {
@@ -179,6 +211,18 @@ abstract class PerfProbe {
       byScreen.putIfAbsent(_screenAt(at), () => []).add(t);
     }
     byScreen.forEach((screen, group) => _report(screen, group, budgetUs));
+    final byWindow = <String, List<FrameTiming>>{};
+    for (final t in timings) {
+      final at = t.timestampInMicroseconds(FramePhase.vsyncStart);
+      final names = {
+        for (final w in _windows)
+          if (at >= w.from && at <= w.to) w.name,
+      };
+      for (final name in names) {
+        byWindow.putIfAbsent('during:$name', () => []).add(t);
+      }
+    }
+    byWindow.forEach((window, group) => _report(window, group, budgetUs));
     if (_builds.isNotEmpty) {
       Trace.event('builds', fields: {
         'screen': _marks.isEmpty ? 'startup' : _marks.last.name,
@@ -199,6 +243,14 @@ abstract class PerfProbe {
       'screen': screen,
       'n': timings.length,
       'late': total.where((us) => us > budgetUs).length,
+      'missed': timings
+          .where((t) =>
+              t.buildDuration.inMicroseconds > budgetUs ||
+              t.rasterDuration.inMicroseconds > budgetUs)
+          .length,
+      'stalls': timings
+          .where((t) => t.vsyncOverhead.inMicroseconds > budgetUs)
+          .length,
       'budget': _ms(budgetUs.round()),
       'build50': _ms(_pct(build, .5)),
       'build90': _ms(_pct(build, .9)),
@@ -206,6 +258,7 @@ abstract class PerfProbe {
       'raster50': _ms(_pct(raster, .5)),
       'raster90': _ms(_pct(raster, .9)),
       'rasterMax': _ms(raster.last),
+      'rasterSum': _ms(raster.fold(0, (sum, us) => sum + us)),
       'total90': _ms(_pct(total, .9)),
     });
   }
