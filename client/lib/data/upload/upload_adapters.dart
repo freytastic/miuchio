@@ -45,7 +45,7 @@ class PickedSourceStoreImpl implements PickedSourceStore {
 class MediaPreparerImpl implements MediaPreparer {
   final AlbumKeyStore _aks;
   final UploadOutboxStore _outbox;
-  // Prevents sealed media from crossing signed-in accounts
+  // Prevents sealed media from crossing signed in accounts
   final String? Function() _owner;
   // Null when the platform has no native image bridge
   final ImageTranscoder? _transcode;

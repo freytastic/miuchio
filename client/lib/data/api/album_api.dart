@@ -82,8 +82,7 @@ class AlbumService {
     }
   }
 
-  // PUT the caller's own encrypted display name for one album. The server reads
-  // the caller's member_token from middleware
+  // The server resolves the caller's member_token itself
   Future<bool> putProfileCt(String albumId, String nameCtB64) async {
     try {
       final response = await _client.put(
@@ -118,9 +117,7 @@ class AlbumService {
     }
   }
 
-  // DELETE /albums/{id}/members/{member_token}. memberToken is the caller held
-  // std base64 token, it must be re encoded url safe (no padding) for the path,
-  // since std base64's '/' and '+' break routing. 204 on success
+  // memberToken is std base64, the path needs unpadded base64url
   Future<bool> removeMember(String albumId, String memberToken) async {
     try {
       final raw = base64.decode(base64.normalize(memberToken));

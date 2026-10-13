@@ -17,7 +17,7 @@ class IdentityPinStore {
   final Map<String, String> _pins = {}; // 'albumId:token' -> base64 ik_pub
   final Map<String, int> _verified = {}; // 'b64(myIk)|b64(peerIk)' -> unix s
   // Epoch signing authority, deliberately separate from roster pins. Written
-  // only after a first join signature verifies or an out-of-band comparison
+  // only after a first join signature verifies or an out of band comparison
   final Map<String, String> _signers = {}; // 'albumId:token' -> base64 ik_pub
   // Albums created here whose epoch 0 has not installed. Until then only this
   // device may sign: the marker is flushed immediately to narrow the crash
@@ -107,7 +107,7 @@ class IdentityPinStore {
         : DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
   }
 
-  // Revoke, leave, or delete: drop album-scoped roster pins, signer bindings,
+  // Revoke, leave, or delete: drop album scoped roster pins, signer bindings,
   // and creator state. Verification claims remain because they are not scoped
   // to an album
   Future<void> clearAlbum(String albumId) async {
@@ -222,7 +222,7 @@ class IdentityPinStore {
       await tmp.rename(_file.path);
       _writeFailed = false;
     } catch (_) {
-      // Keep the last durable snapshot: in-memory updates may be lost on restart
+      // Keep the last durable snapshot: in memory updates may be lost on restart
       _writeFailed = true;
     }
   }

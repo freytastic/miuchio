@@ -58,7 +58,7 @@ List<ActivityEvent> deriveActivity({
         ));
         continue;
       }
-      // Model a new owned album from its empty, owner-only baseline
+      // Model a new owned album from its empty, owner only baseline
       final self = album.selfToken;
       before = AlbumSnapshot(
         albumId: album.albumId,

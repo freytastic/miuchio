@@ -39,7 +39,7 @@ class SessionRefresher {
     return expiresAt.isBefore(now.add(kRenewalWindow));
   }
 
-  // No-op while the stored session has enough time remaining
+  // No op while the stored session has enough time remaining
   Future<RefreshOutcome?> renewIfDue({DateTime Function()? clock}) async {
     final expiry = await _storage.getExpiry();
     final now = (clock ?? DateTime.now)();

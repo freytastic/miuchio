@@ -2,21 +2,17 @@ import 'package:miuchio/data/api/auth_api.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/name_cache.dart';
 
-// drop auth tokens and wipe the plaintext bearing media
-// cache (L1 RAM + L2 sealed files) + the display name cache. Deliberately does
-// NOT touch cache_root_key, identity or album MKs : all three are DEVICE bound,
-// not session bound. cache_root_key in particular MUST survive : it is
-// established once per process at boot, so deleting it here strands blobs that
-// an in process re login re seals under the still in RAM key, forcing a full
-// re download on the next
+// Drops tokens and wipes the media and name caches. cache_root_key, identity
+// and album MKs are device bound and survive. Deleting cache_root_key here
+// would strand blobs a re login reseals under the key still held in RAM
 Future<void> performLogout({
   required AuthService auth,
   required MediaCacheManager mediaCache,
   required NameCache nameCache,
   Future<void> Function()? disconnectRealtime,
 }) async {
-  // Drop the websocket first so no live events land against a session we are
-  // tearing down : a failed disconnect mustnt block the wipe
+  // Socket first so no live event lands mid teardown, a failed disconnect
+  // must not block the wipe
   if (disconnectRealtime != null) {
     try {
       await disconnectRealtime();

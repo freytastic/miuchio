@@ -23,7 +23,7 @@ Future<DeletionResult?> launchAccountDeletion({
       return null;
     }
     final result = await openScreen(plan);
-    // Re-review a plan that changed before confirmation
+    // A plan that changed before confirmation is reviewed again
     if (result == DeletionResult.planChanged) continue;
     return result;
   }

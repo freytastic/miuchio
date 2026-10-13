@@ -21,13 +21,9 @@ Duration _confirmBackoff(int attempt) => Duration(milliseconds: 400 * attempt);
 // overlapping attempts are safe
 const Duration _confirmDeadline = Duration(seconds: 15);
 
-// Media HTTP surface (§5.1). The encryption + DEK wrap happens in
-// FilePipeline : this layer is only HTTP plumbing : ask for an upload URL,
-// PUT to S3, confirm. It's in lib/data/api/ since it touches package:http
-// and the bearer auth pipeline : lib/e2ee/ stays free of those imports
+// HTTP only, encryption happens in FilePipeline. Reserve, PUT to S3, confirm
 
-// MediaApiInterface : the read path slice MediaCacheManager depends on
-// Carved out so cache tests can stub without faking the upload pipeline
+// The read slice MediaCacheManager depends on
 abstract class MediaApiInterface {
   Future<List<MediaRecord>> listMedia(String albumId);
   Future<String> requestDownloadURL(String albumId, String mediaId,
@@ -38,7 +34,7 @@ abstract class MediaApiInterface {
 
 class MediaApi implements MediaApiInterface {
   final ApiClient _api;
-  // Presigned object-store requests must not carry the API bearer token
+  // Presigned object store requests must not carry the API bearer token
   final S3Transport _s3;
 
   MediaApi(this._api, {S3Transport? transport, http.Client? raw})
@@ -49,8 +45,7 @@ class MediaApi implements MediaApiInterface {
               maxDownloadAttempts: raw == null ? 3 : 1,
             );
 
-  // RequestUploadResponse mirrors the server's response shape. Thumb URL +
-  // headers are populated only when the request carried thumb_* fields
+  // Thumb URL and headers come back only when thumb fields were sent
   Future<UploadReservation> _requestUploadURL({
     required String albumId,
     required UploadEnvelope env,
@@ -89,9 +84,8 @@ class MediaApi implements MediaApiInterface {
     );
   }
 
-  // PutToS3 sends the ciphertext to the presigned URL. S3 validates the
-  // ChecksumSHA256 + ContentLength server side : a wrong byte count or wrong
-  // hash gets rejected here before we ever call ConfirmUpload
+  // S3 checks ChecksumSHA256 and ContentLength, so a wrong size or hash fails
+  // before confirmation
   Future<void> _putToS3(
       String url, Uint8List bytes, Map<String, String> headers,
       {required Map<String, Object?> traceFields,
@@ -100,7 +94,7 @@ class MediaApi implements MediaApiInterface {
     final resp = await _s3.put(Uri.parse(url), bytes, headers,
         traceFields: traceFields, onBytes: onBytes, abortTrigger: abortTrigger);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      // Object-store errors may echo the signed URL, so carry only the status
+      // Object store errors may echo the signed URL, so carry only the status
       throw S3StatusException(resp.statusCode);
     }
   }
@@ -155,7 +149,7 @@ class MediaApi implements MediaApiInterface {
     }
   }
 
-  // The server sweeper handles cleanup if this best-effort request fails
+  // The server sweeper handles cleanup if this best effort request fails
   Future<bool> _abortPendingUpload(String albumId, String mediaId) async {
     final span = Trace.start('media.abortPending', fields: {
       'album': Trace.id(albumId),
@@ -262,10 +256,7 @@ class MediaApi implements MediaApiInterface {
     return raw.map(MediaRecord.fromJson).toList();
   }
 
-  // RequestDownloadURL : POSTs for a fresh presigned GET URL. Server
-  // refuses pending rows : verifies caller is a member via RequireMember
-  // asset=='thumb' requests the thumb object instead of the file
-  // server 404s if the row has no thumb
+  // The server refuses pending rows and 404s a thumb request for a row without one
   @override
   Future<String> requestDownloadURL(String albumId, String mediaId,
       {String asset = 'file'}) async {
@@ -277,9 +268,7 @@ class MediaApi implements MediaApiInterface {
     return body['url'] as String;
   }
 
-  // DownloadCiphertext fetches the bytes from a presigned URL. Bypasses
-  // ApiClient since the URL carries auth in the query string and we dont
-  // want a Bearer header (would fail S3 sig validation) or auto refresh on 401
+  // Bypasses ApiClient, a bearer header would break the S3 signature
   @override
   Future<Uint8List> downloadCiphertext(String url,
       {int expectedBytes = 0, Future<String> Function()? refreshUrl}) async {

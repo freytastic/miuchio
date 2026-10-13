@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'media_cache_key.dart';
 
-// Bounded RAM-only plaintext cache cleared when the app is backgrounded
+// Bounded RAM only plaintext cache cleared when the app is backgrounded
 
 class MediaPlaintextCache {
   final int budgetBytes;
@@ -56,8 +56,7 @@ class MediaPlaintextCache {
     });
   }
 
-  // Called by MediaCacheManager.invalidate : the caller has a media_id but
-  // not always album_id, so scan-by-id is the cheapest correct primitive
+  // Callers don't always know the album_id
   void removeByMediaId(String mediaId) {
     _map.removeWhere((k, v) {
       if (k.mediaId == mediaId) {

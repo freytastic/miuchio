@@ -26,9 +26,8 @@ class AppErrorUx {
   });
 }
 
-//Maps a server [ApiError] to the UX action and copy... the codes are the
-// same set defined in `internal/apierr/apierr.go`... new server codes that
-// dont appear here get a generic message , adding them is mechanical
+// Codes come from server/internal/apierr/apierr.go, unknown ones get a
+// generic message
 AppErrorUx mapApiError(ApiError err) {
   switch (err.code) {
     case 'E_AUTH':

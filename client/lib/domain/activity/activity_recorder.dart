@@ -15,7 +15,7 @@ typedef CommitObservation = Future<void> Function(
     {List<String> settleAlbums});
 typedef SettleRotation = Future<void> Function(String albumId);
 
-// Reconstructs changes between authoritative listings because realtime is live-only
+// Reconstructs changes between authoritative listings because realtime is live only
 class ActivityRecorder {
   final RecordEvents _record;
   final ReadSnapshot _readSnapshot;
@@ -52,7 +52,7 @@ class ActivityRecorder {
     final current = <String, AlbumSnapshot>{};
 
     for (final a in albums) {
-      // A summary-less album carries zeroes, not truth
+      // An album without a summary carries zeroes, not truth
       // Keep the prior snapshot to avoid false departures and counter resets
       if (!a.hasSummary) {
         final kept = previous?[a.id];
@@ -86,7 +86,7 @@ class ActivityRecorder {
     final snapshot = _encode(current);
     final commit = _commit;
     if (commit != null) {
-      // One transaction: a crash in between would re-derive the same
+      // One transaction: a crash in between would rederive the same
       // transition under a new id, or lose a finished rotation for good
       await commit(events, snapshot, settleAlbums: settle);
       return;

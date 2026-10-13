@@ -9,8 +9,8 @@ const MethodChannel _storageChannel = MethodChannel('miuchio/storage');
 
 // iOS can retain Keychain items after uninstall, so a missing file marker
 // triggers a wipe before any keys or credentials are read
-// Retain the marker during in-app erasure so the next launch preserves any
-// new sign-in made afterward
+// Retain the marker during in app erasure so the next launch preserves any
+// new sign in made afterward
 Future<void> prepareInstall({
   required bool isIOS,
   required Directory supportDir,

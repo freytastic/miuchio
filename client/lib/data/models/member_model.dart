@@ -2,15 +2,9 @@ import 'package:miuchio/data/models/avatar_ref.dart';
 
 class MemberProfile {
   final String? ikPub;
-  // §4.2 D1 : lk_pub is required by the X3DH responder. Tolerated as null in
-  // the decoder for transition compat, but fetches against a current server
-  // will populate it
+  // Needed by the X3DH responder, null only from very old servers
   final String? lkPub;
-  // M7 : encrypted display name (locked under the album's MK_current). Server
-  // stores opaque bytes : client decrypts using AlbumKeyStore.useMk to render
-  // the actual string. Null until the member publishes their first name_ct
-  // via PUT /albums/{id}/members/me/profile-ct (full client wiring lands in
-  // Phase 5 alongside the encrypted media display path)
+  // Sealed under the album MK, null until the member publishes a name
   final String? nameCt;
   final AvatarRef? avatar;
 
