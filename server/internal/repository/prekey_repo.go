@@ -35,9 +35,8 @@ func (r *PrekeyRepository) CreateBatch(ctx context.Context, opks []model.OneTime
 	return r.DB.SendBatch(ctx, batch).Close()
 }
 
-// PopRandom marks one unconsumed OPK as consumed and returns it. Atomic via
-// FOR UPDATE SKIP LOCKED so concurrent prekey bundle fetches never claim the
-// same row. acc to L3: consumed is a BOOLEAN flag, no consumed_by_user/at metadata
+// PopRandom consumes one OPK. FOR UPDATE SKIP LOCKED keeps concurrent bundle
+// fetches from claiming the same row, and nothing records who consumed it
 func (r *PrekeyRepository) PopRandom(ctx context.Context, userID uuid.UUID) (*model.OneTimePrekey, error) {
 	var o model.OneTimePrekey
 	err := r.DB.QueryRow(ctx, `

@@ -29,8 +29,7 @@ func NewTicketStore(rdb *redis.Client) *TicketStore {
 	return &TicketStore{rdb: rdb}
 }
 
-// Issue generates a 32-byte random ticket, stores it under ws-ticket:<ticket>
-// with a 60s TTL, and returns the base64url-encoded ticket
+// Issue stores a random 32 byte ticket for 60s and returns it base64url encoded
 func (s *TicketStore) Issue(ctx context.Context, userID uuid.UUID) (string, time.Time, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -44,7 +43,7 @@ func (s *TicketStore) Issue(ctx context.Context, userID uuid.UUID) (string, time
 	return ticket, expiresAt, nil
 }
 
-// consumeScript atomically GETs and deletes the ticket key , single use even under concurrent claims
+// consumeScript gets and deletes in one step, so a ticket is single use even under races
 var consumeScript = redis.NewScript(`
 	local v = redis.call("GET", KEYS[1])
 	if v == false then return false end

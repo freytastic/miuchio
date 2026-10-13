@@ -338,8 +338,8 @@ func (r *MediaRepository) QueueStalePendingCleanup(ctx context.Context, before t
 	return batch, nil
 }
 
-// ListObjectCleanupKeys returns due keys with the least-retried first so a
-// poison key cannot block fresh work
+// ListObjectCleanupKeys returns due keys, least retried first, so a poison key
+// cannot block fresh work
 func (r *MediaRepository) ListObjectCleanupKeys(ctx context.Context, limit int) ([]string, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -411,8 +411,8 @@ func cleanupKeys(storageKey string, thumbKey *string) []string {
 	return keys
 }
 
-// GetByID returns one media row regardless of confirmed state. Used by
-// ConfirmUpload to read storage_key + claimed size+sha256 for the S3 HEAD check
+// GetByID returns one row regardless of confirmed state, for the HEAD check in
+// ConfirmUpload
 func (r *MediaRepository) GetByID(ctx context.Context, mediaID, albumID uuid.UUID) (*model.Media, error) {
 	var m model.Media
 	err := r.DB.QueryRow(ctx, `

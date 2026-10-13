@@ -13,19 +13,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Media handlers (§5.1 upload + §5.2 download foundation). Photos work end to
-// end : video player UI + video specific picker land in v2 alongside §5.x
-
-// M9 PRIVACY RULE : storage_key is server generated random opaque (set in
-// service.RequestUploadURL via newStorageKey). NEVER include album_id or
-// media_id in the S3 key path : the storage host can group objects by key
-// string even though the body is ciphertext
-
-// M11 PRIVACY RULE for §5.x follow up : the client should pad ciphertext to
-// size buckets (50 KB / 500 KB / 5 MB / 50 MB) before upload so blob_size only
-// reveals the bucket, not the precise byte count. Per file precise size
-// fingerprints individual photos / videos to a snapshot adversary
-
+// storage_key is a random opaque value from newStorageKey and must never
+// contain album_id or media_id, or the storage host could group objects by key
 type MediaHandler struct {
 	svc *service.MediaService
 }
@@ -43,8 +32,7 @@ type requestUploadReq struct {
 	WrapNonce  string `json:"wrap_nonce"`
 	WrapTagCT  string `json:"wrap_tag_ct"`
 	EpochTag   int    `json:"epoch_tag"`
-	// §5.3 : present-as-a-group for photos with thumb, absent for videos
-	// or any non thumbnailable media. Service validates the all-or-nothing rule
+	// All thumb fields are present together or absent, the service enforces it
 	ThumbSize      int64  `json:"thumb_size,omitempty"`
 	ThumbSHA256    string `json:"thumb_sha256,omitempty"`
 	ThumbWrapNonce string `json:"thumb_wrap_nonce,omitempty"`
@@ -86,8 +74,7 @@ func (h *MediaHandler) RequestUploadURL(w http.ResponseWriter, r *http.Request) 
 		apierr.Write(w, r, apierr.Validation("wrap_tag_ct must be base64").WithCause(err))
 		return
 	}
-	// decoded only when present. Empty string → zero length
-	// slice, which the service treats as "no thumb"
+	// An empty string decodes to an empty slice, which the service treats as no thumb
 	thumbSHA256, err := decodeOptionalBase64(req.ThumbSHA256, "thumb_sha256")
 	if err != nil {
 		apierr.Write(w, r, err)
@@ -234,8 +221,7 @@ func mediaRow(m model.Media) map[string]any {
 	if m.AlbumSeq != nil {
 		row["album_seq"] = *m.AlbumSeq
 	}
-	// Thumb presence selects EncryptedThumbnail for fast grids
-	// Missing thumbs fall back to EncryptedImage
+	// Rows without a thumb fall back to the full file on the client
 	if m.ThumbSize != nil {
 		row["thumb_wrap_nonce"] = base64.StdEncoding.EncodeToString(m.ThumbWrapNonce)
 		row["thumb_wrap_tag_ct"] = base64.StdEncoding.EncodeToString(m.ThumbWrapTagCT)
@@ -245,10 +231,9 @@ func mediaRow(m model.Media) map[string]any {
 	return row
 }
 
-// RequestDownloadURL handles POST /albums/{id}/media/{mid}/download-url
-// Returns {url, expires_at}. URL is short lived (15 min) : client downloads
-// immediately. Refuses media that hasnt been confirmed. ?asset=thumb on the
-// query string returns the thumb URL : default = file
+// RequestDownloadURL handles POST /albums/{id}/media/{mid}/download-url. The
+// URL lives 15 minutes and only confirmed media qualifies. ?asset=thumb asks for
+// the thumbnail instead of the file
 func (h *MediaHandler) RequestDownloadURL(w http.ResponseWriter, r *http.Request) {
 	albumID, ok := scopedAlbumID(w, r)
 	if !ok {
@@ -313,8 +298,7 @@ func parseOptionalUUID(s string) (uuid.UUID, error) {
 	return uuid.Parse(s)
 }
 
-// Empty string → nil slice (= "field not present"). Service treats a nil/empty
-// thumb_wrap_nonce as the trigger to skip thumb logic entirely
+// An empty string returns nil to represent an absent field
 func decodeOptionalBase64(s, name string) ([]byte, error) {
 	if s == "" {
 		return nil, nil

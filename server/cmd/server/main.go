@@ -109,8 +109,8 @@ func main() {
 
 	prekeyEx := prekey.NewRepo(dbPool, prekeyRepo)
 	prekeyService := prekey.NewService(prekeyEx)
-	// epochRepo doubles as the album member_token -> user_id resolver for the
-	// by nickname bundle fetch (M bridge unseal, album scoped)
+	// epochRepo also resolves member_token to user_id for the by token bundle
+	// fetch, album scoped
 	prekeyHandler := prekey.NewHandler(prekeyService, hub, userRepo, epochRepo)
 
 	inviteRepo := invite.NewRepo(dbPool, linker, userRepo)
@@ -150,7 +150,7 @@ func main() {
 	apiV1.HandleFunc("/account-deletions/{receipt}", accountHandler.DeletionReceipt).Methods(http.MethodGet)
 	apiV1.HandleFunc("/account-deletions/{receipt}/abandon", accountHandler.AbandonDeletion).Methods(http.MethodPost)
 
-	// WS endpoint authenticates via ticket, not bearer , must be outside authed subrouter
+	// Authenticated by ticket rather than bearer, so it sits outside authed
 	apiV1.HandleFunc("/ws", wsHandler.ServeWS).Methods(http.MethodGet)
 
 	authed := apiV1.PathPrefix("").Subrouter()
@@ -161,12 +161,12 @@ func main() {
 	authed.HandleFunc("/users/me/deletion", accountHandler.DeletionPreflight).Methods(http.MethodGet)
 	authed.HandleFunc("/users/me/deletion", accountHandler.RequestDeletion).Methods(http.MethodPost)
 	authed.HandleFunc("/users/me/keys", prekeyHandler.UpsertIdentity).Methods(http.MethodPut)
-	// Side-effect-free self key state for publication reconciliation
+	// Does not consume an OPK
 	authed.HandleFunc("/users/me/keys", prekeyHandler.GetOwnKeys).Methods(http.MethodGet)
 	authed.HandleFunc("/users/me/spk", prekeyHandler.RotateSPK).Methods(http.MethodPost)
 	authed.HandleFunc("/users/me/opks", prekeyHandler.ReplenishOPKs).Methods(http.MethodPost)
 	authed.HandleFunc("/users/me/opks/count", prekeyHandler.GetOPKCount).Methods(http.MethodGet)
-	// Pair limits allow retries while the distinct-target tracker catches probing
+	// Pair limits allow retries while the distinct target tracker catches probing
 	authed.Handle(
 		"/users/{id}/prekey-bundle",
 		rateLimiter.Middleware(prekey.KeyByRequesterAndTarget, 5, 60*time.Second)(
@@ -175,9 +175,8 @@ func main() {
 			),
 		),
 	).Methods(http.MethodGet)
-	// resolve a random miuchio_id to a prekey bundle. Per (requester, handle)
-	// 5/min plus a per requester cap on all ID lookups : the real user_id never
-	// leaves here
+	// Per (requester, handle) 5/min plus a per requester cap on all ID lookups.
+	// The resolved user_id never leaves the server
 	authed.Handle(
 		"/users/by-handle/{handle}/prekey-bundle",
 		rateLimiter.Middleware(prekey.KeyByRequesterHandleLookups, prekey.MaxHandleLookups, prekey.HandleLookupsWindow)(
@@ -204,7 +203,7 @@ func main() {
 	scoped.HandleFunc("/members/me/avatar", avatarHandler.Remove).Methods(http.MethodDelete)
 	scoped.HandleFunc("/avatars/{aid}/download-url", avatarHandler.DownloadURL).Methods(http.MethodPost)
 	scoped.HandleFunc("/members/{token}", albumHandler.RemoveAlbumMember).Methods(http.MethodDelete)
-	// Member-token prekey fetch keeps rotation targets pseudonymous
+	// Member token bundle fetch keeps rotation targets pseudonymous
 	scoped.Handle(
 		"/members/{token}/prekey-bundle",
 		rateLimiter.Middleware(prekey.KeyByRequesterAndMemberToken, 5, 60*time.Second)(
@@ -307,9 +306,8 @@ func main() {
 	}
 }
 
-// s3Adapter bridges *storage.S3Client to service.ObjectStore. The service has
-// its own PresignedUpload type so handler tests can mock without importing
-// internal/storage
+// s3Adapter lets service.ObjectStore stay free of internal/storage, so
+// handler tests can mock it
 type s3Adapter struct{ c *storage.S3Client }
 
 func (a *s3Adapter) GetPresignedUploadURLWithChecksum(ctx context.Context, key, contentType string, contentLength int64, sha256B64 string, expires time.Duration) (*service.PresignedUpload, error) {

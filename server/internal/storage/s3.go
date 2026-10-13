@@ -38,8 +38,7 @@ func NewS3Client(endpoint, presignEndpoint, accessKey, secretKey, bucket, region
 		o.UsePathStyle = usePathStyle
 	})
 
-	// Separate client for presigning if a different endpoint is provided
-	// This ensures presigned URLs carry the public IP reachable by the phone
+	// A separate presign endpoint lets URLs carry the address the phone can reach
 	presignUrl := endpoint
 	if presignEndpoint != "" {
 		presignUrl = presignEndpoint
@@ -69,8 +68,7 @@ func NewS3Client(endpoint, presignEndpoint, accessKey, secretKey, bucket, region
 	}, nil
 }
 
-// GetPresignedUploadURL generates a URL that allows a client to upload a file directly to S3/R2.
-// the URL is valid for the specified duration
+// GetPresignedUploadURL returns a PUT URL valid for expires
 func (s *S3Client) GetPresignedUploadURL(ctx context.Context, key string, contentType string, expires time.Duration) (string, error) {
 	request, err := s.presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
@@ -84,10 +82,8 @@ func (s *S3Client) GetPresignedUploadURL(ctx context.Context, key string, conten
 	return request.URL, nil
 }
 
-// PresignedUpload bundles a presigned URL with the headers the client must send
-// S3 enforces ContentLength + ChecksumSHA256 server side : if the client uploads
-// the wrong number of bytes or the wrong content, the PUT fails before our
-// ConfirmUpload ever runs
+// PresignedUpload is a URL plus the headers the client must send. S3 enforces
+// ContentLength and ChecksumSHA256, so a wrong body fails before ConfirmUpload
 type PresignedUpload struct {
 	URL            string
 	RequiredHeader map[string]string // headers the client MUST set on PUT
@@ -125,9 +121,8 @@ func (s *S3Client) GetPresignedUploadURLWithChecksum(ctx context.Context, key, c
 	}, nil
 }
 
-// HeadObject returns the size + base64 SHA256 of an uploaded object. Used by
-// ConfirmUpload to validate the client's claimed size+sha256 against what S3
-// actually stored. Returns ErrObjectNotFound if the upload never happened
+// HeadObject returns the stored size and base64 SHA256 for ConfirmUpload to
+// compare with the claimed values. ErrObjectNotFound if nothing was uploaded
 func (s *S3Client) HeadObject(ctx context.Context, key string) (size int64, sha256B64 string, err error) {
 	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket:       aws.String(s.bucket),
@@ -146,7 +141,7 @@ func (s *S3Client) HeadObject(ctx context.Context, key string) (size int64, sha2
 	return size, sha256B64, nil
 }
 
-// GetPresignedDownloadURL generates a URL that allows a client to download a file from S3/R2
+// GetPresignedDownloadURL returns a GET URL valid for expires
 func (s *S3Client) GetPresignedDownloadURL(ctx context.Context, key string, expires time.Duration) (string, error) {
 	request, err := s.presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
@@ -159,7 +154,6 @@ func (s *S3Client) GetPresignedDownloadURL(ctx context.Context, key string, expi
 	return request.URL, nil
 }
 
-// DeleteObject removes a file from S3/R2
 func (s *S3Client) DeleteObject(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
@@ -173,7 +167,6 @@ func (s *S3Client) CreateBucketIfNotExists(ctx context.Context) error {
 		Bucket: aws.String(s.bucket),
 	})
 	if err != nil {
-		// bucket doesnt exist, create it
 		_, err = s.client.CreateBucket(ctx, &s3.CreateBucketInput{
 			Bucket: aws.String(s.bucket),
 		})

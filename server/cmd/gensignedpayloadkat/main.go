@@ -1,9 +1,7 @@
-// gensignedpayloadkat is the one shot generator for
-// test_vectors/signed_payload_kat.json. Output is byte stable: re running
-// emits identical JSON. The fixture is consumed by both Go (internal/e2ee/
-// epoch/signed_payload_kat_test.go) and Dart (client/test/e2ee/
-// mk_delivery_kat_test.dart). Run it once, redirect stdout into the JSON,
-// then never modify the byte values again
+// gensignedpayloadkat generates test_vectors/signed_payload_kat.json, shared by
+// internal/e2ee/epoch/signed_payload_kat_test.go and
+// client/test/e2ee/mk_delivery_kat_test.dart. Output is byte stable. Run once
+// into the JSON, then never edit the bytes
 
 package main
 
@@ -34,8 +32,7 @@ type kat struct {
 	Vectors  []vector `json:"vectors"`
 }
 
-// signedPayloadMsg = SHA256(album_id(16) ‖ uint32_be(epoch) ‖ wrap_blob(61))
-// Same as in the §4.2 D3 wire format byte for byte
+// signedPayloadMsg = SHA256(album_id(16) ‖ u32_be(epoch) ‖ wrap_blob(61))
 func signedPayloadMsg(albumID []byte, epoch uint32, wrapBlob []byte) [32]byte {
 	buf := make([]byte, 0, 16+4+61)
 	buf = append(buf, albumID...)
@@ -64,8 +61,8 @@ func main() {
 		seed := bytes.Repeat([]byte{s.seedByte}, 32)
 		albumID := bytes.Repeat([]byte{s.albumByte}, 16)
 		wrap := bytes.Repeat([]byte{s.wrapByte}, 61)
-		// VER=0x01 prefix matches the §4.1 wrap_blob shape : the rest of the
-		// blob is synthesised, no AES-GCM is run here
+		// Only the VER=0x01 prefix is real, the rest of the blob is synthesised
+		// and no AES-GCM runs here
 		wrap[0] = 0x01
 
 		priv := ed25519.NewKeyFromSeed(seed)

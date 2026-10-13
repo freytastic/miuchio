@@ -54,11 +54,8 @@ func (r *RateLimiter) Allow(ctx context.Context, cfg LimitConfig) (bool, int, er
 	return true, current, nil
 }
 
-// ProbeDistinctMiddleware tracks distinct values per key over a window and
-// logs a warning when the distinct count exceeds threshold. Useful for
-// detecting "one user fetching many different targets" probing patterns
-// where a sliding window count alone wouldnt notice (eg 5/min per pair
-// is fine, but 50 distinct pairs/hr from one requester is sus)
+// ProbeDistinctMiddleware logs when one key touches too many distinct values in
+// a window, which catches probing a per pair rate limit cannot see
 func (r *RateLimiter) ProbeDistinctMiddleware(
 	keyFn func(*http.Request) (key, member string),
 	threshold int,

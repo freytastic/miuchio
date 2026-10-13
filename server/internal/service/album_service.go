@@ -32,7 +32,7 @@ type AlbumStore interface {
 	DeleteAlbumTx(ctx context.Context, albumID uuid.UUID, callerToken []byte) (repository.AlbumRemoval, error)
 
 	// Shares the album lock with rotation and upload reservation
-	// Rechecks caller state and the last-admin guard before revoking
+	// Rechecks caller state and the last admin guard before revoking
 	RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (role string, alreadyRevoked bool, err error)
 }
 

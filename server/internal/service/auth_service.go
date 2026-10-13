@@ -41,8 +41,7 @@ var (
 	ErrSessionInvalid = errors.New("invalid or expired session")
 )
 
-// repository interfaces to allow for mocking in tests
-// Keys are the hex email HMAC and values are code HMACs, never plaintext
+// OTPStore keys are the hex email HMAC and values are code HMACs, never plaintext
 type OTPStore interface {
 	SetOTP(ctx context.Context, key, codeMAC string, ttl time.Duration) error
 	CheckOTP(ctx context.Context, key, codeMAC string, maxAttempts int) (bool, error)
@@ -100,9 +99,8 @@ func (s *AuthService) otpMAC(emailHMAC []byte, otp string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// HashEmail computes HMAC-SHA256(emailHMACKey, lower(trim(email))). The
-// caller must pass the user supplied email exactly once : after the HMAC
-// is in hand the plaintext can be discarded
+// HashEmail computes HMAC-SHA256(emailHMACKey, lower(trim(email))), after which
+// the plaintext can be discarded
 func (s *AuthService) HashEmail(email string) []byte {
 	mac := hmac.New(sha256.New, s.emailHMACKey)
 	mac.Write([]byte(strings.ToLower(strings.TrimSpace(email))))
@@ -110,9 +108,8 @@ func (s *AuthService) HashEmail(email string) []byte {
 }
 
 func (s *AuthService) RequestOTP(ctx context.Context, email string) error {
-	// Internal failure logs intentionally drop the email + OTP : the server is
-	// the one place these two are joinable to a real identity, and a leaked
-	// log line should never become a re identification attack
+	// Logs never carry the email or code: the server is the one place they could
+	// be joined to a real identity
 	emailHMAC := s.HashEmail(email)
 	key := hex.EncodeToString(emailHMAC)
 	allowed, err := s.OTPRepo.CheckRateLimit(ctx, key, maxOTPRequests, otpRequestWindow)
@@ -247,7 +244,7 @@ func (s *AuthService) RefreshSession(ctx context.Context, refreshToken string) (
 		return "", "", time.Time{}, err
 	}
 
-	// opaque token acts as both access and refresh token
+	// The opaque token serves as both access and refresh token
 	return refreshToken, refreshToken, newExpiresAt, nil
 }
 

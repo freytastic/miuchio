@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Avatars follow the media M9 rule: storage keys are opaque and never returned
+// Avatar storage keys are opaque and never returned, as with media
 
 type AvatarHandler struct {
 	svc *service.AvatarService

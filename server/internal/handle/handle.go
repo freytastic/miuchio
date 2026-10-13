@@ -32,9 +32,8 @@ func Generate(r io.Reader) (string, error) {
 	return string(out[:]), nil
 }
 
-// Normalize folds a user entered handle to canonical form: drop dashes +
-// whitespace, upper case, fold Crockford ambiguous chars (I/L→1, O→0), then
-// validate length + alphabet
+// Normalize drops dashes and whitespace, upper cases, folds I and L to 1 and O
+// to 0, then validates length and alphabet
 func Normalize(s string) (string, error) {
 	out := make([]byte, 0, Length)
 	for _, r := range s {
@@ -66,8 +65,7 @@ func Normalize(s string) (string, error) {
 	return string(out), nil
 }
 
-// Format renders the display form XXXX-XXXX. The server stores only the
-// canonical (dash-free) value
+// Format renders XXXX-XXXX for display, storage keeps the canonical value
 func Format(canonical string) string {
 	if len(canonical) != Length {
 		return canonical

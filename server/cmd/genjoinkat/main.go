@@ -1,8 +1,8 @@
-// genjoinkat is the one shot geneator for test_vectors/join_complete_kat.json
-// Output is byte-stable : re-running emits identical JSON. Consumed by both Go
-// (internal/e2ee/invite/join_kat_test.go) and Dart (client/test/e2ee/
-// join_kat_test.dart). Run once, redirect stdout into the JSON, then never edit
-// the byte values again :  go run ./cmd/genjoinkat > test_vectors/join_complete_kat.json
+// genjoinkat generates test_vectors/join_complete_kat.json, shared by
+// internal/e2ee/invite/join_kat_test.go and client/test/e2ee/join_kat_test.dart.
+// Output is byte stable. Run once into the JSON, then never edit the bytes:
+//
+//	go run ./cmd/genjoinkat > test_vectors/join_complete_kat.json
 package main
 
 import (

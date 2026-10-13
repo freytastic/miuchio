@@ -53,9 +53,8 @@ type MemberPreview struct {
 	Avatar      *AvatarRef
 }
 
-// MemberProfile : public bytes other album members need to render the member
-// Name lives encrypted as NameCT (locked under the album's MK so only members
-// can read it). Avatar is an encrypted object whose key is sealed the same way
+// MemberProfile holds the public bytes members need to render each other. The
+// name and the avatar key are sealed under the album MK
 type MemberProfile struct {
 	IKPub  []byte     `json:"ik_pub"`
 	LKPub  []byte     `json:"lk_pub"`

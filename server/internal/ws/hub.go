@@ -8,7 +8,7 @@ import (
 )
 
 // Hub manages all active WebSocket connections, keyed by user ID
-// One user may hold multiple connections (future multi-device: tolerated now)
+// One user may hold several connections
 type Hub struct {
 	mu    sync.RWMutex
 	conns map[uuid.UUID][]*Conn
@@ -42,7 +42,7 @@ func (h *Hub) Unregister(userID uuid.UUID, c *Conn) {
 }
 
 // Broadcast delivers event to every active connection for the given users
-// Slow clients (full outbox) are skipped , the event is dropped for them
+// Slow clients with a full outbox miss the event
 func (h *Hub) Broadcast(userIDs []uuid.UUID, event Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -53,10 +53,8 @@ func (h *Hub) Broadcast(userIDs []uuid.UUID, event Event) {
 	}
 }
 
-// EmitToUsers builds the validated event and broadcasts it. Live only ; offline
-// recipients catch up via pull on next reconnect (epoch_processor.catchUpAll).
-// Replaces the deleted notifications package which used to also persist a row
-// per emit ; that row was an indexed social graph audit log nothing read
+// EmitToUsers is live only, offline recipients catch up by pulling on their next
+// reconnect
 func (h *Hub) EmitToUsers(_ context.Context, userIDs []uuid.UUID, typ string, payload any) error {
 	ev, err := NewEvent(typ, payload)
 	if err != nil {
