@@ -50,7 +50,7 @@ CardCopy cardCopyFor(ActivityEvent e, ActivityNames names) {
         title:
             "${names.memberName(e.albumId, e.peerToken)}'s security code changed",
         where: where,
-        // Account binding rules out a same-membership phone change, so this is
+        // Account binding rules out a same membership phone change, so this is
         // never "probably a new phone"
         body: 'This can mean someone is pretending to be '
             '${names.memberName(e.albumId, e.peerToken)}. Check the code with '

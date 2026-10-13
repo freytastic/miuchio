@@ -61,7 +61,6 @@ class AlbumStats {
     return '$photos · ${formatBytes(totalBytes)} · $tail';
   }
 
-  // byte thresholds
   static String formatBytes(int b) {
     if (b >= 1000000000) return '${(b / 1000000000).toStringAsFixed(1)} GB';
     if (b >= 10000000) return '${(b / 1000000).round()} MB';

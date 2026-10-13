@@ -159,7 +159,7 @@ class WarmGlow extends StatelessWidget {
 const double _kGlowSigma = 18;
 
 final RadialGradient _kGlowGradient = RadialGradient(
-  // Expand the short-side radius across the wide pill
+  // Expand the short side radius across the wide pill
   radius: 2.4,
   colors: [
     Warm.orbPeach.withValues(alpha: 0.55),

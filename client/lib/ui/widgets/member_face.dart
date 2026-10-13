@@ -12,7 +12,7 @@ import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 
 // A member's face in one album: their decrypted avatar once it has loaded,
-// otherwise their stable colour and initial (which is totally bleh :/)
+// otherwise their stable colour and initial
 class MemberFace extends StatelessWidget {
   // Null draws the initial only, for places with no album context
   final String? albumId;

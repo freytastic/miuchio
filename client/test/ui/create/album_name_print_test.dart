@@ -17,15 +17,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('the print settles upright rather than mid-animation',
-      (tester) async {
-    await pump(tester);
-
-    final t =
-        tester.widget<Transform>(find.byKey(AlbumNamePrintState.flightKey));
-    expect(t.transform.getTranslation().y, closeTo(0, 0.01));
-  });
-
   testWidgets('the keyboard does not open over the entry animation',
       (tester) async {
     await pump(tester);
@@ -47,6 +38,13 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+
+    final resting = tester
+        .widget<Transform>(find.byKey(AlbumNamePrintState.flightKey))
+        .transform
+        .getTranslation()
+        .y;
+    expect(resting, closeTo(0, 0.01), reason: 'the entry settles upright');
 
     final flight = key.currentState!.flyOut();
     await tester.pump();

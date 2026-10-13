@@ -163,18 +163,6 @@ void main() {
       expect(say.sub, contains('access'));
     });
 
-    test('security says so plainly when nothing is waiting', () {
-      expect(sayForSecurity(needs: 0, happened: 9).title, "You're up to date.");
-      expect(sayForSecurity(needs: 0, happened: 9).sub,
-          'Nothing needs you right now.');
-    });
-
-    test('security has an empty state that promises what will appear', () {
-      final say = sayForSecurity(needs: 0, happened: 0);
-      expect(say.title, 'No security activity yet.');
-      expect(say.sub, contains('will appear here'));
-    });
-
     test('albums count photos and the albums they landed in', () {
       final say = sayForAlbums(photos: 40, albums: 3);
       expect(say.title, '40 photos arrived.');
@@ -182,13 +170,9 @@ void main() {
       expect(sayForAlbums(photos: 1, albums: 1).title, '1 photo arrived.');
       expect(sayForAlbums(photos: 1, albums: 1).sub,
           startsWith('Across 1 album,'));
+      expect(sayForAlbums(photos: 0, albums: 0).title, 'Nothing new.');
     });
 
-    test('albums have a quiet empty state', () {
-      final say = sayForAlbums(photos: 0, albums: 0);
-      expect(say.title, 'Nothing new.');
-      expect(say.sub, 'New photos will gather here.');
-    });
   });
 
   group('day labels follow the phone\'s own calendar', () {

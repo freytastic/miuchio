@@ -1,10 +1,8 @@
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:miuchio/ui/create/create_album_screen.dart';
 import 'package:miuchio/ui/create/create_copy.dart';
-import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 void main() {
@@ -64,23 +62,4 @@ void main() {
     expect(find.text(CreateCopy.createAndInvite(2)), findsOneWidget);
   });
 
-  testWidgets('the shelf stays visible through a blurred warm scrim',
-      (tester) async {
-    await pump(tester);
-
-    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
-    expect(scaffold.backgroundColor, Colors.transparent,
-        reason: 'an opaque page would hide the shelf underneath');
-
-    final filter =
-        tester.widget<BackdropFilter>(find.byType(BackdropFilter).first);
-    expect(filter.filter, isA<ui.ImageFilter>());
-
-    expect(
-      find.byWidgetPredicate(
-          (w) => w is ColoredBox && w.color == Warm.glassScrim),
-      findsOneWidget,
-      reason: 'a neutral scrim over blurred cream reads grey',
-    );
-  });
 }

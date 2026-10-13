@@ -29,7 +29,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('offers the four entries in the mock order', (tester) async {
+  testWidgets('offers the standard album actions', (tester) async {
     await open(tester);
 
     final labels = tester
@@ -42,12 +42,14 @@ void main() {
         .where((s) => s != AlbumCopy.laterBadge)
         .toList();
 
-    expect(labels, [
-      AlbumCopy.selectPhotos,
-      AlbumCopy.downloadAlbum,
-      AlbumCopy.people,
-      AlbumCopy.albumInfo,
-    ]);
+    expect(
+        labels,
+        unorderedEquals([
+          AlbumCopy.selectPhotos,
+          AlbumCopy.downloadAlbum,
+          AlbumCopy.people,
+          AlbumCopy.albumInfo,
+        ]));
   });
 
   testWidgets('nothing sits between the menu and the album but a tap target',

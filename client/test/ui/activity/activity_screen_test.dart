@@ -9,7 +9,7 @@ import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/activity/activity_copy.dart';
 import 'package:miuchio/ui/activity/activity_screen.dart';
 
-// Widget tests use an in-memory feed because sqflite needs real file I/O
+// Widget tests use an in memory feed because sqflite needs real file I/O
 class FakeFeed implements ActivityFeed {
   final List<StoredActivity> rows = [];
 
