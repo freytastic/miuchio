@@ -15,19 +15,15 @@ type Config struct {
 	EmailFrom    string
 	DevMode      bool // enables /test/* endpoints: never true in production
 
-	// HMAC key for users.email_hmac. Stable across the deployment lifetime :
-	// rotating it orphans every existing account, so treat as a primary
-	// cryptographic secret. Required in non dev mode (panic at Load) : dev
-	// derives a deterministic placeholder so local stacks just work
+	// HMAC key for users.email_hmac. Rotating it orphans every account, so treat
+	// it as a primary secret. Required outside dev, dev derives a deterministic
+	// placeholder when unset
 	EmailHMACKey []byte
 
-	// Master key for the userlink package : derives one HMAC subkey for
-	// album_member_identities.user_handle and one AEAD subkey for user_id_enc
-	// Same lifetime semantics as EmailHMACKey : rotating it bricks every
-	// existing membership row
+	// Master key for userlink, which derives the user_handle HMAC subkey and
+	// the user_id_enc AEAD subkey. Rotating it bricks every membership row
 	UserLinkKey []byte
 
-	// S3 / R2 configs
 	S3Endpoint       string
 	S3PublicEndpoint string // optional: used for presigning if S3Endpoint is internal (e.g. http://minio:9000)
 	S3AccessKey      string
@@ -62,9 +58,8 @@ func loadEmailHMACKey(devMode bool) []byte {
 	return loadKeyOrDevPlaceholder("MIUCHIO_EMAIL_HMAC_KEY", "miuchio-dev-email-hmac-placeholder-do-not-deploy", devMode)
 }
 
-// loadKeyOrDevPlaceholder reads a base64 32B+ secret from env. In dev mode a
-// missing env var falls through to a deterministic SHA256 of devSeed so local
-// stacks just work : never deploy to a real environment with APP_ENV=dev
+// loadKeyOrDevPlaceholder reads a base64 secret of 32B or more. In dev mode a
+// missing value falls back to SHA256(devSeed), never deploy with APP_ENV=dev
 func loadKeyOrDevPlaceholder(envKey, devSeed string, devMode bool) []byte {
 	raw := getEnv(envKey, "")
 	if raw != "" {

@@ -75,14 +75,13 @@ func NewMediaService(repo MediaStore, epochs EpochLookup, s3 ObjectStore, notifi
 	return &MediaService{repo: repo, epochs: epochs, s3: s3, notifier: notifier, lookup: lookup}
 }
 
-// Wrap byte budgets pinned by the §1.1 wrap format (VER=0x01) and §4.1 wrap
-// envelope. Keep these in lockstep with the client constants
+// Wrap sizes for the VER=0x01 wrap. Keep in step with the client constants
 const (
 	wrapNonceLen = 12 // AES-GCM 96 bit nonce
 	wrapTagCTLen = 48 // AES-GCM tag (16) + ciphertext of 32 byte DEK
 	sha256Len    = 32
-	// plan targets ~20 KB thumbs. Hard ceiling at 500 KB rejects a
-	// client that tries to abuse the thumb channel as a sneaky second blob
+	// Thumbs target about 20 KB, the ceiling stops the thumb being abused as a
+	// second blob
 	maxThumbSize = 500 * 1024
 )
 
@@ -481,7 +480,7 @@ func (s *MediaService) AbortPendingUpload(ctx context.Context, albumID, mediaID 
 const MaxBlobBytes int64 = 64 * 1024 * 1024
 
 const (
-	// Two hours avoids early cleanup of hour-quantized timestamps
+	// Two hours avoids early cleanup of hour quantized timestamps
 	PendingUploadStaleAfter = 2 * time.Hour
 	PendingCleanupInterval  = 10 * time.Minute
 	PendingCleanupBatchSize = 100

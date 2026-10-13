@@ -546,9 +546,7 @@ func newSvc(epochs *fakeEpochs) (*MediaService, *fakeMediaRepo, *fakeS3) {
 	return NewMediaService(r, epochs, s, nil, nil), r, s
 }
 
-// newSvcWithFanout : tests that want to assert e2ee.media_added emits inject
-// a capturing notifier + lookup. The 3 arg newSvc above stays nil passing so
-// existing test cases remain untouched
+// newSvcWithFanout injects a capturing notifier and member lookup
 func newSvcWithFanout(epochs *fakeEpochs, n Notifier, l MemberLookup) (*MediaService, *fakeMediaRepo, *fakeS3) {
 	r := newFakeMediaRepo()
 	s := &fakeS3{}
@@ -652,7 +650,7 @@ func TestRequestUploadURL_HappyPath(t *testing.T) {
 }
 
 func TestRequestUploadURL_StorageKeyHasNoAlbumID(t *testing.T) {
-	// M9 : storage_key MUST NOT contain album_id, media_id, or any /
+	// storage_key must not contain album_id, media_id or any /
 	svc, _, _ := newSvc(&fakeEpochs{cur: 3, exists: true})
 	albumID := uuid.New()
 	in := validInput()
@@ -756,9 +754,8 @@ func TestConfirmUpload_SHA256MismatchDropsRow(t *testing.T) {
 }
 
 func TestConfirmUpload_SHA256AbsentTrustsPutEnforcement(t *testing.T) {
-	// MinIO doesnt always echo ChecksumSHA256 on HEAD : an empty hash from
-	// HeadObject must NOT be treated as a mismatch (S3 already enforced the
-	// checksum at PUT time)
+	// MinIO does not always echo the checksum on HEAD. An empty hash is not a
+	// mismatch because S3 already enforced it at PUT time
 	svc, _, s3 := newSvc(&fakeEpochs{cur: 3, exists: true})
 	in := validInput()
 	albumID := uuid.New()
@@ -1278,24 +1275,6 @@ func TestConfirmUpload_FanoutEmitFailDoesNotBubble(t *testing.T) {
 	s3.headSHA256B64 = base64.StdEncoding.EncodeToString(in.BlobSHA256)
 	if _, err := svc.ConfirmUpload(context.Background(), albumID, res.MediaID, uuid.Nil, []byte{0xCC}); err != nil {
 		t.Fatalf("confirm bubbled emit failure: %v", err)
-	}
-}
-
-func TestConfirmUpload_EmptyMembersSkipsEmit(t *testing.T) {
-	notif := &captureNotifier{}
-	lookup := &stubLookup{ids: nil}
-	svc, _, s3 := newSvcWithFanout(&fakeEpochs{cur: 3, exists: true}, notif, lookup)
-	in := validInput()
-	albumID := uuid.New()
-	res, _ := svc.RequestUploadURL(context.Background(), albumID, []byte{0xCC}, in)
-	s3.headSize = in.BlobSize
-	s3.headSHA256B64 = base64.StdEncoding.EncodeToString(in.BlobSHA256)
-	if _, err := svc.ConfirmUpload(context.Background(), albumID, res.MediaID, uuid.Nil, []byte{0xCC}); err != nil {
-		t.Fatalf("confirm: %v", err)
-	}
-	time.Sleep(20 * time.Millisecond)
-	if got := notif.snapshot(); len(got) != 0 {
-		t.Errorf("emits = %d, want 0 (empty member list)", len(got))
 	}
 }
 

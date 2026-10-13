@@ -95,9 +95,7 @@ func TestOpen_RejectsWrongMemberToken(t *testing.T) {
 }
 
 func TestKeySeparation_HandleAndEncDiffer(t *testing.T) {
-	// Two hashers from the same master must produce identical outputs : two
-	// different masters must produce distinct outputs. Implicitly proves the
-	// key derivation is reproducible
+	// The same master must reproduce both subkeys, a different master must not
 	keyA := bytes.Repeat([]byte{0x01}, 32)
 	keyB := bytes.Repeat([]byte{0x02}, 32)
 	hA, _ := New(keyA)

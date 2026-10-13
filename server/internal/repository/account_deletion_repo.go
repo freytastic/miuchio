@@ -65,7 +65,7 @@ type AccountDeletionRepository struct {
 
 func NewAccountDeletionRepository(db *pgxpool.Pool, linker *userlink.Hasher) *AccountDeletionRepository {
 	if linker == nil {
-		panic("AccountDeletionRepository: linker is required (M-bridge)")
+		panic("AccountDeletionRepository: linker is required")
 	}
 	return &AccountDeletionRepository{DB: db, linker: linker}
 }
@@ -243,7 +243,7 @@ func (r *AccountDeletionRepository) ClaimDue(ctx context.Context) (uuid.UUID, bo
 	return id, true, nil
 }
 
-// Re-derives the outcome under the album lock so retries converge safely
+// Derives the outcome again under the album lock so retries converge safely
 func (r *AccountDeletionRepository) RemoveMembership(ctx context.Context, userID, albumID uuid.UUID) (MembershipRemoval, error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {

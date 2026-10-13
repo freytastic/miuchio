@@ -23,10 +23,10 @@ type Media struct {
 	CreatedAt     time.Time `json:"created_at"`
 	// Distinguishes retries that reuse object keys
 	ReservationID uuid.UUID `json:"-"`
-	// Confirm generation drives ordering and exact client-side attribution
+	// Confirm generation drives ordering and exact client side attribution
 	AlbumSeq *int64 `json:"-"`
-	// per file thumb has its own DEK wrapped under same MK as the file
-	// DEK. All four nullable : videos + pre §5.3 rows wont have thumbs
+	// The thumb has its own DEK wrapped under the same MK. All four are null for
+	// videos and older rows
 	ThumbWrapNonce []byte `json:"thumb_wrap_nonce,omitempty"`
 	ThumbWrapTagCT []byte `json:"thumb_wrap_tag_ct,omitempty"`
 	ThumbSize      *int64 `json:"thumb_size,omitempty"`

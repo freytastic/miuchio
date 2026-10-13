@@ -10,9 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// removeMemberStore is a hand mock of AlbumStore focused on the RemoveMember
-// authz surface. The atomic revoke (target read + admin count + revoke under
-// the album lock) is one repo call : RevokeMemberTx
+// removeMemberStore mocks the RemoveMember authorization surface. The revoke
+// itself is one locked repo call, RevokeMemberTx
 type removeMemberStore struct {
 	lookupFn   func(ctx context.Context, userID, albumID uuid.UUID) ([]byte, string, error)
 	revokeTxFn func(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (role string, alreadyRevoked bool, err error)
@@ -140,9 +139,8 @@ func TestCoAdmin_HasNoAdminAuthority(t *testing.T) {
 	}
 }
 
-// authz is evaluated BEFORE the already revoked no op. A non admin
-// removing an already revoked member must get unauthorized, not a 204 : the
-// revoke tx must not even be reached
+// Authorization runs before the already revoked no op, so a non admin gets
+// unauthorized instead of a 204 and the revoke transaction is never reached
 func TestRemoveMember_PlainMemberCannotRemoveAlreadyRevoked(t *testing.T) {
 	store := &removeMemberStore{
 		lookupFn: func(context.Context, uuid.UUID, uuid.UUID) ([]byte, string, error) {
@@ -292,9 +290,8 @@ func TestDeleteAlbum_AdminRemovedMidFlight(t *testing.T) {
 	}
 }
 
-// A caller who passes the (unlocked) role auth but is revoked by a concurrent
-// removal before the locked commit must be rejected : the tx surfaces
-// ErrCallerRevoked, which becomes E_MEMBER_REVOKED at the handler
+// A concurrent removal can revoke the caller after the unlocked role check. The
+// transaction reports ErrCallerRevoked, which becomes E_MEMBER_REVOKED
 func TestRemoveMember_CallerRevokedMidFlight(t *testing.T) {
 	store := &removeMemberStore{
 		lookupFn: func(context.Context, uuid.UUID, uuid.UUID) ([]byte, string, error) {

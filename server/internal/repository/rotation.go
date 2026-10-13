@@ -1,6 +1,6 @@
 package repository
 
-// Combines durable rotation debt with current-wrap drift for every gate
+// Combines durable rotation debt with current wrap drift for every gate.
 // album must be a trusted SQL reference, never user input
 func RotationRequiredExpr(album string) string {
 	cur := `(SELECT MAX(epoch) FROM album_epochs WHERE album_id = ` + album + `)`

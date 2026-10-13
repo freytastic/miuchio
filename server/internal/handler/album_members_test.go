@@ -129,7 +129,7 @@ func TestListAlbumMembers_MemberGets200WithList(t *testing.T) {
 	}
 }
 
-// TestListAlbumMembers_ProfileRoundTripsLKPub pins the §4.2 wire shape: ik_pub
+// TestListAlbumMembers_ProfileRoundTripsLKPub pins the roster wire shape: ik_pub
 // and lk_pub flow through the handler as base64 of the raw 32-byte keys
 func TestListAlbumMembers_ProfileRoundTripsLKPub(t *testing.T) {
 	albumID := uuid.New()

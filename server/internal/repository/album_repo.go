@@ -27,7 +27,7 @@ type AlbumRepository struct {
 
 func NewAlbumRepository(db *pgxpool.Pool, linker *userlink.Hasher) *AlbumRepository {
 	if linker == nil {
-		panic("AlbumRepository: linker is required (M-bridge)")
+		panic("AlbumRepository: linker is required")
 	}
 	return &AlbumRepository{DB: db, linker: linker}
 }
@@ -40,9 +40,8 @@ func newMemberToken() ([]byte, error) {
 	return b, nil
 }
 
-// CreateWithAdmin creates an album, mints a member_token for the creator,
-// inserts the identity bridge row, and adds the creator to album_members
-// with role='admin' , all in one transaction
+// CreateWithAdmin creates the album, the creator's member_token, the identity
+// bridge row and the admin membership in one transaction
 func (r *AlbumRepository) CreateWithAdmin(ctx context.Context, nameCT []byte, creatorUserID uuid.UUID) (*model.Album, []byte, error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
@@ -269,9 +268,8 @@ func (r *AlbumRepository) memberPreviewsFor(ctx context.Context, handle []byte, 
 	return out, rows.Err()
 }
 
-// LookupMember resolves (userID, albumID) → (memberToken, role)
-// Returns ErrMemberNotFound if no row, ErrMemberRevoked if revoked_at is set
-// Backs middleware.RequireMember per L6
+// LookupMember backs middleware.RequireMember. Returns ErrMemberNotFound or
+// ErrMemberRevoked
 func (r *AlbumRepository) LookupMember(ctx context.Context, userID uuid.UUID, albumID uuid.UUID) ([]byte, string, error) {
 	var token []byte
 	var role string
@@ -334,7 +332,7 @@ func (r *AlbumRepository) AddMember(ctx context.Context, albumID, userID uuid.UU
 }
 
 func (r *AlbumRepository) ListMembers(ctx context.Context, albumID uuid.UUID) ([]model.MemberWithProfile, error) {
-	// Open sealed user links before the bulk public-key lookup
+	// Open sealed user links before the bulk public key lookup
 	rows, err := r.DB.Query(ctx, `
 		SELECT
 			am.member_token,
@@ -379,7 +377,7 @@ func (r *AlbumRepository) ListMembers(ctx context.Context, albumID uuid.UUID) ([
 		m.Profile.Avatar = av.ref()
 		userID, err := r.linker.Open(sealed, m.MemberToken)
 		if err != nil {
-			// Skip invalid user-link seals instead of failing the full roster
+			// Skip invalid user link seals instead of failing the full roster
 			continue
 		}
 		pendings = append(pendings, pending{idx: len(members), userID: userID})
@@ -428,7 +426,7 @@ func (r *AlbumRepository) UpdateMemberNameCT(ctx context.Context, albumID uuid.U
 }
 
 // Serializes revocation with rotation and upload reservation on the album lock
-// Caller state and the last-admin guard are rechecked inside the transaction
+// Caller state and the last admin guard are rechecked inside the transaction
 func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (string, bool, error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
@@ -476,7 +474,7 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 		return "", false, err
 	}
 	if revoked {
-		// idempotent : nothing to do, but commit to release the lock cleanly
+		// Already revoked, commit to release the lock
 		if err := tx.Commit(ctx); err != nil {
 			return "", false, err
 		}

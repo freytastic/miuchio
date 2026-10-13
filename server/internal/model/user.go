@@ -6,9 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// User : the plaintext email is intentionally absent (M8 : row keyed by
-// EmailHMAC). Display name + avatar also absent (M7 : names live encrypted
-// per album in album_members.name_ct ; avatars come back in Phase 5)
+// User has no plaintext email (rows are keyed by EmailHMAC) and no name or
+// avatar, which live encrypted per album
 type User struct {
 	ID        uuid.UUID `json:"id" db:"id"`
 	EmailHMAC []byte    `json:"-" db:"email_hmac"`

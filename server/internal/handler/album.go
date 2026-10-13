@@ -308,7 +308,7 @@ func (h *AlbumHandler) ListAlbumMembers(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// Stores the member name as opaque client-encrypted bytes
+// Stores the member name as opaque client encrypted bytes
 func (h *AlbumHandler) UpdateMyProfileCT(w http.ResponseWriter, r *http.Request) {
 	albumID, err := uuid.Parse(mux.Vars(r)["id"])
 	if err != nil {
@@ -339,8 +339,8 @@ func (h *AlbumHandler) UpdateMyProfileCT(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Notifies the removed member directly because active-member fanout excludes it
-// Revocation commits before notification
+// Notifies the removed member directly because the active member fanout
+// excludes it. Revocation commits before notification
 func (h *AlbumHandler) RemoveAlbumMember(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.MustGetUserID(w, r)
 	if !ok {

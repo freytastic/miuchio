@@ -42,7 +42,7 @@ func (h *WSHandler) IssueTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeWS handles GET /api/v1/ws?ticket=<value>
-// Authenticates via the one-time ticket , no bearer auth in URL
+// Authenticates with the one time ticket, never a bearer token in the URL
 func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	ticket := r.URL.Query().Get("ticket")
 	if ticket == "" {

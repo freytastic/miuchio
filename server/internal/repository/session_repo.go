@@ -65,7 +65,7 @@ func (r *SessionRepository) DeleteByToken(ctx context.Context, token string) err
 
 // ExtendByToken keeps refresh idempotent by preserving the token
 func (r *SessionRepository) ExtendByToken(ctx context.Context, token string, expiresAt time.Time) error {
-	// Match GetByToken's live-user constraint and reject concurrent deletion
+	// Match GetByToken's live user constraint and reject concurrent deletion
 	tag, err := r.DB.Exec(ctx,
 		`UPDATE sessions s SET expires_at = $2
 		 FROM users u

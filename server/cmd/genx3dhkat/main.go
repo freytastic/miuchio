@@ -1,7 +1,6 @@
-// genx3dhkat is a one shot generator for the x3dh_4dh / x3dh_3dh / safety_numbers
-// KAT entries in test_vectors/crypto_kat.json. Run it once, paste the output
-// into the JSON, then never modify the byte values again : the KAT is the
-// byte level contract the Dart side asserts against
+// genx3dhkat generates the x3dh_4dh, x3dh_3dh and safety_numbers entries in
+// test_vectors/crypto_kat.json. Paste the output in once, then never edit the
+// bytes: the Dart side asserts against them
 
 package main
 
@@ -155,7 +154,7 @@ func safetyNumberDigits(ikA, ikB, album []byte) string {
 	pre := concat(lo, hi, album)
 	d := sha256.Sum256(pre)
 
-	// BE → big.Int, format as 78-char zero-padded decimal, slice first 30
+	// Zero padded to 78 digits, then the first 30
 	n := new(big.Int).SetBytes(d[:])
 	s := n.String()
 	if len(s) < 78 {

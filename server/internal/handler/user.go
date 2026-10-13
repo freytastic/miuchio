@@ -27,12 +27,9 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, r, apierr.NotFound("user not found").WithCause(err))
 		return
 	}
-	// E2EE columns are not surfaced here : clients fetch peer bundles via
-	// GET /users/{id}/prekey-bundle and track their own publish state locally.
-	// Email + name + avatar intentionally absent : server stores email_hmac
-	// (M8), display name lives encrypted per album in album_members.name_ct
-	// (M7), avatar comes back in Phase 5. Client persists own email + name
-	// miuchio_id IS surfaced : it's the user's own shareable discovery handle (§6.1)
+	// Email, name and avatar are absent on purpose: the server keeps only an email
+	// HMAC, and names and avatars live encrypted per album. miuchio_id is the
+	// user's own shareable handle
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"id":         u.ID,

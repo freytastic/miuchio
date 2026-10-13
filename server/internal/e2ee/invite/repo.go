@@ -32,7 +32,7 @@ type Repo struct {
 
 func NewRepo(db *pgxpool.Pool, linker *userlink.Hasher, users *repository.UserRepository) *Repo {
 	if linker == nil || users == nil {
-		panic("invite.NewRepo: linker and users are required (M-bridge + miuchio_id lookup)")
+		panic("invite.NewRepo: linker and users are required")
 	}
 	return &Repo{db: db, linker: linker, users: users}
 }

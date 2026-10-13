@@ -1,8 +1,6 @@
-// genspkrotatekat is the one shot generator for test_vectors/spk_rotate_kat.json
-// Output is byte- stable : re running emits identical JSON. The fixture is
-// consumed by both Go (internal/e2ee/prekey/kat_test.go) and Dart
-// (client/test/e2ee/kat_test.dart). Run it once, redirect stdout into the
-// JSON, then never modify the byte values again
+// genspkrotatekat generates test_vectors/spk_rotate_kat.json, shared by
+// internal/e2ee/prekey/kat_test.go and client/test/e2ee/kat_test.dart. Output
+// is byte stable. Run once into the JSON, then never edit the bytes
 
 package main
 
@@ -39,9 +37,8 @@ func bytesPattern(start byte, n int) []byte {
 	return out
 }
 
-// rotateMsg = ASCII("rotate-spk-v1") ‖ spk_pub ‖ uint64_be(spk_ts
-// Mirrors prekey.RotationMsg byte-for-byte : duplicated here so the generator
-// has zero non stdlib runtime deps beyond internal/crypto's salt constant
+// rotateMsg = "rotate-spk-v1" ‖ spk_pub ‖ u64_be(spk_ts). Duplicates
+// prekey.RotationMsg so the generator depends only on internal/crypto
 func rotateMsg(spkPub []byte, spkTs int64) []byte {
 	out := make([]byte, 0, len(crypto.SaltSpkRotate)+32+8)
 	out = append(out, crypto.SaltSpkRotate...)

@@ -1,22 +1,16 @@
-// Package userlink severs the static link between user_id and member_token
-// in album_member_identities. Two derived secrets cover the two access patterns
+// Package userlink keeps album_member_identities from linking user_id to
+// member_token in the clear. Two subkeys, both HKDF derived from
+// MIUCHIO_USER_LINK_KEY, cover the two access patterns:
 
-//   - Hash(user_id) -> deterministic 32B handle. Indexed in amid.user_handle :
-//     used for forward queries ("find all albums for this user", "is this user
-//     a member of this album"). HMAC-SHA256, one way : reversing it is brute
-//     forcing every UUID
+//	Hash(user_id)              32B HMAC handle, indexed, for "which albums is
+//	                           this user in"
+//	Seal(user_id, token)       32B AES-GCM blob with a nonce derived from the
+//	                           random token, for "which user owns this token"
 
-//   - Seal(user_id, member_token) -> reversible 32B blob. Stored in
-//     amid.user_id_enc : used for reverse queries ("which user_id owns this
-//     member_token" , needed by WS fanout + epoch admin IK lookup). AES-256-GCM
-//     with a deterministic nonce derived from member_token (which is itself
-//     32B CSPRNG, so each row's nonce is unique by construction)
-
-// Both subkeys are HKDF-derived from MIUCHIO_USER_LINK_KEY so one env var covers
-// both purposes without key reuse. A leaked DB snapshot is useless without the
-// live key (HMAC reversal infeasible : AEAD undecryptable). A live compromised
-// server still has the key , this is "encryption at rest" for the bridge, not
-// zero knowledge
+// Without the live key a leaked database does not reveal which user owns a
+// token, though the deterministic handles still correlate one user's rows. A
+// compromised live server has the key, so this is encryption at rest, not zero
+// knowledge
 package userlink
 
 import (
@@ -54,9 +48,8 @@ type Hasher struct {
 	gcm       cipher.AEAD
 }
 
-// New constructs a Hasher from the master key. Panics on a short key : this
-// runs once at startup so a panic surfaces immediately. Returns nil if HKDF
-// or AES setup fails (should never happen with a 32B+ key)
+// New returns an error for a master key under 32 bytes or a failed HKDF or AES
+// setup
 func New(masterKey []byte) (*Hasher, error) {
 	if len(masterKey) < 32 {
 		return nil, errors.New("userlink: master key must be >= 32 bytes")

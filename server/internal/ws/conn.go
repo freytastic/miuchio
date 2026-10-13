@@ -35,7 +35,7 @@ func NewConn(userID uuid.UUID, ws *websocket.Conn, hub *Hub) *Conn {
 	}
 }
 
-// send queues an event without blocking. the event is dropped if the outbox is full
+// send queues an event without blocking and drops it if the outbox is full
 func (c *Conn) send(e Event) {
 	select {
 	case c.outbox <- e:
