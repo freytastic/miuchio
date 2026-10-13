@@ -127,9 +127,8 @@ void main() {
     expect(find.text('They match'), findsNothing);
   });
 
-  // The old accept button moved trust without comparing digits. Now that
-  // verification also grants signer authority, that shortcut would bypass the
-  // out-of-band check and still serves no valid beta workflow
+  // Verification grants signer authority, so accepting without comparing
+  // would bypass the out of band check
   testWidgets('a changed key cannot be accepted without comparing digits',
       (tester) async {
     await _pump(tester, state: TrustState.changed);

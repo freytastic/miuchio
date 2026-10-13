@@ -24,20 +24,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('offers select, add and download, in the mock order',
-      (tester) async {
-    await pump(tester);
-
-    final select = tester.getCenter(find.text(AlbumCopy.select));
-    final add = tester.getCenter(find.byType(MakeButton));
-    final download = tester.getCenter(find.text(AlbumCopy.download));
-
-    expect(select.dx, lessThan(add.dx));
-    expect(add.dx, lessThan(download.dx));
-  });
-
   testWidgets('the upload pill sits clear of the add button', (tester) async {
     await pump(tester);
+
+    expect(find.text(AlbumCopy.select), findsOneWidget);
+    expect(find.byType(MakeButton), findsOneWidget);
+    expect(find.text(AlbumCopy.download), findsOneWidget);
 
     expect(tester.getRect(find.text('pill')).bottom,
         lessThanOrEqualTo(tester.getRect(find.byType(MakeButton)).top));

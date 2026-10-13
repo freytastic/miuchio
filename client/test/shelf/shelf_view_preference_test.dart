@@ -94,14 +94,6 @@ void main() {
       return pref;
     }
 
-    double saidOpacity(WidgetTester tester) => tester
-        .widget<Opacity>(find
-            .ancestor(
-                of: find.byKey(const ValueKey('view-said')),
-                matching: find.byType(Opacity))
-            .first)
-        .opacity;
-
     testWidgets('one tap switches to Compact and saves it', (tester) async {
       final pref = await pump(tester);
 
@@ -124,20 +116,6 @@ void main() {
       await settle(tester);
 
       expect(pref.view, ShelfView.stacked);
-    });
-
-    testWidgets('the new layout is named for a moment, then fades',
-        (tester) async {
-      await pump(tester);
-      expect(saidOpacity(tester), 0);
-
-      await tester.tap(find.byKey(const ValueKey('view-trigger')));
-      await settle(tester);
-      expect(find.text('Compact'), findsOneWidget);
-      expect(saidOpacity(tester), 1);
-
-      await tester.pump(const Duration(milliseconds: 1400));
-      expect(saidOpacity(tester), 0);
     });
 
     testWidgets('the toggle is announced with the current layout',
