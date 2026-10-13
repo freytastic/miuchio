@@ -21,9 +21,8 @@ func (s *stubUserStore) GetByID(ctx context.Context, id uuid.UUID) (*model.User,
 	return s.getByIDFn(ctx, id)
 }
 
-// TestGetMe_IncludesMiuchioID locks the §6.1 discovery handle into the /me
-// response : the profile screen reads it from here, so a dropped field hides
-// the user's shareable miuchio ID
+// TestGetMe_IncludesMiuchioID keeps the shareable handle in /me, the profile
+// screen reads it from there
 func TestGetMe_IncludesMiuchioID(t *testing.T) {
 	id := uuid.New()
 	store := &stubUserStore{
