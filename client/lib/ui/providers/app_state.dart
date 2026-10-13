@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/data/api/album_api.dart';
-import 'package:miuchio/data/api/realtime_service.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/data/models/album_summary.dart';
 import 'package:miuchio/data/models/avatar_ref.dart';
@@ -12,8 +11,7 @@ import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
 import 'package:miuchio/e2ee/rotation_recovery.dart';
 
-// Decrypts an album's name_ct to a display string. Injected at boot (main.dart)
-// so AppState itself stays free of crypto/keystore deps
+// Injected at boot so AppState stays free of crypto and keystore code
 typedef AlbumNameResolver = Future<String> Function(
     String albumId, String? nameCt);
 
@@ -22,7 +20,6 @@ typedef MemberNameResolver = Future<String?> Function(
 
 class AppState extends ChangeNotifier {
   final Duration summaryDebounce;
-  StreamSubscription<RealtimeEvent>? _realtimeSub;
 
   bool _hasUnreadNotifications = false;
 
@@ -55,8 +52,7 @@ class AppState extends ChangeNotifier {
     return a.copyWith(nameCt: local); // incoming is an older placeholder
   }
 
-  // Wipe the in RAM plaintext title cache (logout : the persistent NameCache is
-  // cleared separately)
+  // RAM only, the persistent NameCache is cleared separately
   void clearDisplayNameCaches() {
     _albumNames.clear();
     _localNameCt.clear();
@@ -64,10 +60,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Full session reset on logout : doesnt touch device bound E2EE key material
+  // Session reset on logout, device bound key material is untouched
   void reset() {
-    _realtimeSub?.cancel();
-    _realtimeSub = null;
     _albums = [];
     _albumNames.clear();
     _localNameCt.clear();
@@ -78,7 +72,6 @@ class AppState extends ChangeNotifier {
     _selfTokens.clear();
     _lastRemovedAlbumId = null;
     _hasUnreadNotifications = false;
-    // realtime one-shot signals
     _lastMediaAddedAlbumId = null;
     _lastMediaAddedMediaId = null;
     _lastMemberChangedAlbumId = null;
@@ -86,7 +79,7 @@ class AppState extends ChangeNotifier {
     _lastMediaRemovedAlbumId = null;
     _mediaRemovedTick = 0;
     _deletedAlbums.clear();
-    // identity + profile : must not bleed into the next account's session
+    // Must not bleed into the next account's session
     _userId = null;
     _email = null;
     _miuchioId = null;
@@ -138,8 +131,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Directly set a title we already hold in plaintext (eg  right after
-  // creating an album) : skips a needless decrypt round trip
+  // For a title already held in plaintext, such as right after creating it
   void setAlbumDisplayName(String id, String name) {
     _albumNames[id] = name;
     notifyListeners();
@@ -168,7 +160,7 @@ class AppState extends ChangeNotifier {
     final r = _nameResolver;
     if (r == null) return;
     final name = await r(a.id, a.nameCt);
-    // A newer ciphertext invalidates this in-flight result
+    // A newer ciphertext invalidates this in flight result
     final idx = _albums.indexWhere((x) => x.id == a.id);
     if (idx == -1 || _albums[idx].nameCt != a.nameCt) return;
     if (_albumNames[a.id] != name) {
@@ -197,8 +189,7 @@ class AppState extends ChangeNotifier {
       for (final a in _albums)
         if (!incoming.contains(a.id)) a.id,
     ];
-    // Overlay any locally authored nameCt so a stale GET placeholder can't
-    // regress a title me just PATCHed (create/rename)
+    // A stale listing must not regress a title written locally moments ago
     _albums = _mergeMonotonic(newAlbums.map(_overlayLocalNameCt).toList());
     for (final a in _albums) {
       final t = a.memberToken;
@@ -208,8 +199,8 @@ class AppState extends ChangeNotifier {
       }
     }
     _saveShelf();
-    // A re invited album reappearing clears the stale "was removed" signal so an
-    // AlbumDetailScreen opened for it doesnt trip the kicked-while-viewing exit
+    // A reinvited album clears the stale removal signal so its open screen
+    // does not exit
     if (_lastRemovedAlbumId != null &&
         newAlbums.any((x) => x.id == _lastRemovedAlbumId)) {
       _lastRemovedAlbumId = null;
@@ -252,12 +243,8 @@ class AppState extends ChangeNotifier {
     return [...ahead, ...rest];
   }
 
-  // Insert a freshly joined album at the front of the home grid. Idempotent
-  // by id : a duplicate signal (live event + cold-start replay) wont double
-  // the tile
+  // Idempotent by id, a live event and a cold start replay add one tile
   void prependAlbum(AlbumModel a) {
-    // Re invite to a previously kicked album: clear the stale removal signal so
-    // the reopened detail screen doesnt auto exit (see removeAlbum below)
     if (_lastRemovedAlbumId == a.id) _lastRemovedAlbumId = null;
     if (_albums.any((x) => x.id == a.id)) return;
     final overlaid = _overlayLocalNameCt(a);
@@ -440,7 +427,7 @@ class AppState extends ChangeNotifier {
 
   void _releaseUploads(String albumId) => _onAlbumKeysReady?.call(albumId);
 
-  // Durable per album key sync failures. Unlike in-flight _syncing state, a
+  // Durable per album key sync failures. Unlike in flight _syncing state, a
   // block persists until a manual or background catch up reaches its epoch
   final Map<String, EpochBlocked> _keyBlocks = {};
   EpochBlocked? keyBlockFor(String albumId) => _keyBlocks[albumId];
@@ -582,34 +569,13 @@ class AppState extends ChangeNotifier {
 
   void setProfileName(String name) {
     _profileName = name;
-    // Persist locally so the profile screen still shows the right name on
-    // next cold start. Per album name_ct publishing wires up in Phase 5
+    // Kept locally so the profile shows the name before albums load
     unawaited(StorageService().saveName(name));
     notifyListeners();
   }
 
-  // Called after a successful login to start receiving push events
-  // Dispatchers are stubs , populated in Phase 4+ as E2EE protocol layers land
-  void startRealtime(Stream<RealtimeEvent> events) {
-    _realtimeSub?.cancel();
-    _realtimeSub = events.listen(_onRealtimeEvent);
-  }
-
-  void _onRealtimeEvent(RealtimeEvent event) {
-    // §4.2 e2ee.epoch_changed + §2.2 e2ee.opk_low both dispatched in main.dart
-    // alongside the rest of the E2EE composition root. UI side stays a stub
-    // for the manifest / membership events until p7 / p8 land
-    switch (event.type) {
-      case 'e2ee.manifest_updated': // todo (p8): re-verify manifest
-      case 'e2ee.member_added': // todo (p7): refresh member list
-      case 'e2ee.member_revoked': // todo (p7): refresh member list
-        break;
-    }
-  }
-
   @override
   void dispose() {
-    _realtimeSub?.cancel();
     _summaryDebounce?.cancel();
     super.dispose();
   }

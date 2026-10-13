@@ -13,7 +13,7 @@ class AlbumSummaryRefresher {
   })  : _fetch = fetch,
         _apply = apply;
 
-  // Coalesces overlapping requests into one follow-up
+  // Coalesces overlapping requests into one follow up
   Future<void> refresh() {
     final running = _inFlight;
     if (running != null) {

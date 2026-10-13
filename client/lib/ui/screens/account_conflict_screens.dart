@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 
-// Account-gate refusals have different destructive remedies
+// Account gate refusals have different destructive remedies
 
 class _Dead extends StatelessWidget {
   final String title;
