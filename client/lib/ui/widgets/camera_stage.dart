@@ -10,7 +10,7 @@ import 'package:miuchio/diagnostics/trace.dart';
 const String _kFullAsset = 'lib/assets/onboarding/camera_stage.webp';
 const String _kLiteAsset = 'lib/assets/onboarding/camera_stage_lite.webp';
 const String _kStillAsset = 'lib/assets/onboarding/camera_stage_still.webp';
-// Full-width probe from master frames 119-123
+// Full width probe from master frames 119 to 123
 const String _kProbeAsset = 'lib/assets/onboarding/camera_stage_probe.webp';
 
 // Keep native widths aligned with the asset encoders

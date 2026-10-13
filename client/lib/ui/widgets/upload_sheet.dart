@@ -85,7 +85,7 @@ class _UploadSheetState extends State<UploadSheet> {
     Navigator.of(context).pop();
   }
 
-  // Re-arm on a future frame without scheduling a loop
+  // Arm again on a future frame without scheduling a loop
   void _armClose() {
     if (_closing || _closeArmed) return;
     _closeArmed = true;

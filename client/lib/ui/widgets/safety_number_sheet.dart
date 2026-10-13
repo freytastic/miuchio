@@ -6,17 +6,17 @@ import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
-// the out of band comparison ritual. Never says anything reassuring until the
-// user has actually read the digits back to the human : trust on first use
-// cannot rule out a MITM who was there at first sight
+// The out of band comparison. Nothing reassuring is shown until the user has
+// read the digits back, since trust on first use cannot rule out a MITM who
+// was there at first sight
 class SafetyNumberSheet extends StatefulWidget {
   final String displayName;
   final String digits;
   final TrustState state;
   final String? subtitle;
   final Widget? face;
-  // Fired only after the user confirms every digit. There is no accept-without
-  // comparing path because verification also grants signer authority
+  // Fired only after the user confirms every digit. There is no way to accept
+  // without comparing because verification also grants signer authority
   final VoidCallback onVerify;
   // Album owners only
   final VoidCallback? onRemove;
