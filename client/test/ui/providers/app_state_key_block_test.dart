@@ -44,9 +44,8 @@ void main() {
     expect(s.keyBlockFor('other'), isNotNull);
   });
 
-  // Epoch 5 fails and blocks; a delayed duplicate for epoch 4 then succeeds
-  // trivially (everything through 4 is already installed) and reports itself
-  // caught up. It has not reached 5, so the block must stand
+  // A late duplicate for epoch 4 reports caught up, but never reached the
+  // blocked epoch 5
   test('an older successful sync cannot clear a newer block', () {
     final s = AppState();
     s.setKeyBlock(_albumIdStr, _blocked(epoch: 5));
@@ -98,9 +97,8 @@ void main() {
     expect(s.keyBlockFor(_albumIdStr), isNull);
   });
 
-  // The creator's own rotation fans back to them, so _installEpoch can run for
-  // their own token before the album has landed in the albums list. Without a
-  // registered self token that wrap takes the peer path and gets refused
+  // The creator's own rotation can arrive before the album is listed, and
+  // without a self token it would take the peer path and be refused
   test('a self member token is resolvable before the album list arrives', () {
     final s = AppState();
 

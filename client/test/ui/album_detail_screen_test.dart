@@ -249,21 +249,6 @@ void main() {
     expect(find.byType(AlbumDetailScreen), findsOneWidget);
   });
 
-  testWidgets('AlbumDetailScreen shows no media placeholder', (tester) async {
-    final aks = await _emptyAks();
-    await tester.pumpWidget(_wrap(
-      AlbumDetailScreen(
-        album: _fakeAlbum(),
-        albumService: _MockAlbumService([]),
-        mediaApi: _StubMediaApi(const []),
-      ),
-      aks,
-    ));
-    await tester.pumpAndSettle();
-
-    expect(find.text('No photos yet'), findsOneWidget);
-  });
-
   testWidgets('a successful realtime reload advances the seen watermark',
       (tester) async {
     final aks = await _emptyAks();

@@ -25,7 +25,7 @@ import '../secure_store/mock_secure_key_store.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'upload_scaffold.dart';
 
-// SQLite futures do not settle under widget-test fake time
+// SQLite futures do not settle under widget test fake time
 class _FakeCatalog implements MediaCatalog {
   final Map<String, List<MediaRecord>> rows;
   _FakeCatalog([Map<String, List<MediaRecord>>? seed]) : rows = seed ?? {};
