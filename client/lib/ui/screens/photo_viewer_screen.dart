@@ -5,7 +5,7 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
-import 'package:miuchio/ui/album/photo_peek.dart';
+import 'package:miuchio/ui/album/peek_dock.dart';
 import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/widgets/encrypted_image.dart';
 import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
