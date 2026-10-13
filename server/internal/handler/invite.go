@@ -6,31 +6,29 @@ import (
 	"github.com/freytastic/miuchio/internal/apierr"
 )
 
-// Invite handlers are in P0.2 (acc to implementation plan)
-// Existing user X3DH MK delivery lands in P6.1 , new user invite-blob + deep
-// link lands in P6.2, join_complete receipts in P6.3. All against the new
-// invite_blobs / invite_links schema with signer_token + Ed25519 signatures.
+// Placeholders for invite links, which are not built yet. Existing users are
+// invited through internal/e2ee/invite
 
 type InviteHandler struct{}
 
 func NewInviteHandler() *InviteHandler { return &InviteHandler{} }
 
 func (h *InviteHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
-	apierr.Write(w, r, apierr.NotImplemented("invite creation lands in P6.2"))
+	apierr.Write(w, r, apierr.NotImplemented("invite creation is not available yet"))
 }
 
 func (h *InviteHandler) GetPreview(w http.ResponseWriter, r *http.Request) {
-	apierr.Write(w, r, apierr.NotImplemented("invite preview lands in P6.2"))
+	apierr.Write(w, r, apierr.NotImplemented("invite preview is not available yet"))
 }
 
 func (h *InviteHandler) JoinAlbum(w http.ResponseWriter, r *http.Request) {
-	apierr.Write(w, r, apierr.NotImplemented("join via invite lands in P6.2"))
+	apierr.Write(w, r, apierr.NotImplemented("join via invite is not available yet"))
 }
 
 func (h *InviteHandler) CreateInviteBlob(w http.ResponseWriter, r *http.Request) {
-	apierr.Write(w, r, apierr.NotImplemented("invite blob creation lands in P6.2"))
+	apierr.Write(w, r, apierr.NotImplemented("invite blob creation is not available yet"))
 }
 
 func (h *InviteHandler) GetInviteBlob(w http.ResponseWriter, r *http.Request) {
-	apierr.Write(w, r, apierr.NotImplemented("invite blob fetch lands in P6.2"))
+	apierr.Write(w, r, apierr.NotImplemented("invite blob fetch is not available yet"))
 }
