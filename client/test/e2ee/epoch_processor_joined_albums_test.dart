@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -23,8 +22,9 @@ class _CapturingInvites implements InviteApi {
     required Uint8List sig,
   }) async {
     calls++;
-    if (throwOnJoinComplete)
+    if (throwOnJoinComplete) {
       throw StateError('simulated join_complete failure');
+    }
   }
 
   @override
