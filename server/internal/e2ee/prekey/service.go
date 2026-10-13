@@ -17,15 +17,14 @@ import (
 // tsSkewWindow caps |now - claimed_ts| for both bootstrap and rotate
 const tsSkewWindow = 5 * time.Minute
 
-// opkBatchMax bounds POST /users/me/opks (sanity, prevents giant batches)
+// opkBatchMax bounds POST /users/me/opks
 const opkBatchMax = 100
 
-// opkLowThreshold drives the e2ee.opk_low fan out. A peer fetch that drops
-// the target's unconsumed count below this threshold queues an emit
+// opkLowThreshold triggers e2ee.opk_low once a fetch drops the target's
+// unconsumed count below it
 const opkLowThreshold = 5
 
-// store is the repo surface the service depends on. Concrete impl is *Repo
-// tests substitute a mock to exercise pure validation paths
+// store is the repo surface the service needs
 type store interface {
 	IdentityByID(ctx context.Context, userID uuid.UUID) (*Identity, error)
 	PublishOrRefreshIdentity(ctx context.Context, userID uuid.UUID, ikPub, lkPub, spkPub, spkSig []byte, spkTs int64) error
@@ -35,8 +34,8 @@ type store interface {
 	Count(ctx context.Context, userID uuid.UUID) (int, error)
 }
 
-// Service holds the validation + signaturec verify glue for the §2.2 endpoints
-// Notifier is optional : when nil, OPK-low fanouts are dropped silently
+// Service validates and verifies the prekey endpoints. A nil notifier drops
+// opk_low fanouts
 type Service struct {
 	repo store
 	now  func() time.Time
@@ -46,10 +45,9 @@ func NewService(repo store) *Service {
 	return &Service{repo: repo, now: time.Now}
 }
 
-// SetClock overrides the wall clock; tests use this to pin ts-skew checks
+// SetClock pins the clock for skew tests
 func (s *Service) SetClock(fn func() time.Time) { s.now = fn }
 
-// UpsertIdentityInput carries the decoded body of PUT /users/me/keys
 type UpsertIdentityInput struct {
 	IKPub  []byte
 	LKPub  []byte
@@ -58,8 +56,7 @@ type UpsertIdentityInput struct {
 	SPKTs  int64
 }
 
-// UpsertIdentity validates per spec §4.1 (length → ts-skew → sig → state) and
-// writes the row. Returns the spec's *apierr.APIError envelope on failure
+// UpsertIdentity checks length, then ts skew, then signature, then state
 func (s *Service) UpsertIdentity(ctx context.Context, userID uuid.UUID, in UpsertIdentityInput) error {
 	if len(in.IKPub) != ed25519.PublicKeySize ||
 		len(in.LKPub) != 32 ||
@@ -84,7 +81,6 @@ func (s *Service) UpsertIdentity(ctx context.Context, userID uuid.UUID, in Upser
 	return err
 }
 
-// RotateSPKInput carries the decoded body of POST /users/me/spk
 type RotateSPKInput struct {
 	SPKPub      []byte
 	SPKSig      []byte
@@ -92,8 +88,8 @@ type RotateSPKInput struct {
 	RotationSig []byte
 }
 
-// RotateSPK enforces the spec §4.2 ordering: lengths → ts-skew → state → spk_sig
-// → rotation_sig → monotonic ts. Audit row written in the same txn as the users update
+// RotateSPK checks lengths, ts skew, state, spk_sig, rotation_sig, then
+// monotonic ts. The audit row commits in the same transaction
 func (s *Service) RotateSPK(ctx context.Context, userID uuid.UUID, in RotateSPKInput) error {
 	if len(in.SPKPub) != 32 {
 		return apierr.Validation("spk_pub must be 32 bytes")
@@ -132,25 +128,21 @@ func (s *Service) RotateSPK(ctx context.Context, userID uuid.UUID, in RotateSPKI
 	return err
 }
 
-// OwnKeys returns side-effect-free self key state for reconciliation
+// OwnKeys does not pop an OPK
 func (s *Service) OwnKeys(ctx context.Context, userID uuid.UUID) (*Identity, error) {
 	return s.repo.IdentityByID(ctx, userID)
 }
 
-// OPKUpload mirrors one entry in the POST /users/me/opks request body
 type OPKUpload struct {
 	Idx    int
 	KeyPub []byte
 }
 
-// ReplenishOPKsInput carries the decoded body of POST /users/me/opks
 type ReplenishOPKsInput struct {
 	OPKs         []OPKUpload
 	ReplenishSig []byte
 }
 
-// ReplenishOPKs validates per spec §4.3 and inserts atomically. ErrOPKIndexTaken
-// from the repo is converted to apierr.OPKIndexTaken
 func (s *Service) ReplenishOPKs(ctx context.Context, userID uuid.UUID, in ReplenishOPKsInput) error {
 	if len(in.OPKs) == 0 {
 		return apierr.Validation("opks must be a non-empty array")
@@ -196,12 +188,10 @@ func (s *Service) ReplenishOPKs(ctx context.Context, userID uuid.UUID, in Replen
 	return nil
 }
 
-// GetOPKCount returns the unconsumed OPK count for the given user
 func (s *Service) GetOPKCount(ctx context.Context, userID uuid.UUID) (int, error) {
 	return s.repo.Count(ctx, userID)
 }
 
-// PrekeyBundle is the response body for GET /users/{id}/prekey bundle
 type PrekeyBundle struct {
 	UserID  uuid.UUID
 	IKPub   []byte
@@ -210,11 +200,11 @@ type PrekeyBundle struct {
 	SPKSig  []byte
 	SPKTs   int64
 	OPK     *OPKUpload
-	OPKLeft int // unconsumed count after this fetch : -1 when no OPK was popped
+	OPKLeft int // -1 when no OPK was popped
 }
 
-// GetPrekeyBundle reads the target's identity + pops one OPK. On success returns
-// the bundle; the caller is responsible for emitting e2ee.opk_low when OPKLeft < threshold
+// GetPrekeyBundle pops one OPK. The caller emits e2ee.opk_low when OPKLeft
+// drops below the threshold
 func (s *Service) GetPrekeyBundle(ctx context.Context, targetID uuid.UUID) (*PrekeyBundle, error) {
 	id, err := s.repo.IdentityByID(ctx, targetID)
 	if err != nil {
@@ -240,7 +230,6 @@ func (s *Service) GetPrekeyBundle(ctx context.Context, targetID uuid.UUID) (*Pre
 	}
 	if opk != nil {
 		out.OPK = &OPKUpload{Idx: opk.OPKIdx, KeyPub: opk.KeyPub}
-		// post pop count drives the OPK low decision in the handler
 		n, err := s.repo.Count(ctx, targetID)
 		if err != nil {
 			return nil, err
@@ -250,12 +239,10 @@ func (s *Service) GetPrekeyBundle(ctx context.Context, targetID uuid.UUID) (*Pre
 	return out, nil
 }
 
-// OPKLowThreshold is the public threshold for fanout decisions
 func OPKLowThreshold() int { return opkLowThreshold }
 
-// spkSelfMsg = spk_pub ‖ uint64_be(spk_ts) , used by both bootstrap and rotate
-// for the SPK self-signature. Salt prefix is intentionally absent (rotation_sig
-// carries its own domain separator)
+// spkSelfMsg is spk_pub ‖ u64_be(spk_ts) with no salt, rotation_sig carries
+// its own domain separator
 func spkSelfMsg(spkPub []byte, spkTs int64) []byte {
 	out := make([]byte, 0, 32+8)
 	out = append(out, spkPub...)
@@ -264,8 +251,8 @@ func spkSelfMsg(spkPub []byte, spkTs int64) []byte {
 	return append(out, ts[:]...)
 }
 
-// RotationMsg = ASCII("rotate-spk-v1") ‖ spk_pub ‖ uint64_be(spk_ts)
-// Exported so the KAT generator and tests build the same bytes
+// RotationMsg is "rotate-spk-v1" ‖ spk_pub ‖ u64_be(spk_ts), shared with the
+// KAT generator
 func RotationMsg(spkPub []byte, spkTs int64) []byte {
 	out := make([]byte, 0, len(crypto.SaltSpkRotate)+32+8)
 	out = append(out, crypto.SaltSpkRotate...)
@@ -275,8 +262,7 @@ func RotationMsg(spkPub []byte, spkTs int64) []byte {
 	return append(out, ts[:]...)
 }
 
-// ReplenishMsg = ASCII("opk-batch-v1") ‖ uint32_be(len) ‖ SHA256(concat(opk_pubs))
-// hash is over the raw 32-byte pubs concatenated in array order
+// ReplenishMsg is "opk-batch-v1" ‖ u32_be(len) ‖ SHA256(raw 32B pubs in order)
 func ReplenishMsg(opkPubs [][]byte) []byte {
 	h := sha256.New()
 	for _, p := range opkPubs {

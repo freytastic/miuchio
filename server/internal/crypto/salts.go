@@ -1,10 +1,9 @@
-// Package crypto holds the server side mirror of the cryptographic constants
-// and verifier helpers. The server never decrypts : it only verifies signatures
-// and hashes. Every byte here must match Dart's lib/crypto/ exactly
+// Package crypto mirrors the client's constants and verifiers. The server
+// never decrypts, it only checks signatures and hashes, and every byte here
+// must match client/lib/crypto
 package crypto
 
-// Domain separation salts (L9). Byte-for-byte mirror of the Dart side
-// KAT parity tests assert these match what Dart computes from utf8.encode(...).
+// Pinned against the Dart values by the KAT tests
 var (
 	SaltX3dh          = []byte("vault-x3dh-v1")
 	SaltInvite        = []byte("invite-v1")

@@ -14,13 +14,12 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Notifier matches *ws.Hub.EmitToUsers so the fanout can be stubbed in tests
+// Notifier is satisfied by *ws.Hub
 type Notifier interface {
 	EmitToUsers(ctx context.Context, userIDs []uuid.UUID, typ string, payload any) error
 }
 
-// inviteService is the slice of *Service the handler drives : an interface so
-// handler tests can stub error and success paths without a DB
+// inviteService is the slice of *Service the handler drives
 type inviteService interface {
 	DeliverExistingUser(ctx context.Context, albumID uuid.UUID, callerToken []byte, callerRole string, in DeliverExistingUserInput) ([]byte, uuid.UUID, error)
 	JoinComplete(ctx context.Context, albumID uuid.UUID, callerToken []byte, in JoinCompleteInput) error
@@ -124,10 +123,8 @@ func (h *Handler) DeliverExistingUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// fanout pings the new member to backfill (epoch_changed{joined:true}) and the
-// existing roster to refresh (member_added). Besteffort, off the request ctx
-// since the invite is already committed. The new member also catches this via
-// the cold start path, so a missed live event is not fatal
+// fanout tells the new member to backfill and the roster to refresh. Best
+// effort, a missed event is recovered by the cold start path
 func (h *Handler) fanout(albumID uuid.UUID, current int, newMember uuid.UUID) {
 	ctx := context.Background()
 	if err := h.notifier.EmitToUsers(ctx, []uuid.UUID{newMember}, ws.EventEpochChanged, map[string]any{
@@ -167,8 +164,7 @@ type joinReq struct {
 	Sig        string `json:"sig"`
 }
 
-// JoinComplete handles POST /api/v1/albums/{id}/joins : the new member proves
-// (Ed25519 over their IK) that they installed the album up to a given epoch
+// JoinComplete handles POST /api/v1/albums/{id}/joins
 func (h *Handler) JoinComplete(w http.ResponseWriter, r *http.Request) {
 	albumID, ok := h.albumID(w, r)
 	if !ok {

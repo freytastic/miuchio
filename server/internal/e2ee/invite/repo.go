@@ -13,8 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ErrIKNotFound : the caller's member_token does not resolve to a user with a
-// published identity. Treated as a signature failure at the service boundary
+// ErrIKNotFound is treated as a signature failure by the service
 var ErrIKNotFound = errors.New("invite: member has no IK on file")
 
 var (
@@ -273,8 +272,8 @@ func (r *Repo) DeliverMember(ctx context.Context, in DeliverMemberInput) ([]byte
 	}
 
 	if reactivate {
-		// Rejoin as a plain member: drop the stale encrypted name (published
-		// under an old epoch the returning member no longer holds)
+		// The old encrypted name was sealed under an epoch the returning member
+		// no longer holds
 		if _, err := tx.Exec(ctx,
 			`UPDATE album_members SET revoked_at = NULL, role = 'member', name_ct = NULL
 			 WHERE album_id = $1 AND member_token = $2`,

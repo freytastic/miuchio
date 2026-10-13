@@ -13,8 +13,8 @@ import (
 
 const joinCompletePrefix = "join-complete-v1"
 
-// JoinCompleteMsg = "join-complete-v1" ‖ album_id(16) ‖ uint32_be(epoch) ‖ ek_pub_admin(32)
-// Exported so the KAT generator and the Dart client build byte-identical input
+// JoinCompleteMsg is "join-complete-v1" ‖ album_id(16) ‖ u32_be(epoch) ‖
+// ek_pub_admin(32), shared with the KAT generator
 func JoinCompleteMsg(albumID uuid.UUID, epoch int, ekPubAdmin []byte) []byte {
 	out := make([]byte, 0, len(joinCompletePrefix)+16+4+len(ekPubAdmin))
 	out = append(out, joinCompletePrefix...)
@@ -32,9 +32,8 @@ type JoinCompleteInput struct {
 	Sig        []byte
 }
 
-// JoinComplete verifies a new member's signed receipt against their own IK and
-// records the epoch they proved they installed (§6.3). Idempotent: re-posting an
-// older epoch keeps the high-water mark (GREATEST in the repo)
+// JoinComplete records the epoch a new member proved they installed. Posting
+// an older epoch keeps the high water mark
 func (s *Service) JoinComplete(ctx context.Context, albumID uuid.UUID, callerToken []byte, in JoinCompleteInput) error {
 	if in.Epoch < 0 {
 		return apierr.Validation("epoch must be >= 0")

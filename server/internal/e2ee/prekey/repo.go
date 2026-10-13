@@ -12,10 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Repo bundles the prekey + identity + audit storage operations the e2ee
-// handlers need. OPK CRUD is delegated to the existing repository.PrekeyRepository
-// so the SQL stays in one place : identity/SPK + spk_rotations live here bcs
-// they're new with §2.2 and want their own txn boundary
+// Repo holds identity, SPK and audit storage. OPK SQL stays in
+// repository.PrekeyRepository
 type Repo struct {
 	db     *pgxpool.Pool
 	prekey *repository.PrekeyRepository
@@ -34,8 +32,7 @@ type Identity struct {
 	SPKTs  *int64
 }
 
-// IdentityByID returns just the E2EE columns for a user. ErrUserNotFound bubbles
-// up from the underlying users table
+// IdentityByID returns ErrUserNotFound from the users table
 func (r *Repo) IdentityByID(ctx context.Context, userID uuid.UUID) (*Identity, error) {
 	var id Identity
 	err := r.db.QueryRow(ctx,
@@ -130,7 +127,7 @@ func (r *Repo) RotateSPK(ctx context.Context, userID uuid.UUID, spkPub, spkSig [
 	return tx.Commit(ctx)
 }
 
-// SpkRotationCount returns the number of audit rows for a user : only used by tests
+// SpkRotationCount is used by tests
 func (r *Repo) SpkRotationCount(ctx context.Context, userID uuid.UUID) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx,
@@ -183,7 +180,7 @@ func (r *Repo) CreateBatchAtomic(ctx context.Context, opks []model.OneTimePrekey
 	return tx.Commit(ctx)
 }
 
-// PopRandom delegates to the underlying repository so the SKIP LOCKED query stays single source
+// PopRandom keeps the SKIP LOCKED query in one place
 func (r *Repo) PopRandom(ctx context.Context, userID uuid.UUID) (*model.OneTimePrekey, error) {
 	return r.prekey.PopRandom(ctx, userID)
 }
