@@ -4,7 +4,8 @@ import 'key_handle.dart';
 import 'key_store_exceptions.dart';
 import 'secure_key_store.dart';
 
-// Same channel as AndroidKeystore, minus putMany which the Swift side lacks
+// Same channel as AndroidKeystore. putMany is not overridden, so it falls back
+// to one put per key
 class IosSecureEnclave extends SecureKeyStore {
   static const _channel = MethodChannel('miuchio/keystore');
 
