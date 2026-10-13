@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/data/storage/storage_service.dart';
 import 'package:miuchio/data/api/user_api.dart';
@@ -14,7 +15,7 @@ import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
 import 'package:miuchio/e2ee/identity.dart';
 import 'package:miuchio/data/api/session_refresher.dart';
-import 'package:miuchio/main.dart' show rootNavigatorKey;
+import 'package:miuchio/app/app.dart' show rootNavigatorKey;
 import 'package:miuchio/domain/account/account_deletion.dart' show TerminalWipe;
 import 'package:miuchio/domain/account/account_gate.dart';
 import 'package:miuchio/domain/account/sign_in_gate.dart';
@@ -167,7 +168,8 @@ class _LandingPageState extends State<LandingPage> {
 
     final albumIds = <Uint8List>[];
     for (final a in appState.albums) {
-      final b = _uuidStringToBytes(a.id);
+      // Malformed album IDs are skipped
+      final b = uuidToBytes(a.id);
       if (b != null) albumIds.add(b);
     }
     await _runCryptoHygiene(
@@ -217,7 +219,7 @@ class _LandingPageState extends State<LandingPage> {
         trigger: kTargetOpkPool,
       );
     } catch (_) {/* best effort */}
-    // Key sync outlives this screen and must clear its app-level state after unmount
+    // Key sync outlives this screen and must clear its app level state after unmount
     await syncAlbumKeys(
       appState: appState,
       albumIds: albumIds,
@@ -225,19 +227,6 @@ class _LandingPageState extends State<LandingPage> {
     );
     // Rotating needs a settled identity and caught up album keys
     await rotationRecovery.checkAll(albumIds);
-  }
-
-  // Malformed album IDs are skipped during background sync
-  Uint8List? _uuidStringToBytes(String s) {
-    final hex = s.replaceAll('-', '');
-    if (hex.length != 32) return null;
-    final out = Uint8List(16);
-    for (var i = 0; i < 16; i++) {
-      final v = int.tryParse(hex.substring(i * 2, i * 2 + 2), radix: 16);
-      if (v == null) return null;
-      out[i] = v;
-    }
-    return out;
   }
 
   @override
