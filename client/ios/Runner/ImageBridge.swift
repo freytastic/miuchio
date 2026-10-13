@@ -3,7 +3,7 @@ import Flutter
 import ImageIO
 import CoreGraphics
 
-// Decodes once and emits metadata-free full and thumbnail JPEGs, matching the
+// Decodes once and emits metadata free full and thumbnail JPEGs, matching the
 // Android ImageBridge sizes, qualities and error codes
 final class ImageBridge: NSObject, FlutterPlugin {
     static let CHANNEL = "miuchio/image"
@@ -17,7 +17,7 @@ final class ImageBridge: NSObject, FlutterPlugin {
     private static let UNAVAILABLE = "E_UNAVAILABLE"
     private static let REJECTED = "E_REJECTED"
 
-    // A low-priority serial queue keeps codec work off the UI thread
+    // A low priority serial queue keeps codec work off the UI thread
     private let queue = DispatchQueue(label: "miuchio.image", qos: .utility)
 
     static func register(with registrar: FlutterPluginRegistrar) {
@@ -77,7 +77,7 @@ final class ImageBridge: NSObject, FlutterPlugin {
             throw Failure.failed("decode returned nothing")
         }
 
-        // Redraw in sRGB so wide-gamut photos keep their colours once the
+        // Redraw in sRGB so wide gamut photos keep their colours once the
         // colour profile is stripped with the rest of the metadata
         let full = try redraw(decoded, width: decoded.width, height: decoded.height)
         let fullJpeg = try encode(full, quality: Self.FULL_QUALITY)
