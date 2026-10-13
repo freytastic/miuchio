@@ -4,9 +4,6 @@ import 'package:miuchio/e2ee/invite_api.dart';
 
 import 'api_client.dart';
 
-// Adapter from InviteJsonClient (lib/e2ee/) to ApiClient (lib/data/). HttpInviteApi
-// itself is in lib/e2ee/invite_api.dart so e2ee/ never imports the data layer
-// Non-2xx ApiErrors propagate (caller maps 409/404 to UI copy)
 class ApiClientInviteJsonClient implements InviteJsonClient {
   final ApiClient _api;
   ApiClientInviteJsonClient(this._api);

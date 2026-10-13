@@ -105,7 +105,7 @@ abstract class Trace {
     }
   }
 
-  // Emits caller-isolate spans for work timed in a background isolate
+  // Emits caller isolate spans for work timed in a background isolate
   static void replay(
     String name,
     int durMs, {

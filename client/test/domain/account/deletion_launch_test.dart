@@ -40,7 +40,7 @@ void main() {
         random: (n) => throw UnimplementedError(),
       );
 
-  // The lost-device entry point must not open the screen without a plan
+  // The lost device entry point must not open the screen without a plan
   test('a launch builds the plan the screen needs', () async {
     DeletionPlan? seen;
     final result = await launchAccountDeletion(

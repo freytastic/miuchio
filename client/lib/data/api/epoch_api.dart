@@ -5,10 +5,7 @@ import 'package:miuchio/e2ee/epoch_api.dart';
 import 'api_client.dart';
 import 'api_error.dart';
 
-// Adapter from EpochJsonClient (in lib/e2ee/) to ApiClient (in lib/data/)
-// Maps 404 to a null body so HttpEpochApi can surface
-// EpochWrapNotFoundException + treat \"album has no epoch yet\" as null
-// HttpEpochApi itself lives in lib/e2ee/epoch_api.dart (mirrors HttpPrekeyApi)
+// Maps 404 to null so HttpEpochApi can tell a missing wrap or epoch apart
 
 class ApiClientEpochJsonClient implements EpochJsonClient {
   final ApiClient _api;

@@ -186,7 +186,7 @@ void main() {
     expect(finished, isTrue);
   });
 
-  // A key-change alarm is written outside a comparison. Opening Activity and
+  // A key change alarm is written outside a comparison. Opening Activity and
   // the wipe must both wait for it
   group('alarms', () {
     test('flush waits for an alarm still being written', () async {

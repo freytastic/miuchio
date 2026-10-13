@@ -29,7 +29,7 @@ void main() {
         200,
       ));
 
-  // Verification must not bypass the vault-owner check by persisting early
+  // Verification must not bypass the vault owner check by persisting early
   test('verifyOtp returns the pending session without persisting it', () async {
     final auth = AuthService(client: okClient());
 

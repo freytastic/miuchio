@@ -1,16 +1,13 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-// Typed error envelope ... it matches the wire shape produced by
-// `internal/apierr/writer.go` exactly and if either side changes the JSON shape,
-// the other must change as well
+// Mirrors server/internal/apierr/writer.go, both sides change together
 //   {"code": "E_VALIDATION", "message": "...", "detail": {...}}
 
 class ApiError implements Exception {
   final String code;
 
-  // Human readable message from the server should not  shown to users directly
-  // the UI maps `code` to a localized string via `error_mapper.dart`
+  // Written for developers, the UI maps code to copy in error_mapper.dart
   final String message;
 
   final int httpStatus;

@@ -6,7 +6,7 @@ class AlbumModel {
   final String? nameCt;
   final DateTime createdAt;
   final DateTime updatedAt;
-  // Caller token when returned by an album-scoped endpoint
+  // Caller token when returned by an album scoped endpoint
   final String? memberToken;
   final String? myRole;
 

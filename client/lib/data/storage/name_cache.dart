@@ -52,7 +52,7 @@ class NameCache {
         _entries[k] = _Entry(e['n'] as String, e['f'] as String);
       });
     } catch (_) {
-      // missing / corrupt / key mismatch : start empty, self heals on next put
+      // Missing, corrupt or another key, start empty
       _entries.clear();
     }
   }
@@ -87,9 +87,8 @@ class NameCache {
     await flush(); // write the remaining albums (removed entries gone) now
   }
 
-  // Wipe everything (logout). Wins any in- flight/queued flush via _gen, then
-  // awaits the last write before deleting so nothing can rewrite the file after
-  // The instance stays reusable (in process re login re populates it)
+  // Bumping _gen beats any queued flush, and awaiting the last write keeps it
+  // from recreating the file. The instance stays reusable
   Future<void> clear() async {
     _gen++;
     _flushTimer?.cancel();

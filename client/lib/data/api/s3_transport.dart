@@ -131,7 +131,7 @@ class S3Transport {
     }
   }
 
-  // Re-presign between attempts because the original URL may have expired
+  // Presign again between attempts because the original URL may have expired
   Future<http.Response> get(
     Uri url, {
     int expectedBytes = 0,
@@ -243,7 +243,7 @@ class _AbortableRequest extends http.Request with http.Abortable {
   }
 }
 
-// Uses zero-copy chunks and the signed content length for upload progress
+// Uses zero copy chunks and the signed content length for upload progress
 class _ProgressRequest extends http.BaseRequest with http.Abortable {
   final Uint8List _body;
   final UploadProgress? _onBytes;

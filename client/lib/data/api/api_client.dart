@@ -35,7 +35,7 @@ class ApiClient {
   Map<String, String> _withTraceHeader(Map<String, String> h, String traceId) =>
       {...h, 'X-Request-ID': traceId};
 
-  // Replace identifier-bearing path segments before logging
+  // Replace identifier bearing path segments before logging
   static String _routeOf(String path) {
     final noQuery = path.split('?').first;
     return noQuery

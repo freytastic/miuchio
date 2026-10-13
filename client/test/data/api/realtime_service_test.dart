@@ -4,9 +4,7 @@ import 'package:miuchio/data/api/realtime_service.dart';
 
 void main() {
   group('RealtimeService.connected', () {
-    // Surface only test : the controller is broadcast (multiple subscribers
-    // tolerated) and dispose() closes it. The actual emit on connect is
-    // exercised end to end by manual verification + the connect loop in prod
+    // Several catch up consumers listen at once
     test('exposes a broadcast stream', () {
       final svc = RealtimeService(ApiClient());
       expect(svc.connected.isBroadcast, isTrue);
@@ -15,37 +13,24 @@ void main() {
   });
 
   group('RealtimeService.buildWsUri', () {
-    test('converts http to ws scheme', () {
-      final uri =
-          RealtimeService.buildWsUri('http://localhost:8080/api/v1', 'abc');
-      expect(uri.scheme, equals('ws'));
-    });
-
-    test('converts https to wss scheme', () {
-      final uri =
-          RealtimeService.buildWsUri('https://api.miuchio.app/api/v1', 'abc');
-      expect(uri.scheme, equals('wss'));
-    });
-
-    test('ticket appears as query parameter', () {
-      final uri = RealtimeService.buildWsUri(
+    test('builds the ws url from the api base and ticket', () {
+      final plain = RealtimeService.buildWsUri(
           'http://localhost:8080/api/v1', 'my-ticket-42');
-      expect(uri.queryParameters['ticket'], equals('my-ticket-42'));
+      expect(plain.scheme, equals('ws'));
+      expect(plain.queryParameters['ticket'], equals('my-ticket-42'));
+      expect(plain.path, endsWith('/ws'));
+
+      final secure =
+          RealtimeService.buildWsUri('https://api.miuchio.app/api/v1', 'abc');
+      expect(secure.scheme, equals('wss'));
     });
 
-    // L5 bearer token guard: the WS URL must never carry Authorization or token=
     test('URL does not contain Authorization header value or token= param', () {
       final uri = RealtimeService.buildWsUri(
           'http://localhost:8080/api/v1', 'my-ticket');
       final urlStr = uri.toString();
       expect(urlStr, isNot(contains('Authorization')));
       expect(urlStr, isNot(contains('token=')));
-    });
-
-    test('path ends with /ws', () {
-      final uri =
-          RealtimeService.buildWsUri('http://localhost:8080/api/v1', 'x');
-      expect(uri.path, endsWith('/ws'));
     });
   });
 }

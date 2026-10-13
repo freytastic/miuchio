@@ -3,15 +3,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'secure_storage.dart';
 
-// Keeps credentials in secure storage and non-secret display values in prefs
+// Keeps credentials in secure storage and non secret display values in prefs
 class StorageService {
   static const _keyToken = 'auth_token';
   static const _keyRefreshToken = 'auth_refresh_token';
   static const _keyExpiry = 'auth_expires_at';
-  // Server stores users.email_hmac, never the plaintext, so the client owns
-  // its own email cache for display in the profile screen
+  // The server keeps only an HMAC of the email
   static const _keyEmail = 'auth_email';
-  // The typed profile name is a local cache for per-album encrypted names
+  // The typed profile name is a local cache for per album encrypted names
   static const _keyName = 'auth_name';
   // Lets sealed uploads be matched to their account before the network answers
   static const _keyUserId = 'auth_user_id';
@@ -34,8 +33,7 @@ class StorageService {
     await _secure.write(key: _keyToken, value: token);
     await _secure.write(key: _keyRefreshToken, value: refreshToken);
     await _secure.write(key: _keyExpiry, value: expiresAt);
-    // scrub any plaintext credential left behind by an install upgraded from
-    // the old prefs based build : the first fresh login must not leave it at rest
+    // Older builds kept credentials in prefs
     final sp = await _sp;
     await sp.remove(_keyToken);
     await sp.remove(_keyRefreshToken);
@@ -97,7 +95,7 @@ class StorageService {
     await _secure.delete(key: _keyRefreshToken);
     await _secure.delete(key: _keyExpiry);
     final sp = await _sp;
-    // legacy cleanup : older builds kept the tokens in SharedPreferences
+    // Older builds kept the tokens in prefs
     await sp.remove(_keyToken);
     await sp.remove(_keyRefreshToken);
     await sp.remove(_keyExpiry);

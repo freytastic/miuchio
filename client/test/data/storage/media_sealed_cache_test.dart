@@ -83,7 +83,7 @@ void main() {
         rootDir: tmp, cacheRootKey: _key(0x22), budgetBytes: 1000);
     expect(await other.readBlob(_fileK('m1')), isNull);
     await other.close();
-    // reopen with the original key : the auth-failed file was purged
+    // reopen with the original key : the auth failed file was purged
     cache = await MediaSealedCache.open(
         rootDir: tmp,
         cacheRootKey: _key(),

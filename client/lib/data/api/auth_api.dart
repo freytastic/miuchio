@@ -9,7 +9,7 @@ class AccountDeletingException implements Exception {
   const AccountDeletingException();
 }
 
-// Verified credentials held in memory until the vault-owner check passes
+// Verified credentials held in memory until the vault owner check passes
 class PendingSession {
   final String userId;
   final String token;
@@ -82,7 +82,7 @@ class AuthService {
     }
   }
 
-  // Persists credentials only after the vault-owner check succeeds
+  // Persists credentials only after the vault owner check succeeds
   Future<void> commit(PendingSession session, {required String email}) async {
     await _storage.saveAuth(
         session.token, session.refreshToken, session.expiresAt);
@@ -91,7 +91,6 @@ class AuthService {
     await _storage.saveEmail(email);
   }
 
-  // logout
   Future<void> logout() async {
     await _storage.deleteAuth();
   }

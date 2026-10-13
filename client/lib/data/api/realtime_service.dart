@@ -25,7 +25,7 @@ class RealtimeService {
 
   Stream<RealtimeEvent> get stream => _controller.stream;
 
-  // May fire before an upgrade failure, so catch-up consumers must be idempotent
+  // May fire before an upgrade failure, so catch up consumers must be idempotent
   Stream<void> get connected => _connectedController.stream;
 
   Future<void> connect() async {
@@ -49,8 +49,7 @@ class RealtimeService {
   }
 
   Future<void> _connectOnce() async {
-    // L5: POST to bearer-authenticated endpoint to obtain a short-lived ticket
-    // The bearer token travels in the Authorization header, NEVER in the WS URL
+    // The bearer token buys a short lived ticket and never enters the WS URL
     final resp = await _api.post('/ws-ticket');
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final ticket = data['ticket'] as String;
@@ -74,14 +73,12 @@ class RealtimeService {
           payload: (map['payload'] as Map<String, dynamic>?) ?? {},
         ));
       } catch (_) {
-        // Malformed frame , skip
+        // Malformed frame, skip
       }
     }
   }
 
-  // Constructs the WebSocket URI from the HTTP API base URL and a ticket
-  // Exposed as a static method so tests can verify the bearer-token invariant
-  // without spinning up a real connection
+  // Static so tests can check the bearer token never reaches the URL
   static Uri buildWsUri(String apiBase, String ticket) {
     final wsBase = apiBase
         .replaceFirst('http://', 'ws://')

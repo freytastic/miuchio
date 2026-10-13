@@ -89,9 +89,8 @@ void main() {
     expect(nameCache.get(NameCache.albumKey('A'), 'ct'), isNull);
     expect(File('${tmp.path}/names.kec').existsSync(), isFalse);
 
-    // cache_root_key is device bound (like album MKs) : it MUST survive logout
-    // Deleting it stranded blobs sealed under the in RAM key after a same process
-    // re login, forcing a full re download on the next cold start
+    // Deleting it stranded blobs a same process re login sealed under the key
+    // still in RAM
     expect(await store.list(labelPrefix: kCacheRootKeyLabel), isNotEmpty);
     expect(await l2.readBlob(k), isNull);
     expect(l1.get(k), isNull);

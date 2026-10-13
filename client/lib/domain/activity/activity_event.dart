@@ -9,7 +9,7 @@ enum ActivityLane { security, albums }
 const Duration kActivityWindow = Duration(days: 90);
 
 sealed class ActivityEvent {
-  // Stable across re-derivation, so one upload cannot become a new row on
+  // Stable across rederivation, so one upload cannot become a new row on
   // every launch
   final String id;
   final String albumId;

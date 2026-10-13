@@ -286,7 +286,7 @@ void main() {
           isFalse);
     });
 
-    // The lost-device remedy is deleting the account, which needs the session
+    // The lost device remedy is deleting the account, which needs the session
     test('a lost device keeps its session so deletion can run', () {
       expect(AccountGate.retainsSession(AccountGateOutcome.lostDevice), isTrue);
     });

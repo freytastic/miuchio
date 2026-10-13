@@ -1,7 +1,7 @@
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 
-// Cached album metadata used for local-first rendering
+// Cached album metadata used for local first rendering
 abstract class MediaCatalog {
   Future<List<MediaRecord>> listRecordsForAlbum(String albumId);
 

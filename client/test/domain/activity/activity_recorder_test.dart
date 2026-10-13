@@ -274,9 +274,8 @@ void main() {
     expect(commits.last.$2.keys, ['a']);
   });
 
-  // An older server lists at most four members. A roster shorter than the
-  // album's member count is not the roster, so it must never produce joins
-  // or departures: a fifth member sliding into view is not someone joining
+  // Older servers list at most four members, so a short roster must never
+  // produce joins or departures
   group('a partial member list', () {
     test('produces no membership rows', () async {
       final r = recorder();

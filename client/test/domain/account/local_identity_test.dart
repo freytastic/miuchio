@@ -24,7 +24,7 @@ void main() {
     expect(got.lk, isNull);
   });
 
-  // iOS can preserve keystore keys after the label-map sidecar is removed
+  // iOS can preserve keystore keys after the label map sidecar is removed
   test('derives both public keys from the stored seeds alone', () async {
     final ik = await Sign.generateEd25519();
     final lk = await Kex.generateX25519();

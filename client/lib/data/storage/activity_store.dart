@@ -12,7 +12,7 @@ import 'package:miuchio/crypto/wire_format.dart';
 import 'package:miuchio/domain/activity/activity_event.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 
-// Seal social-graph payloads and hash row keys so album ids remain hidden
+// Seal social graph payloads and hash row keys so album ids remain hidden
 // Only ordering and read state stay clear
 
 const String _activityAad = 'miuchio.activity-v1';
@@ -80,14 +80,14 @@ class ActivityStore implements ActivityFeed {
 
   Future<void> close() => _db.close();
 
-  // Social-graph history must not outlive its account
+  // Social graph history must not outlive its account
   Future<void> clearAll() async {
     await _db.delete('activity');
     await _db.delete('snapshot');
   }
 
-  // Re-recording a known event must not resurrect it as unread, because
-  // derivation re-emits the same transition on every launch
+  // Recording a known event again must not resurrect it as unread, because
+  // derivation emits the same transition on every launch
   Future<void> record(Iterable<ActivityEvent> events) async {
     final batch = _db.batch();
     await _insertAll(batch, events);
@@ -234,7 +234,7 @@ class ActivityStore implements ActivityFeed {
       );
       return jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;
     } catch (_) {
-      // Unreadable is the same as absent: the next pass re-seeds the baseline
+      // Unreadable is the same as absent: the next pass reseeds the baseline
       return null;
     }
   }

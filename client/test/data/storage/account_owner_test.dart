@@ -16,11 +16,8 @@ void main() {
     owner = AccountOwnerStore(store);
   });
 
-  test('read returns null before any account is bound', () async {
+  test('read is null until an account is bound, then returns it', () async {
     expect(await owner.read(), isNull);
-  });
-
-  test('bind then read returns the bound account', () async {
     await owner.bind(userA);
     expect(await owner.read(), userA);
   });

@@ -75,7 +75,7 @@ class MediaSealedCache
             (await getApplicationCacheDirectory()).path, 'miuchio_media'));
     if (!root.existsSync()) root.createSync(recursive: true);
     // iOS must exclude this durable tree from backup before release
-    // Tests passing only rootDir keep the legacy single-root layout
+    // Tests passing only rootDir keep the legacy single root layout
     final durable = durableDir ??
         (rootDir ??
             Directory(p.join((await getApplicationSupportDirectory()).path,
@@ -106,7 +106,7 @@ class MediaSealedCache
       },
       onUpgrade: (db, from, to) async {
         if (from < 2) await db.execute(_createCovers);
-        // created_at is only hour-precise, so persist explicit server order
+        // created_at is only hour precise, so persist explicit server order
         if (from < 3) {
           await db.execute('ALTER TABLE media_records '
               'ADD COLUMN sort_index INTEGER NOT NULL DEFAULT 0');
@@ -197,9 +197,8 @@ class MediaSealedCache
     });
   }
 
-  // First boot on the sealed format : wipe any prior-layout blobs + index
-  // rows (D9′ : zero prod users, no dual format read path). Also self heals a
-  // wholesale key mismatch (sentinel lost) by starting clean
+  // Older layouts are wiped rather than read, which also recovers from a lost
+  // key sentinel
   Future<void> _migrateIfNeeded() async {
     final sentinel = File(p.join(_durableRoot.path, _formatSentinel));
     if (sentinel.existsSync()) return;
@@ -247,7 +246,7 @@ class MediaSealedCache
     }
   }
 
-  // Ignore byte-accounting placeholders without render metadata
+  // Ignore byte accounting placeholders without render metadata
   @override
   Future<List<MediaRecord>> listRecordsForAlbum(String albumId) async {
     final rows = await _db.query('media_records',
@@ -361,7 +360,7 @@ class MediaSealedCache
           where: 'media_id = ?', whereArgs: [k.mediaId]);
       return pt;
     } on AeadAuthFailed {
-      // D12′ : tampered or wrong key (eg cache_root_key changed) → purge + miss
+      // Tampered or sealed under another key, purge and miss
       await invalidate(k.mediaId);
       return null;
     } on FormatException {
@@ -401,7 +400,7 @@ class MediaSealedCache
   Future<void> _evictIfOverBudget() async {
     await _evictDisposable();
     await _evictDurable();
-    // Keep metadata-only rows so albums remain available offline
+    // Keep metadata only rows so albums remain available offline
     await _db.delete('media_records',
         where:
             'blob_bytes = 0 AND thumb_bytes = 0 AND length(record_json) <= 2');

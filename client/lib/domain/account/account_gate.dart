@@ -34,7 +34,7 @@ abstract class AccountGate {
     required String authenticatedUserId,
     required Uint8List? localIk,
     required Uint8List? localLk,
-    // Album keys, sealed catalog entries, or partial-erase residue
+    // Album keys, sealed catalog entries, or partial erase residue
     required bool hasResidualVault,
     required ServerIdentity server,
   }) {
@@ -79,7 +79,7 @@ abstract class AccountGate {
             : AccountGateOutcome.unclaimedVault;
 
       case ServerIdentityState.published:
-        // Both halves must match to prevent a signer-only false match
+        // Both halves must match to prevent a signer only false match
         final matches =
             _sameBytes(localIk, server.ik) && _sameBytes(localLk, server.lk);
         if (!matches) return AccountGateOutcome.lostDevice;
@@ -111,7 +111,7 @@ abstract class AccountGate {
         AccountGateOutcome.connectionRequired => false,
       };
 
-  // Pre-runApp shelf seeding requires matching owner and session IDs
+  // Shelf seeding before runApp requires matching owner and session IDs
   static bool maySeedShelf({
     required String? boundOwner,
     required String? storedUserId,
