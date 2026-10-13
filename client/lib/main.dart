@@ -1,98 +1,90 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:miuchio/data/storage/secure_storage.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sodium/sodium_sumo.dart' show SodiumSumo, SodiumSumoInit;
+
+import 'package:miuchio/app/album_wipe.dart';
+import 'package:miuchio/app/app.dart';
+import 'package:miuchio/app/avatar_wiring.dart';
+import 'package:miuchio/app/device_wipe.dart';
+import 'package:miuchio/app/name_resolvers.dart';
+import 'package:miuchio/app/realtime_router.dart';
+import 'package:miuchio/app/sign_in_wiring.dart';
+import 'package:miuchio/crypto/primitives.dart';
+import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/data/api/account_api.dart';
 import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/api/api_client.dart';
-import 'package:miuchio/data/api/api_error.dart';
+import 'package:miuchio/data/api/avatar_api.dart';
 import 'package:miuchio/data/api/epoch_api.dart' as data_epoch;
-import 'package:miuchio/data/api/error_mapper.dart';
 import 'package:miuchio/data/api/invite_json_client.dart';
-import 'package:miuchio/data/api/prekey_json_client.dart';
-import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/data/api/media_api.dart';
+import 'package:miuchio/data/api/prekey_json_client.dart';
+import 'package:miuchio/data/api/realtime_service.dart';
 import 'package:miuchio/data/native/image_transcoder.dart';
+import 'package:miuchio/data/storage/account_owner.dart';
+import 'package:miuchio/data/storage/activity_store.dart';
+import 'package:miuchio/data/storage/avatar_cache.dart';
+import 'package:miuchio/data/storage/cache_root_key.dart';
+import 'package:miuchio/data/storage/deletion_marker.dart';
+import 'package:miuchio/data/storage/identity_pin_store.dart';
+import 'package:miuchio/data/storage/install_guard.dart';
+import 'package:miuchio/data/storage/media_cache_manager.dart';
+import 'package:miuchio/data/storage/media_catalog.dart';
+import 'package:miuchio/data/storage/media_plaintext_cache.dart';
+import 'package:miuchio/data/storage/media_sealed_cache.dart';
+import 'package:miuchio/data/storage/name_cache.dart';
+import 'package:miuchio/data/storage/own_avatar_store.dart';
+import 'package:miuchio/data/storage/secure_storage.dart';
+import 'package:miuchio/data/storage/storage_service.dart';
 import 'package:miuchio/data/upload/upload_adapters.dart';
+import 'package:miuchio/data/upload/upload_outbox.dart';
 import 'package:miuchio/diagnostics/debug_log.dart';
 import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/diagnostics/trace.dart';
-import 'package:miuchio/data/upload/upload_outbox.dart';
-import 'package:miuchio/data/storage/storage_service.dart';
 import 'package:miuchio/domain/account/account_deletion.dart';
-import 'package:miuchio/domain/albums/album_cleanup.dart';
-import 'package:miuchio/domain/upload/upload_coordinator.dart';
-import 'package:miuchio/ui/providers/album_summary_refresher.dart';
-import 'package:miuchio/ui/providers/upload_queue_model.dart';
-import 'package:miuchio/data/api/realtime_service.dart';
-import 'package:miuchio/data/storage/cache_root_key.dart';
-import 'package:miuchio/data/storage/deletion_marker.dart';
-import 'package:miuchio/data/storage/install_guard.dart';
-import 'package:miuchio/data/storage/media_cache_manager.dart';
-import 'package:miuchio/data/storage/media_plaintext_cache.dart';
-import 'package:miuchio/data/storage/media_catalog.dart';
-import 'package:miuchio/data/storage/media_sealed_cache.dart';
-import 'package:miuchio/data/storage/identity_pin_store.dart';
-import 'package:miuchio/data/models/album_summary.dart';
-import 'package:miuchio/data/storage/name_cache.dart';
-import 'package:miuchio/e2ee/album_keys.dart';
-import 'package:miuchio/e2ee/display_name.dart';
-import 'package:miuchio/e2ee/sealed_name.dart';
-import 'package:miuchio/e2ee/epoch_api.dart';
-import 'package:miuchio/e2ee/epoch_processor.dart';
-import 'package:miuchio/e2ee/epoch_rotator.dart';
-import 'package:miuchio/e2ee/identity.dart';
-import 'package:miuchio/e2ee/expected_ik_resolver.dart';
-import 'package:miuchio/e2ee/identity_trust.dart';
-import 'package:miuchio/e2ee/identity_label_map.dart';
-import 'package:miuchio/e2ee/invite.dart';
-import 'package:miuchio/e2ee/invite_api.dart';
-import 'package:miuchio/e2ee/media_record.dart';
-import 'package:miuchio/e2ee/member_directory.dart';
-import 'package:miuchio/e2ee/member_removal.dart';
-import 'package:miuchio/e2ee/prekey_api.dart';
-import 'package:miuchio/e2ee/rotation_recovery.dart';
-import 'package:miuchio/secure_store/key_store_exceptions.dart';
-import 'package:miuchio/secure_store/secure_key_store.dart';
-import 'package:miuchio/ui/providers/app_state.dart';
-import 'package:miuchio/ui/shelf/seen_store_impl.dart';
-import 'package:miuchio/ui/shelf/shelf_covers_impl.dart';
-import 'package:miuchio/ui/theme/warm_tokens.dart';
-import 'package:miuchio/ui/shelf/shelf_data.dart';
-import 'package:miuchio/ui/screens/account_deletion_screen.dart';
-import 'package:miuchio/ui/screens/landing_screen.dart';
-import 'package:miuchio/data/storage/account_owner.dart';
-import 'package:miuchio/data/api/session_refresher.dart';
-import 'package:miuchio/data/api/avatar_api.dart';
-import 'package:miuchio/data/storage/activity_store.dart';
-import 'package:miuchio/data/storage/avatar_cache.dart';
-import 'package:miuchio/data/storage/own_avatar_store.dart';
 import 'package:miuchio/domain/account/account_gate.dart';
+import 'package:miuchio/domain/account/local_identity.dart';
+import 'package:miuchio/domain/account/sign_in_gate.dart';
 import 'package:miuchio/domain/activity/activity_event.dart';
 import 'package:miuchio/domain/activity/activity_recorder.dart';
 import 'package:miuchio/domain/activity/activity_sync.dart';
 import 'package:miuchio/domain/activity/trust_alarm.dart';
+import 'package:miuchio/domain/albums/album_cleanup.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
-import 'package:miuchio/e2ee/sealed_avatar.dart';
+import 'package:miuchio/domain/upload/upload_coordinator.dart';
+import 'package:miuchio/e2ee/album_keys.dart';
+import 'package:miuchio/e2ee/display_name.dart';
+import 'package:miuchio/e2ee/epoch_api.dart';
+import 'package:miuchio/e2ee/epoch_processor.dart';
+import 'package:miuchio/e2ee/epoch_rotator.dart';
+import 'package:miuchio/e2ee/expected_ik_resolver.dart';
+import 'package:miuchio/e2ee/identity.dart';
+import 'package:miuchio/e2ee/identity_label_map.dart';
+import 'package:miuchio/e2ee/identity_trust.dart';
+import 'package:miuchio/e2ee/invite.dart';
+import 'package:miuchio/e2ee/invite_api.dart';
+import 'package:miuchio/e2ee/member_directory.dart';
+import 'package:miuchio/e2ee/member_removal.dart';
+import 'package:miuchio/e2ee/prekey_api.dart';
+import 'package:miuchio/e2ee/rotation_recovery.dart';
+import 'package:miuchio/secure_store/secure_key_store.dart';
+import 'package:miuchio/ui/providers/album_summary_refresher.dart';
+import 'package:miuchio/ui/providers/app_state.dart';
+import 'package:miuchio/ui/providers/upload_queue_model.dart';
+import 'package:miuchio/ui/shelf/seen_store_impl.dart';
+import 'package:miuchio/ui/shelf/shelf_covers_impl.dart';
+import 'package:miuchio/ui/shelf/shelf_data.dart';
 import 'package:miuchio/ui/shelf/shelf_view_preference.dart';
-import 'package:miuchio/ui/widgets/default_status_bar.dart';
-import 'package:miuchio/domain/account/local_identity.dart';
-import 'package:miuchio/domain/account/sign_in_gate.dart';
-import 'package:miuchio/ui/screens/onboarding_screen.dart';
 
-final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey<ScaffoldMessengerState> rootMessengerKey =
-    GlobalKey<ScaffoldMessengerState>();
-
+// Composition root: builds every service once, in dependency order, and hands
+// them to the widget tree through providers
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   PerfProbe.start();
@@ -103,26 +95,7 @@ void main() async {
   Sign.bindSodium(sodium);
   Kex.bindSodium(sodium);
 
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    final err = details.exception;
-    if (err is ApiError) {
-      _showApiError(err);
-    } else {
-      DebugLog.record(DebugEvent.appError,
-          reason: Trace.reasonOf(err), stage: 'flutter');
-    }
-  };
-
-  PlatformDispatcher.instance.onError = (error, stack) {
-    if (error is ApiError) {
-      _showApiError(error);
-      return true;
-    }
-    DebugLog.record(DebugEvent.appError,
-        reason: Trace.reasonOf(error), stage: 'async');
-    return false;
-  };
+  installErrorHandlers();
 
   final appState = AppState();
   final apiClient = ApiClient();
@@ -153,8 +126,7 @@ void main() async {
   // Persist vault ownership with its keys
   final accountOwner = AccountOwnerStore(secureKeyStore);
   final albumKeyStore = AlbumKeyStore(secureKeyStore);
-  // Wrapper-key initialization must precede every key-backed store
-
+  // The wrapper key must exist before any key backed store is used
   await secureKeyStore.initialize();
   unawaited(_prewarmAlbumKeyStore(albumKeyStore));
   final albumService = AlbumService();
@@ -163,8 +135,7 @@ void main() async {
     putProfileCt: (albumId, ct) => albumService.putProfileCt(albumId, ct),
   );
   final memberDirectory = MemberDirectory((albumId) async {
-    final members =
-        await albumService.listMembers(_uuidStringFromBytes(albumId));
+    final members = await albumService.listMembers(uuidFromBytes(albumId));
     final out = <MemberRecord>[];
     for (final m in members) {
       if (m.revoked) continue;
@@ -197,74 +168,26 @@ void main() async {
   final avatarApi = AvatarApi(apiClient);
   final avatarCache = await AvatarCache.open(
     cacheRootKey: cacheRootKey,
-    fetch: (albumId, token, ref) async {
-      final b = _uuidStringToBytes(albumId);
-      if (b == null) return null;
-      return AvatarCrypto.open(
-        ks: albumKeyStore,
-        albumId: b,
-        memberToken: base64.decode(base64.normalize(token)),
-        avatarId: ref.avatarId,
-        keyCt: ref.keyCt,
-        blobSha256: ref.blobSha256,
-        blob: await avatarApi.download(albumId, ref),
-      );
-    },
+    fetch: avatarFetcher(albumKeyStore, avatarApi),
   );
   final avatarPublisher = AvatarPublisher(
     own: ownAvatar,
     albums: () => appState.albums,
-    seal: (albumId, token, jpeg) async {
-      final b = _uuidStringToBytes(albumId);
-      if (b == null || await albumKeyStore.latestEpoch(b) < 0) return null;
-      return AvatarCrypto.seal(
-        ks: albumKeyStore,
-        albumId: b,
-        memberToken: base64.decode(base64.normalize(token)),
-        jpeg: jpeg,
-      );
-    },
+    seal: avatarSealer(albumKeyStore),
     upload: avatarApi.upload,
     remove: avatarApi.remove,
   );
-  appState.attachAlbumNameResolver((albumId, nameCt) async {
-    if (nameCt == null || nameCt.isEmpty) return 'Untitled album';
-    final key = NameCache.albumKey(albumId);
-    final cached = nameCache.get(key, nameCt);
-    if (cached != null) return cached;
-    final b = _uuidStringToBytes(albumId);
-    if (b == null) return 'Untitled album';
-    final opened = await SealedName.openAlbumName(albumKeyStore, b, nameCt);
-    if (opened != null) {
-      // An album wipe may finish while the title is decrypting
-      if (appState.albums.any((a) => a.id == albumId)) {
-        nameCache.put(key, opened, nameCt);
-      }
-      return opened;
-    }
-    return resolveAlbumName(albumKeyStore, b, nameCt);
-  });
-  appState.attachMemberNameResolver((albumId, memberToken, nameCt) async {
-    if (nameCt == null || nameCt.isEmpty) return null;
-    final key = NameCache.memberKey(albumId, memberToken);
-    final cached = nameCache.get(key, nameCt);
-    if (cached != null) return cached;
-    final b = _uuidStringToBytes(albumId);
-    if (b == null) return null;
-    final token = base64.decode(base64.normalize(memberToken));
-    final opened =
-        await SealedName.openMemberName(albumKeyStore, b, token, nameCt);
-    if (opened != null && appState.albums.any((a) => a.id == albumId)) {
-      nameCache.put(key, opened, nameCt);
-    }
-    return opened;
-  });
+  bool isListed(String albumId) => appState.albums.any((a) => a.id == albumId);
+  appState.attachAlbumNameResolver(albumNameResolver(
+      cache: nameCache, albumKeys: albumKeyStore, isListed: isListed));
+  appState.attachMemberNameResolver(memberNameResolver(
+      cache: nameCache, albumKeys: albumKeyStore, isListed: isListed));
   // Identity pins and signer bindings remain sealed across logout
   final identityPinStore =
       await IdentityPinStore.open(cacheRootKey: cacheRootKey);
   // Remove creator markers left by a crash after epoch 0 installed
   for (final albumIdStr in identityPinStore.creatingAlbums) {
-    final b = _uuidStringToBytes(albumIdStr);
+    final b = uuidToBytes(albumIdStr);
     if (b == null || await albumKeyStore.latestEpoch(b) >= 0) {
       await identityPinStore.clearCreating(albumIdStr);
     }
@@ -282,7 +205,7 @@ void main() async {
       unawaited(activitySync.alarm(() => recordTrustAlarm(
             record: activityStore.record,
             onRecorded: refreshUnread,
-            albumId: _uuidStringFromBytes(albumId),
+            albumId: uuidFromBytes(albumId),
             memberToken: memberToken,
             newIkPub: newIkPub,
             now: DateTime.now(),
@@ -329,38 +252,8 @@ void main() async {
   final signInGate = SignInGate(
     owner: accountOwner,
     readLocalIdentity: () => readLocalIdentity(secureKeyStore),
-    // Partial identities, album keys, and catalog entries make a vault nonempty
-    hasResidualVault: () async {
-      try {
-        final handles = await secureKeyStore.list();
-        if (handles.any((h) => h.label.startsWith(kAlbumLabelPrefix))) {
-          return true;
-        }
-        return (await mediaSealedCache.loadAlbums()).isNotEmpty;
-      } catch (_) {
-        return true;
-      }
-    },
-    readServerIdentity: () async {
-      try {
-        final keys = await prekeyApi.fetchOwnKeys();
-        if (keys.ikPub.isEmpty || keys.lkPub.isEmpty) {
-          return (
-            state: ServerIdentityState.unpublished,
-            ik: null,
-            lk: null,
-          );
-        }
-        return (
-          state: ServerIdentityState.published,
-          ik: keys.ikPub,
-          lk: keys.lkPub,
-        );
-      } catch (_) {
-        // A network failure cannot prove that no identity is published
-        return (state: ServerIdentityState.unavailable, ik: null, lk: null);
-      }
-    },
+    hasResidualVault: residualVaultProbe(secureKeyStore, mediaSealedCache),
+    readServerIdentity: serverIdentityReader(prekeyApi),
   );
 
   activityStore = await ActivityStore.open(cacheRootKey: cacheRootKey);
@@ -432,18 +325,18 @@ void main() async {
 
   final expectedIkResolver = ExpectedIkResolver.responder(
     selfToken: (albumId) {
-      final t = appState.selfMemberToken(_uuidStringFromBytes(albumId));
+      final t = appState.selfMemberToken(uuidFromBytes(albumId));
       return t == null ? null : base64.decode(base64.normalize(t));
     },
     pinned: (albumId, token) =>
         identityPinStore.pinnedIk(hexAlbumId(albumId), base64.encode(token)),
-    // Roster discovery must never grant epoch-signing authority
+    // Roster discovery must never grant epoch signing authority
     signerPinned: (albumId, token) =>
         identityPinStore.signerIk(hexAlbumId(albumId), base64.encode(token)),
     currentIk: identityService.currentIkPub,
     // Only the creator may sign before epoch 0 installs
     soleSigner: (albumId) =>
-        identityPinStore.isCreating(_uuidStringFromBytes(albumId)),
+        identityPinStore.isCreating(uuidFromBytes(albumId)),
     pin: (albumId, token, ik) async {
       identityPinStore.pinSigner(hexAlbumId(albumId), base64.encode(token), ik);
       await identityPinStore.flush();
@@ -460,75 +353,39 @@ void main() async {
   epochProcessor.blocked.listen((b) {
     // The album banner shows one plain message, so the reason lives here
     Trace.event('epoch.blocked', fields: {
-      'album': Trace.id(_uuidStringFromBytes(b.albumId)),
+      'album': Trace.id(uuidFromBytes(b.albumId)),
       'epoch': b.epoch,
       'reason': b.reason.name,
     });
     DebugLog.record(DebugEvent.albumBlocked,
         reason: b.reason.name, op: DebugLog.op(hexAlbumId(b.albumId)));
-    appState.setKeyBlock(_uuidStringFromBytes(b.albumId), b);
+    appState.setKeyBlock(uuidFromBytes(b.albumId), b);
   });
   late final RotationRecoveryScheduler rotationRecovery;
   late final UploadQueueModel uploadQueue;
   epochProcessor.unblocked.listen((e) {
-    appState.clearKeyBlock(_uuidStringFromBytes(e.albumId), e.epoch);
+    appState.clearKeyBlock(uuidFromBytes(e.albumId), e.epoch);
     rotationRecovery.onEpochInstalled(e.albumId);
   });
   Future<bool> isRotationRequired(Uint8List albumId) async {
-    final cur = await epochApi.getCurrentEpoch(_uuidStringFromBytes(albumId));
+    final cur = await epochApi.getCurrentEpoch(uuidFromBytes(albumId));
     return cur?.rotationRequired ?? false;
   }
 
   // Resume uploads only after installing the authoritative epoch
   Future<void> reconcileAlbumKeys(Uint8List albumId) async {
-    final cur = await epochApi.getCurrentEpoch(_uuidStringFromBytes(albumId));
+    final cur = await epochApi.getCurrentEpoch(uuidFromBytes(albumId));
     if (cur == null) return;
     await epochProcessor.handleEvent(albumId: albumId, epoch: cur.currentEpoch);
   }
 
-  Future<void> wipeLocalAlbum(Uint8List albumId) async {
-    final albumStr = _uuidStringFromBytes(albumId);
-    final picks = await uploadQueue.forgetAlbum(albumStr);
-    await shelfCovers.forget(albumStr);
-    await mediaCacheManager.clearAlbum(albumStr);
-    await seenStore.forget(albumStr);
-    await albumKeyStore.deleteAlbumMKs(albumId);
-    // Mark gone first so in-flight resolvers cannot repopulate wiped data
-    appState.removeAlbum(albumStr);
-    await mediaSealedCache.dropAlbum(albumStr);
-    await nameCache.clearAlbum(albumStr);
-    await avatarCache.clearAlbum(albumStr);
-    await ownAvatar.forgetAlbum(albumStr);
-    await identityTrust.forgetAlbum(albumId);
-    rotationRecovery.forget(albumId);
-    // Verify the wipe because some stores swallow deletion errors
-    final left = <String>[
-      for (final path in picks)
-        if (await File(path).exists()) 'picked photo',
-      if (uploadQueue.holdsAlbum(albumStr)) 'upload queue',
-      if (await uploadOutbox.holdsAlbum(albumStr)) 'sealed uploads',
-      if ((await mediaSealedCache.listRecordsForAlbum(albumStr)).isNotEmpty)
-        'media catalog',
-      if ((await mediaSealedCache.coversFor(albumStr)).isNotEmpty) 'covers',
-      if ((await mediaSealedCache.loadAlbums()).any((a) => a.id == albumStr))
-        'shelf',
-      if (await albumKeyStore.latestEpoch(albumId) >= 0) 'album keys',
-      if (nameCache.holdsAlbum(albumStr)) 'names',
-      if (await avatarCache.holdsAlbum(albumStr)) 'avatars',
-      if (identityPinStore.holdsAlbum(hexAlbumId(albumId))) 'pins',
-      if (seenStore.holdsAlbum(albumStr)) 'seen state',
-    ];
-    if (left.isNotEmpty) {
-      throw StateError('album data left behind: ${left.join(', ')}');
-    }
-  }
+  late final AlbumWipe wipeLocalAlbum;
 
   final memberRemoval = MemberRemovalCoordinator(
-    revoke: (albumId, token) => albumService.removeMember(
-        _uuidStringFromBytes(albumId), base64.encode(token)),
+    revoke: (albumId, token) =>
+        albumService.removeMember(uuidFromBytes(albumId), base64.encode(token)),
     activeTokens: (albumId) async {
-      final members =
-          await albumService.listMembers(_uuidStringFromBytes(albumId));
+      final members = await albumService.listMembers(uuidFromBytes(albumId));
       return [
         for (final m in members)
           if (!m.revoked) base64.decode(base64.normalize(m.memberToken)),
@@ -539,28 +396,28 @@ void main() async {
         albumIdBytes: albumId, epoch: epoch, recipients: recipients),
     expectedIk: expectedIkResolver.call,
     dropDirectory: (albumId, token) => memberDirectory.drop(albumId, token),
-    wipeLocalAlbum: wipeLocalAlbum,
+    wipeLocalAlbum: (albumId) => wipeLocalAlbum(albumId),
     isRotationRequired: isRotationRequired,
   );
   final albumCleanup = AlbumCleanupQueue(
     store: mediaSealedCache,
     probe: albumService.probeAlbum,
     wipe: (albumStr) async {
-      final albumId = _uuidStringToBytes(albumStr);
+      final albumId = uuidToBytes(albumStr);
       if (albumId != null) await memberRemoval.onSelfRemoved(albumId);
     },
   );
   rotationRecovery = RotationRecoveryScheduler(
     isRotationRequired: isRotationRequired,
-    canRotate: (albumId) => appState.isAdminOf(_uuidStringFromBytes(albumId)),
+    canRotate: (albumId) => appState.isAdminOf(uuidFromBytes(albumId)),
     recover: memberRemoval.recoverIfPending,
     reconcile: reconcileAlbumKeys,
   );
   rotationRecovery.status.listen((s) {
-    appState.setRotationStatus(_uuidStringFromBytes(s.albumId), s);
+    appState.setRotationStatus(uuidFromBytes(s.albumId), s);
   });
   appState.attachRotationPrompt((albumId) {
-    final b = _uuidStringToBytes(albumId);
+    final b = uuidToBytes(albumId);
     if (b != null) unawaited(rotationRecovery.request(b));
   });
 
@@ -581,92 +438,21 @@ void main() async {
   });
   unawaited(albumCleanup.drain());
 
-  // EpochProcessor reports failures without terminating the realtime listener
-  realtimeService.stream.listen((ev) {
-    if (ev.type == 'e2ee.opk_low') {
-      identityService.replenishOpks();
-    } else if (ev.type == 'e2ee.epoch_changed') {
-      final albumStr = ev.payload['album_id'] as String?;
-      final epoch = ev.payload['epoch'];
-      final joined = ev.payload['joined'] == true;
-      if (albumStr == null || epoch is! int) return;
-      final albumId = _uuidStringToBytes(albumStr);
-      if (albumId == null) return;
-      epochProcessor
-          .handleEvent(albumId: albumId, epoch: epoch, joined: joined)
-          .catchError((_) {});
-    } else if (ev.type == 'e2ee.media_added') {
-      final albumStr = ev.payload['album_id'] as String?;
-      final mediaStr = ev.payload['media_id'] as String?;
-      if (albumStr == null || mediaStr == null) return;
-      final recJson = ev.payload['record'];
-      if (recJson is Map<String, dynamic>) {
-        try {
-          final r = MediaRecord.fromJson(recJson);
-          unawaited(mediaCacheManager.acceptNewMedia(r));
-        } catch (_) {
-          unawaited(mediaCacheManager.prefetch(albumStr, mediaStr));
-        }
-      } else {
-        unawaited(mediaCacheManager.prefetch(albumStr, mediaStr));
-      }
-      final gen = ev.payload['media_generation'];
-      if (gen is int) {
-        appState.applyMediaAdded(albumStr, gen,
-            preview: recJson is Map<String, dynamic>
-                ? PreviewMedia.tryFromRecordJson(recJson)
-                : null);
-      }
-      appState.notifyMediaAdded(albumStr, mediaStr);
-      activitySync.nudge();
-    } else if (ev.type == 'e2ee.album_deleted') {
-      final albumStr = ev.payload['album_id'] as String?;
-      if (albumStr != null) onAlbumDeleted(albumStr);
-    } else if (ev.type == 'e2ee.media_deleted') {
-      final albumStr = ev.payload['album_id'] as String?;
-      final ids = ev.payload['media_ids'];
-      if (albumStr == null || ids is! List) return;
-      unawaited(() async {
-        for (final id in ids.whereType<String>()) {
-          await mediaCacheManager.invalidate(id);
-        }
-        appState.notifyMediaRemoved(albumStr);
-      }());
-    } else if (ev.type == 'e2ee.member_added' ||
-        ev.type == 'e2ee.member_updated') {
-      final albumStr = ev.payload['album_id'] as String?;
-      if (albumStr == null) return;
-      appState.refreshSummarySoon();
-      appState.notifyMemberChanged(albumStr);
-    } else if (ev.type == 'e2ee.member_revoked') {
-      final albumStr = ev.payload['album_id'] as String?;
-      final tokenB64 = ev.payload['member_token'] as String?;
-      if (albumStr == null || tokenB64 == null) return;
-      final albumId = _uuidStringToBytes(albumStr);
-      if (albumId == null) return;
-      final token = base64.decode(base64.normalize(tokenB64));
-      String? myTokenB64;
-      for (final a in appState.albums) {
-        if (a.id == albumStr) {
-          myTokenB64 = a.memberToken;
-          break;
-        }
-      }
-      final isSelf = myTokenB64 != null &&
-          _bytesEqual(base64.decode(base64.normalize(myTokenB64)), token);
-      if (isSelf) {
-        unawaited(albumCleanup.albumGone(albumStr).catchError((_) {}));
-      } else {
-        memberRemoval.onOtherRemoved(albumId, token);
-        appState.refreshSummarySoon();
-        unawaited(rotationRecovery.request(albumId));
-      }
-      appState.notifyMemberChanged(albumStr);
-    }
-  });
+  final realtimeRouter = RealtimeRouter(
+    identity: identityService,
+    epochProcessor: epochProcessor,
+    mediaCache: mediaCacheManager,
+    appState: appState,
+    activitySync: activitySync,
+    albumCleanup: albumCleanup,
+    memberRemoval: memberRemoval,
+    rotationRecovery: rotationRecovery,
+    onAlbumDeleted: onAlbumDeleted,
+  );
+  realtimeService.stream.listen(realtimeRouter.handle);
 
   epochProcessor.joinedAlbums.listen((albumIdBytes) async {
-    final albumIdStr = _uuidStringFromBytes(albumIdBytes);
+    final albumIdStr = uuidFromBytes(albumIdBytes);
     await appState
         .refreshAlbumOnJoin(albumIdStr, albumService)
         .catchError((_) {});
@@ -697,7 +483,7 @@ void main() async {
   final uploadCoordinator = UploadCoordinator(
     sources: pickedSources,
     onRotationPending: (albumId) {
-      final b = _uuidStringToBytes(albumId);
+      final b = uuidToBytes(albumId);
       if (b != null) unawaited(rotationRecovery.request(b));
     },
     onConfirmed: (albumId, generation) =>
@@ -712,6 +498,22 @@ void main() async {
     ),
   );
   uploadQueue = UploadQueueModel(uploadCoordinator);
+  wipeLocalAlbum = AlbumWipe(
+    uploadQueue: uploadQueue,
+    uploadOutbox: uploadOutbox,
+    shelfCovers: shelfCovers,
+    mediaCache: mediaCacheManager,
+    sealedCache: mediaSealedCache,
+    seenStore: seenStore,
+    albumKeys: albumKeyStore,
+    appState: appState,
+    nameCache: nameCache,
+    avatarCache: avatarCache,
+    ownAvatar: ownAvatar,
+    identityTrust: identityTrust,
+    identityPins: identityPinStore,
+    rotationRecovery: rotationRecovery,
+  );
   // Restore the outbox only after its owning account is known
   appState.attachUserKnown((userId) {
     unawaited(StorageService().saveUserId(userId));
@@ -758,32 +560,29 @@ void main() async {
       (name: 'key handles', run: () async => albumKeyStore.forgetAll()),
       (name: 'labels', run: labelMap.clearAll),
       (name: 'keystore', run: secureKeyStore.wipeAll),
-      (
-        name: 'secure storage',
-        run: () => appSecureStorage.deleteAll()
-      ),
+      (name: 'secure storage', run: () => appSecureStorage.deleteAll()),
       (
         name: 'preferences',
         run: () async => (await SharedPreferences.getInstance()).clear()
       ),
       (
         name: 'support dir',
-        run: () async => _emptyDir(await getApplicationSupportDirectory())
+        run: () async => emptyDir(await getApplicationSupportDirectory())
       ),
       (
         name: 'cache dir',
-        run: () async => _emptyDir(await getApplicationCacheDirectory())
+        run: () async => emptyDir(await getApplicationCacheDirectory())
       ),
       (
         name: 'temp dir',
-        run: () async => _emptyDir(await getTemporaryDirectory())
+        run: () async => emptyDir(await getTemporaryDirectory())
       ),
       (
         name: 'cache key',
         run: () async => cacheRootKey.fillRange(0, cacheRootKey.length, 0)
       ),
     ],
-    leftovers: () => _wipeLeftovers(secureKeyStore),
+    leftovers: () => wipeLeftovers(secureKeyStore),
   );
   final accountDeletion = AccountDeletion(
     api: HttpAccountDeletionApi(apiClient),
@@ -794,8 +593,7 @@ void main() async {
 
   realtimeService.connected.listen((_) {
     unawaited(albumCleanup.drain());
-    unawaited(_onReconnect(
-        identityService, epochProcessor, appState, rotationRecovery));
+    unawaited(realtimeRouter.catchUpAfterReconnect());
   });
 
   // Load before the first frame to avoid a visible layout jump
@@ -850,226 +648,8 @@ void main() async {
   );
 }
 
-// Settle SPK state before processing wraps, including for album-less accounts
-Future<void> _onReconnect(
-  IdentityService identity,
-  EpochProcessor epochProcessor,
-  AppState appState,
-  RotationRecoveryScheduler rotationRecovery,
-) async {
-  try {
-    await identity.settleSpkState();
-  } catch (_) {/*diagnostics are logged inside */}
-
-  final ids = <Uint8List>[];
-  for (final a in appState.albums) {
-    final b = _uuidStringToBytes(a.id);
-    if (b != null) ids.add(b);
-  }
-  if (ids.isEmpty) return;
-  try {
-    await epochProcessor.catchUpAll(ids);
-    appState.refreshAlbumNames();
-    await rotationRecovery.checkAll(ids);
-  } catch (_) {}
-}
-
-// Retain the deletion receipt until verification and the install marker to
-// prevent a later launch from wiping a new sign-in
-bool _survivesWipe(String name) =>
-    name == kDeletionMarkerName ||
-    name == kInstallMarkerName ||
-    name.startsWith('com.apple.');
-
-Future<void> _emptyDir(Directory dir) async {
-  if (!await dir.exists()) return;
-  final failed = <String>[];
-  await for (final entry in dir.list(followLinks: false)) {
-    final name = p.basename(entry.path);
-    if (_survivesWipe(name)) continue;
-    try {
-      await entry.delete(recursive: true);
-    } catch (_) {
-      failed.add(name);
-    }
-  }
-  if (failed.isNotEmpty) {
-    throw FileSystemException('not deleted', failed.join(', '));
-  }
-}
-
-// Verify deletion because some stores swallow their own failures
-Future<List<String>> _wipeLeftovers(SecureKeyStore keys) async {
-  final left = <String>[];
-  for (final dir in [
-    await getApplicationSupportDirectory(),
-    await getApplicationCacheDirectory(),
-    await getTemporaryDirectory(),
-  ]) {
-    if (!await dir.exists()) continue;
-    await for (final entry in dir.list(followLinks: false)) {
-      final name = p.basename(entry.path);
-      if (!_survivesWipe(name)) left.add('file $name');
-    }
-  }
-  if ((await appSecureStorage.readAll()).isNotEmpty) {
-    left.add('secure storage');
-  }
-  if ((await SharedPreferences.getInstance()).getKeys().isNotEmpty) {
-    left.add('preferences');
-  }
-  try {
-    if ((await keys.list()).isNotEmpty) left.add('keystore');
-  } on KeyStoreUninitializedException {
-    // A missing wrapper key confirms the store is wiped
-  }
-  return left;
-}
-
 Future<void> _prewarmAlbumKeyStore(AlbumKeyStore aks) async {
   try {
     await aks.initialize();
   } catch (_) {}
-}
-
-String _uuidStringFromBytes(Uint8List b) {
-  if (b.length != 16) {
-    throw ArgumentError('albumId must be 16 bytes, got ${b.length}');
-  }
-  final s = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
-  return '${s.substring(0, 8)}-${s.substring(8, 12)}-${s.substring(12, 16)}'
-      '-${s.substring(16, 20)}-${s.substring(20)}';
-}
-
-Uint8List? _uuidStringToBytes(String s) {
-  final hex = s.replaceAll('-', '');
-  if (hex.length != 32) return null;
-  final out = Uint8List(16);
-  for (var i = 0; i < 16; i++) {
-    final v = int.tryParse(hex.substring(i * 2, i * 2 + 2), radix: 16);
-    if (v == null) return null;
-    out[i] = v;
-  }
-  return out;
-}
-
-// Member tokens are compared here only for routing, not as secrets
-bool _bytesEqual(List<int> a, List<int> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
-}
-
-void _showApiError(ApiError err) {
-  final ux = mapApiError(err);
-  rootMessengerKey.currentState?.showSnackBar(
-    SnackBar(
-      content: Text(ux.userMessage),
-      duration: ux.isTransient
-          ? const Duration(seconds: 3)
-          : const Duration(seconds: 6),
-      behavior: SnackBarBehavior.floating,
-    ),
-  );
-  if (ux.action == ErrorRecovery.abortAndReauth) {
-    rootNavigatorKey.currentState?.pushNamedAndRemoveUntil(
-      '/login',
-      (_) => false,
-    );
-  }
-}
-
-class MiuchioApp extends StatefulWidget {
-  final MediaCacheManager mediaCacheManager;
-  final ShelfCoversImpl shelfCovers;
-  // Set when an earlier run confirmed a deletion it never saw finish
-  final AccountDeletion? resumeDeletion;
-  const MiuchioApp({
-    super.key,
-    required this.mediaCacheManager,
-    required this.shelfCovers,
-    this.resumeDeletion,
-  });
-
-  @override
-  State<MiuchioApp> createState() => _MiuchioAppState();
-}
-
-class _MiuchioAppState extends State<MiuchioApp> with WidgetsBindingObserver {
-  // Hides shelf photos from task switcher snapshots
-  bool _shielded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  // Clear plaintext on background but ignore transient inactive states
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Task switcher snapshots precede pause
-    final shield = state != AppLifecycleState.resumed;
-    if (shield != _shielded) setState(() => _shielded = shield);
-
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.detached) {
-      widget.mediaCacheManager.onAppPaused();
-      widget.shelfCovers.suspend();
-      unawaited(DebugLog.flush());
-    } else if (state == AppLifecycleState.resumed) {
-      widget.shelfCovers.resume();
-      // Refresh proactively because an expired session cannot be renewed
-      unawaited(SessionRefresher().renewIfDue().catchError(
-            (_) => null,
-          ));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Miuchio',
-      debugShowCheckedModeBanner: false,
-      navigatorKey: rootNavigatorKey,
-      navigatorObservers: [PerfProbe.observer],
-      scaffoldMessengerKey: rootMessengerKey,
-      theme: Warm.theme,
-      home: widget.resumeDeletion == null
-          ? const LandingPage()
-          : AccountDeletionScreen(
-              deletion: widget.resumeDeletion!,
-              onNotAccepted: (_) => const LandingPage(),
-            ),
-      routes: {
-        '/login': (_) => const OnboardingScreen(),
-      },
-      builder: (context, child) => DefaultStatusBar(
-        child: Stack(
-          children: [
-            if (child != null) child,
-            if (_shielded)
-              Positioned.fill(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: Warm.shieldBlur,
-                    sigmaY: Warm.shieldBlur,
-                  ),
-                  child: const ColoredBox(color: Warm.shieldScrim),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }

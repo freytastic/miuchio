@@ -12,7 +12,10 @@ import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/media_catalog.dart';
 import 'package:miuchio/data/storage/name_cache.dart';
 import 'package:miuchio/domain/upload/upload_ports.dart';
+import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/ui/album/add_people_sheet.dart';
+import 'package:miuchio/ui/album/album_banners.dart';
+import 'package:miuchio/ui/album/album_media_grid.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_foot.dart';
 import 'package:miuchio/ui/album/album_header.dart';
@@ -21,18 +24,14 @@ import 'package:miuchio/ui/album/album_menu.dart';
 import 'package:miuchio/ui/album/album_stats.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/album/photo_sheets.dart';
-import 'package:miuchio/ui/album/photo_hold.dart';
 import 'package:miuchio/ui/album/photo_peek.dart';
 import 'package:miuchio/ui/providers/latest_only.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/widgets/upload_pill.dart';
 import 'package:miuchio/ui/widgets/upload_sheet.dart';
-import 'package:miuchio/ui/widgets/upload_tile.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/data/models/member_model.dart';
-import 'package:miuchio/crypto/uuid_bytes.dart';
-import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
@@ -49,20 +48,10 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/decrypted_image_preview.dart';
 import 'package:miuchio/ui/widgets/encrypted_image.dart';
-import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
 import 'package:miuchio/ui/widgets/safety_number_sheet.dart';
 
 Future<List<XFile>> _systemPicker({int limit = 0}) =>
     ImagePicker().pickMultiImage(limit: limit);
-
-// Distinguishes a confirmed-empty album from an unavailable one
-enum AlbumFeedState {
-  loadingNoCache,
-  showingCached,
-  refreshing,
-  staleOffline,
-  confirmedEmpty,
-}
 
 typedef MultiImagePicker = Future<List<XFile>> Function({int limit});
 
@@ -725,7 +714,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             await trust.markVerified(
                 albumId: albumIdBytes, memberToken: tokenB64, peerIkPub: ik);
           } on VerificationNotSaved {
-            // Session-only; a restart restores the alarm
+            // Session only; a restart restores the alarm
           }
           // Verification permits a retry but only a successful install clears the block
           await _retryKeySync();
@@ -800,7 +789,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     return null;
   }
 
-  // The dormant co-admin role grants nothing in Beta V1
+  // The co admin role is dormant and grants nothing
   bool get _viewerIsAdmin => _me?.role == 'admin';
 
   Future<void> _retryRotation() async {
@@ -816,7 +805,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 
   Future<void> _openAddMember() async {
-    final albumIdBytes = _uuidStringToBytes(widget.album.id);
+    final albumIdBytes = uuidToBytes(widget.album.id);
     if (albumIdBytes == null) return;
     final initiator = context.read<InviteInitiator>();
     final state = context.read<AppState>();
@@ -1027,7 +1016,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final id = widget.album.id;
-    // Rebuild for this album's state only, not every app-wide notification
+    // Rebuild for this album's state only, not every app wide notification
     context.select<AppState, Object>((s) => (
           s.isSyncing(id),
           s.keyBlockFor(id),
@@ -1099,7 +1088,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
               ),
               if (keyBlock != null)
                 SliverToBoxAdapter(
-                  child: _KeyBlockBanner(
+                  child: KeyBlockBanner(
                     block: keyBlock,
                     onVerify: () => _verifyBlockingSigner(keyBlock),
                     onRetry: _retryKeySync,
@@ -1107,23 +1096,23 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 ),
               if (rotation != null && keyBlock == null)
                 SliverToBoxAdapter(
-                  child: _RotationBanner(
-                      status: rotation, onRetry: _retryRotation),
+                  child:
+                      RotationBanner(status: rotation, onRetry: _retryRotation),
                 ),
               if (_changedKeyMembers.isNotEmpty)
                 SliverToBoxAdapter(
-                  child: _KeyChangeBanner(
+                  child: KeyChangeBanner(
                     members: _changedKeyMembers,
                     nameOf: _memberName,
                     onTap: _openSafetyNumber,
                   ),
                 ),
               if (syncing && _items.isNotEmpty)
-                const SliverToBoxAdapter(child: _SyncingBanner()),
+                const SliverToBoxAdapter(child: AlbumSyncingBanner()),
               if (_feed == AlbumFeedState.staleOffline && _items.isNotEmpty)
                 SliverToBoxAdapter(
-                    child: _StaleBanner(onRetry: () => _loadMedia())),
-              Selector<UploadQueueModel, List<_Pending>>(
+                    child: AlbumStaleBanner(onRetry: () => _loadMedia())),
+              Selector<UploadQueueModel, List<PendingOverlay>>(
                 selector: (_, queue) => [
                   for (final o in queue.overlaysFor(widget.album.id))
                     (id: o.id, mediaId: o.mediaId.value),
@@ -1134,7 +1123,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     return const SliverFillRemaining(
                         hasScrollBody: false, child: _SyncingPlaceholder());
                   }
-                  return _MediaGrid(
+                  return AlbumMediaGrid(
                     items: shown,
                     overlays: _filterToken == null ? overlays : const [],
                     state: _feed,
@@ -1221,464 +1210,4 @@ class _SyncingPlaceholder extends StatelessWidget {
       ),
     );
   }
-}
-
-typedef _Pending = ({String id, String mediaId});
-
-class _MediaGrid extends StatelessWidget {
-  final List<MediaRecord> items;
-  final List<_Pending> overlays;
-  final AlbumFeedState state;
-  final Future<void> Function() onRetry;
-  final String traceId;
-  final VoidCallback onFirstThumbnailPaint;
-  final void Function(MediaRecord record, DecryptedImagePreview preview,
-      ImageProvider onScreen) onPeek;
-  final void Function(MediaRecord record) onOpen;
-
-  const _MediaGrid({
-    required this.items,
-    required this.overlays,
-    required this.state,
-    required this.onRetry,
-    required this.traceId,
-    required this.onFirstThumbnailPaint,
-    required this.onPeek,
-    required this.onOpen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (items.isEmpty && overlays.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: switch (state) {
-          AlbumFeedState.loadingNoCache ||
-          AlbumFeedState.refreshing =>
-            const Center(child: CircularProgressIndicator()),
-          AlbumFeedState.staleOffline => _MediaUnavailable(onRetry: onRetry),
-          AlbumFeedState.confirmedEmpty ||
-          AlbumFeedState.showingCached =>
-            const _MediaEmpty(),
-        },
-      );
-    }
-    // Confirmed records replace matching optimistic tiles
-    final landed = {for (final r in items) r.id};
-    final pending = [
-      for (final o in overlays)
-        if (!landed.contains(o.mediaId)) o
-    ];
-
-    // Preserve tile elements when pending and confirmed rows shift
-    final slotOf = <String, int>{};
-    for (var i = 0; i < pending.length; i++) {
-      slotOf['p:${pending[i].id}'] = i;
-    }
-    for (var i = 0; i < items.length; i++) {
-      slotOf['m:${items[i].id}'] = pending.length + i;
-    }
-
-    return SliverGrid(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
-      ),
-      delegate: SliverChildBuilderDelegate(
-        (context, i) {
-          if (i < pending.length) {
-            final item = pending[i];
-            return UploadTile(
-              key: ValueKey('p:${item.id}'),
-              itemId: item.id,
-              onRetry: () => context.read<UploadQueueModel>().retry(item.id),
-            );
-          }
-          final cache = context.read<MediaCacheManager>();
-          final record = items[i - pending.length];
-          return _MediaTile(
-            key: ValueKey('m:${record.id}'),
-            record: record,
-            cache: cache,
-            traceId: traceId,
-            onFirstThumbnailPaint: onFirstThumbnailPaint,
-            onPeek: onPeek,
-            onOpen: onOpen,
-          );
-        },
-        childCount: pending.length + items.length,
-        findChildIndexCallback: (key) =>
-            slotOf[(key as ValueKey<String>).value],
-      ),
-    );
-  }
-}
-
-class _MediaTile extends StatefulWidget {
-  final MediaRecord record;
-  final MediaCacheManager cache;
-  final String traceId;
-  final VoidCallback onFirstThumbnailPaint;
-  final void Function(MediaRecord record, DecryptedImagePreview preview,
-      ImageProvider onScreen) onPeek;
-  final void Function(MediaRecord record) onOpen;
-
-  const _MediaTile({
-    super.key,
-    required this.record,
-    required this.cache,
-    required this.traceId,
-    required this.onFirstThumbnailPaint,
-    required this.onPeek,
-    required this.onOpen,
-  });
-
-  @override
-  State<_MediaTile> createState() => _MediaTileState();
-}
-
-class _MediaTileState extends State<_MediaTile> {
-  DecryptedImagePreview? _preview;
-
-  @override
-  void didUpdateWidget(covariant _MediaTile oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.record.id != widget.record.id) _preview = null;
-  }
-
-  void _rememberPreview(DecryptedImagePreview preview) {
-    _preview = preview;
-  }
-
-  void _openPeek(LongPressStartDetails _) {
-    final preview = _preview;
-    final size = context.size;
-    if (preview == null || size == null) return;
-    widget.onPeek(
-      widget.record,
-      preview,
-      EncryptedThumbnail.imageFor(
-          preview.bytes, size.width, MediaQuery.devicePixelRatioOf(context)),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    PerfProbe.count('tile');
-    return PhotoHold(
-      onStart: _openPeek,
-      child: GestureDetector(
-        onTap: () => widget.onOpen(widget.record),
-        child: ColoredBox(
-          color: Warm.wellEmpty,
-          child: EncryptedThumbnail(
-            record: widget.record,
-            cache: widget.cache,
-            traceId: widget.traceId,
-            onFirstFrame: widget.onFirstThumbnailPaint,
-            onReady: _rememberPreview,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SyncingBanner extends StatelessWidget {
-  const _SyncingBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: Warm.ground,
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-      child: Row(
-        children: [
-          const SizedBox(
-            width: 12,
-            height: 12,
-            child: CircularProgressIndicator(strokeWidth: 1.5),
-          ),
-          const SizedBox(width: 10),
-          Text('Getting the album ready…',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Warm.inkSoft)),
-        ],
-      ),
-    );
-  }
-}
-
-class _StaleBanner extends StatelessWidget {
-  final Future<void> Function() onRetry;
-  const _StaleBanner({required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: Warm.ground,
-      padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-      child: Row(
-        children: [
-          const Icon(Icons.cloud_off_outlined, size: 14, color: Warm.inkSoft),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text('You’re offline. Showing photos saved on this phone.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: Warm.inkSoft)),
-          ),
-          TextButton(
-              onPressed: () => onRetry(), child: const Text('Try again')),
-        ],
-      ),
-    );
-  }
-}
-
-class _MediaUnavailable extends StatelessWidget {
-  final Future<void> Function() onRetry;
-  const _MediaUnavailable({required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.cloud_off_outlined, size: 32, color: Warm.inkSoft),
-          const SizedBox(height: 12),
-          Text("Couldn't load this album",
-              style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 8),
-          TextButton(
-              onPressed: () => onRetry(), child: const Text('Try again')),
-        ],
-      ),
-    );
-  }
-}
-
-class _MediaEmpty extends StatelessWidget {
-  const _MediaEmpty();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.photo_library_outlined,
-              size: 48, color: Warm.inkFaint),
-          const SizedBox(height: 12),
-          const Text('No photos yet',
-              style: TextStyle(
-                  color: Warm.inkSoft,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500)),
-          const SizedBox(height: 4),
-          const Text('Tap + to add photos',
-              style: TextStyle(color: Warm.inkFaint, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-}
-
-class _KeyChangeBanner extends StatelessWidget {
-  final List<AlbumMember> members;
-  final String Function(AlbumMember) nameOf;
-  final void Function(AlbumMember) onTap;
-
-  const _KeyChangeBanner({
-    required this.members,
-    required this.nameOf,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const red = Color(0xFFF87171);
-    final names = members.map(nameOf).toList();
-    final who = names.length == 1
-        ? '${names.first}’s security code changed'
-        : '${names.length} people’s security codes changed';
-    return InkWell(
-      onTap: () => onTap(members.first),
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: red.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: red.withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline, size: 16, color: red),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '$who. Check it with them in person.',
-                style: const TextStyle(
-                    color: Warm.ink, fontSize: 12, height: 1.35),
-              ),
-            ),
-            const Icon(Icons.chevron_right, size: 16, color: Warm.inkFaint),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RotationBanner extends StatelessWidget {
-  final RotationStatus status;
-  final Future<void> Function() onRetry;
-
-  const _RotationBanner({required this.status, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    const amber = Color(0xFFF59E0B);
-    final text = switch (status.phase) {
-      RotationPhase.rotating => 'Locking out the person who left…',
-      RotationPhase.failed =>
-        status.failure == RotationFailure.identityUnconfirmed
-            ? 'New photos are paused. Miuchio couldn’t confirm someone’s '
-                'security code. Check codes with the people in this album, '
-                'then try again.'
-            : 'New photos are paused. Try again in a moment.',
-      _ => 'New photos are paused until the owner opens Miuchio.',
-    };
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: amber.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: amber.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (status.phase == RotationPhase.rotating)
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 1.5),
-                )
-              else
-                const Icon(Icons.lock_outline, size: 16, color: amber),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  text,
-                  style: const TextStyle(
-                      color: Warm.ink, fontSize: 12, height: 1.35),
-                ),
-              ),
-            ],
-          ),
-          if (status.phase == RotationPhase.failed)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: onRetry,
-                child: const Text('Try again',
-                    style: TextStyle(fontSize: 12)),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _KeyBlockBanner extends StatelessWidget {
-  final EpochBlocked block;
-  final VoidCallback onVerify;
-  final VoidCallback onRetry;
-
-  const _KeyBlockBanner({
-    required this.block,
-    required this.onVerify,
-    required this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const red = Color(0xFFF87171);
-    // Only peer identity failures can be resolved by comparing safety numbers
-    final verifiable = block.reason == EpochBlockReason.signerMismatch ||
-        block.reason == EpochBlockReason.unknownSigner;
-    const text = 'New photos are paused. Something about this album’s '
-        'security didn’t check out.';
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: red.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: red.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.gpp_maybe_outlined, size: 16, color: red),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  text,
-                  style: const TextStyle(
-                      color: Warm.ink, fontSize: 12, height: 1.35),
-                ),
-              ),
-            ],
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: verifiable
-                ? TextButton(
-                    onPressed: onVerify,
-                    child: const Text('Check security codes',
-                        style: TextStyle(fontSize: 12)),
-                  )
-                : TextButton(
-                    onPressed: onRetry,
-                    child: const Text('Try again',
-                        style: TextStyle(fontSize: 12)),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-Uint8List? _uuidStringToBytes(String s) {
-  final hex = s.replaceAll('-', '');
-  if (hex.length != 32) return null;
-  final out = Uint8List(16);
-  for (var i = 0; i < 16; i++) {
-    final v = int.tryParse(hex.substring(i * 2, i * 2 + 2), radix: 16);
-    if (v == null) return null;
-    out[i] = v;
-  }
-  return out;
 }
