@@ -260,9 +260,8 @@ void main() {
     });
   });
 
-  // Member tokens are reused on re-invite, so an id of album:token made a
-  // second departure or rejoin look like a duplicate of the first and it was
-  // silently dropped
+  // Tokens are reused on reinvite, so an album:token id once dropped a second
+  // departure or rejoin as a duplicate
   group('a second time is a second row', () {
     test('leaving again after rejoining gets its own id', () {
       final first = deriveActivity(

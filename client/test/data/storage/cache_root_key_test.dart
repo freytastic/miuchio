@@ -12,20 +12,11 @@ void main() {
     await store.initialize();
   });
 
-  test('generates a 32-byte key on first call', () async {
-    final k = await loadOrCreateCacheRootKey(store);
-    expect(k.length, kCacheRootKeyLen);
-  });
-
-  test('returns the same key on a second call', () async {
+  test('creates one key and reuses it on the next load', () async {
     final first = await loadOrCreateCacheRootKey(store);
+    expect(first.length, kCacheRootKeyLen);
     final second = await loadOrCreateCacheRootKey(store);
     expect(second, equals(first));
-  });
-
-  test('persists exactly one handle under the cache_root_key label', () async {
-    await loadOrCreateCacheRootKey(store);
-    await loadOrCreateCacheRootKey(store);
     final handles = await store.list(labelPrefix: kCacheRootKeyLabel);
     expect(handles.length, 1);
   });

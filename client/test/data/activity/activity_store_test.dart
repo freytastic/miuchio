@@ -362,7 +362,7 @@ void main() {
     });
   });
 
-  // The row content is the social graph the server-side table was deleted for
+  // The row content is the social graph the server side table was deleted for
   test('nothing readable is written to the database file', () async {
     await store.record([
       MemberJoined(

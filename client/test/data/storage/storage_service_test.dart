@@ -36,7 +36,7 @@ void main() {
 
   test('saveAuth purges any legacy plaintext token left in SharedPreferences',
       () async {
-    // an install upgraded from the old prefs-based build carries a plaintext
+    // an install upgraded from the old prefs based build carries a plaintext
     // token. The first fresh login must scrub it, not just overwrite secure
     SharedPreferences.setMockInitialValues({
       'auth_token': 'legacy-plaintext',

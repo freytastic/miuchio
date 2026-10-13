@@ -73,7 +73,7 @@ void main() {
     expect(outcome, RefreshOutcome.rejected);
   });
 
-  // A 403 is not the refresh endpoint's dead-session signal
+  // A 403 is not the refresh endpoint's dead session signal
   test('a forbidden response leaves the credentials alone', () async {
     final outcome =
         await refresherReturning(() async => http.Response('', 403)).refresh();
