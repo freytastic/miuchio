@@ -1,13 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:miuchio/data/storage/secure_storage.dart';
 
 // Label to handle metadata, kept out of SecureKeyStore since it isn't key material
 
 const String kIdentityLabelMapKey = 'miuchio.identity.label_map';
 const String kIdentitySpkTsKey = 'miuchio.identity.spk_ts';
-// Keys can exist locally before the server accepts them, so a failure between
-// /keys and /opks resumes instead of regenerating the IK
+// Track key and OPK publication separately so a failure between /keys and
+// /opks does not regenerate an identity the server already accepted
 const String kIdentityPublishedKey = 'miuchio.identity.identity_published';
 const String kInitialOpksPublishedKey =
     'miuchio.identity.initial_opks_published';
@@ -49,7 +50,7 @@ class IdentityLabelMap {
   bool _loaded = false;
 
   IdentityLabelMap({IdentityKv? kv})
-      : _kv = kv ?? const _FssAdapter(FlutterSecureStorage());
+      : _kv = kv ?? const _FssAdapter(appSecureStorage);
 
   Future<void> load() async {
     final raw = await _kv.read(kIdentityLabelMapKey);

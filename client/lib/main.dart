@@ -5,7 +5,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:miuchio/data/storage/secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -36,6 +36,7 @@ import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/data/api/realtime_service.dart';
 import 'package:miuchio/data/storage/cache_root_key.dart';
 import 'package:miuchio/data/storage/deletion_marker.dart';
+import 'package:miuchio/data/storage/install_guard.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/media_plaintext_cache.dart';
 import 'package:miuchio/data/storage/media_catalog.dart';
@@ -128,6 +129,18 @@ void main() async {
   final realtimeService = RealtimeService(apiClient);
 
   final secureKeyStore = createSecureKeyStore();
+  try {
+    await prepareInstall(
+      isIOS: Platform.isIOS,
+      supportDir: await getApplicationSupportDirectory(),
+      wipeKeychain: () async {
+        await secureKeyStore.wipeAll();
+        await appSecureStorage.deleteAll();
+      },
+    );
+  } catch (_) {
+    // Without the marker the next launch retries the wipe
+  }
   final labelMap = IdentityLabelMap();
   await labelMap.load();
   final prekeyApi = HttpPrekeyApi(ApiClientPrekeyJsonClient(apiClient));
@@ -747,7 +760,7 @@ void main() async {
       (name: 'keystore', run: secureKeyStore.wipeAll),
       (
         name: 'secure storage',
-        run: () => const FlutterSecureStorage().deleteAll()
+        run: () => appSecureStorage.deleteAll()
       ),
       (
         name: 'preferences',
@@ -861,9 +874,12 @@ Future<void> _onReconnect(
   } catch (_) {}
 }
 
-// Retain the deletion marker until the wipe is verified
+// Retain the deletion receipt until verification and the install marker to
+// prevent a later launch from wiping a new sign-in
 bool _survivesWipe(String name) =>
-    name == kDeletionMarkerName || name.startsWith('com.apple.');
+    name == kDeletionMarkerName ||
+    name == kInstallMarkerName ||
+    name.startsWith('com.apple.');
 
 Future<void> _emptyDir(Directory dir) async {
   if (!await dir.exists()) return;
@@ -896,7 +912,7 @@ Future<List<String>> _wipeLeftovers(SecureKeyStore keys) async {
       if (!_survivesWipe(name)) left.add('file $name');
     }
   }
-  if ((await const FlutterSecureStorage().readAll()).isNotEmpty) {
+  if ((await appSecureStorage.readAll()).isNotEmpty) {
     left.add('secure storage');
   }
   if ((await SharedPreferences.getInstance()).getKeys().isNotEmpty) {
