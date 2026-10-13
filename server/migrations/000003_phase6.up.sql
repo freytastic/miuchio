@@ -1,11 +1,10 @@
--- miuchio_id : random Crockford-base32 handle (8 chars) for server blind discovery
--- distinct from the M bridge user_handle (sealed, on album_member_identities) :
--- this one is identity side and shareable. no default + NOT NULL means a clean
--- dev DB is required (no production data pre release : registration always sets it)
+-- miuchio_id is the user's shareable 8 character Crockford base32 handle,
+-- unrelated to the sealed user_handle on album_member_identities. NOT NULL
+-- without a default, registration always sets it
 ALTER TABLE users ADD COLUMN miuchio_id TEXT NOT NULL;
 CREATE UNIQUE INDEX idx_users_miuchio_id ON users(miuchio_id);
 
--- §6.3 join_complete receipt : last epoch the member proved it installed
--- NULL = never acknowledged. set_epoch flags members behind for >24h
+-- Last epoch the member proved it installed through join_complete, NULL when
+-- never acknowledged. Members behind for over 24h are flagged on set_epoch
 ALTER TABLE album_member_identities ADD COLUMN last_received_epoch INT;
 ALTER TABLE album_member_identities ADD COLUMN last_received_at TIMESTAMPTZ;

@@ -10,10 +10,8 @@ import 'package:miuchio/secure_store/secure_key_store.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // iOS Keychain items are sandboxed away from the test process : symmetric
-  // coverage on iOS would need a debug-only 'tamperEnvelope' method on
-  // SecureEnclaveBridge gated by '#if DEBUG'. Deferred, Android flip already
-  // exercises the AEAD mismatch → KeyTamperException path
+  // Android only: the iOS Keychain is sandboxed from the test process, so iOS
+  // would need a debug only tamper hook in SecureEnclaveBridge
   test('flipped byte in envelope causes KeyTamperException (Android-only)',
       () async {
     if (!Platform.isAndroid) return;
@@ -22,8 +20,7 @@ void main() {
     final h =
         await store.put('tamper.k', Uint8List.fromList(List.filled(32, 0xCC)));
 
-    // path_provider's getApplicationSupportDirectory ≈ ctx.filesDir on Android,
-    // which is where KeystoreBridge writes miuchio_secure_store.bin
+    // On Android this is ctx.filesDir, where KeystoreBridge writes the envelope
     final docs = await getApplicationSupportDirectory();
     final f = File('${docs.path}/miuchio_secure_store.bin');
     expect(f.existsSync(), isTrue);

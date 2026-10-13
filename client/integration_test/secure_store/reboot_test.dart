@@ -7,10 +7,8 @@ import 'package:miuchio/secure_store/secure_key_store.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // An actual app restart is simulated by spinning a fresh store instance , wrapper
-  // key + envelope blob live in OS managed storage, so a new Dart instance
-  // sees prior state. A real SIGKILL test would run two separate flutter
-  // processes : deferred until manual round trip surfaces a state loss bug
+  // A fresh store instance stands in for a restart, since the wrapper key and
+  // envelope live in OS storage. A real kill test would need two processes
   test('survives store-instance reboot', () async {
     final s1 = createSecureKeyStore();
     await s1.initialize();

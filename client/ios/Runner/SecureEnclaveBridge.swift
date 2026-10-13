@@ -124,7 +124,7 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
             &error
         ) else { throw Err.native("SecAccessControl: \(error!.takeRetainedValue())") }
         privateAttrs[kSecAttrAccessControl as String] = access
-        // The private bytes of this key are non-extractable from the SE hardware
+        // The private bytes of this key never leave the Secure Enclave
         attrs[kSecAttrTokenID as String] = kSecAttrTokenIDSecureEnclave
         #endif
         attrs[kSecPrivateKeyAttrs as String] = privateAttrs
@@ -137,7 +137,7 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
 
     // MARK:  Envelope persistence
 
-    // Re-derive the AES key from the stored ephemeral public key and wrapper key
+    // Derive the AES key again from the stored ephemeral public key and wrapper key
     private func loadEnvelope() throws -> [String: (label: String, value: Data)] {
         // Distinguish post wipeAll (E_STORE_UNINITIALIZED) from a mere missing handle
         guard (try? loadWrapKey()) != nil else { throw Err.uninitialized("wrapper key absent") }

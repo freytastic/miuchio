@@ -14,7 +14,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
-// Decodes once and emits metadata-free full and thumbnail JPEGs
+// Decodes once and emits metadata free full and thumbnail JPEGs
 class ImageBridge : MethodChannel.MethodCallHandler {
 
     companion object {
@@ -32,7 +32,7 @@ class ImageBridge : MethodChannel.MethodCallHandler {
         private const val REJECTED = "E_REJECTED"
     }
 
-    // A low-priority serial worker keeps codec work off the UI thread
+    // A low priority serial worker keeps codec work off the UI thread
     private val worker = Executors.newSingleThreadExecutor { r ->
         Thread({
             android.os.Process.setThreadPriority(
