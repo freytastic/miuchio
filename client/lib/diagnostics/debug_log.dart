@@ -10,7 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/wire_format.dart';
-import 'package:miuchio/diagnostics/trace.dart';
+import 'debug_log_allowlist.dart';
 
 enum DebugLevel { info, warn, error }
 
@@ -117,19 +117,18 @@ class DebugEntry {
       first: first,
       last: l is int ? DateTime.fromMillisecondsSinceEpoch(l) : first,
       count: n is int && n > 0 ? n : 1,
-      reason: DebugLog.cleanReason(raw['r'] as String?),
-      stage: DebugLog.cleanStage(raw['s'] as String?),
-      route: DebugLog.cleanRoute(raw['p'] as String?),
-      op: DebugLog._cleanOp(raw['o'] as String?),
-      attempt: DebugLog._cleanCount(raw['a']),
-      ms: DebugLog._cleanCount(raw['d']),
-      version: DebugLog._cleanVersion(raw['v'] as String?),
+      reason: DebugLogAllowlist.reason(raw['r'] as String?),
+      stage: DebugLogAllowlist.stage(raw['s'] as String?),
+      route: DebugLogAllowlist.route(raw['p'] as String?),
+      op: DebugLogAllowlist.op(raw['o'] as String?),
+      attempt: DebugLogAllowlist.count(raw['a']),
+      ms: DebugLogAllowlist.count(raw['d']),
+      version: DebugLogAllowlist.version(raw['v'] as String?),
     );
   }
 }
 
-// Reasons, stages and route words come from fixed lists before anything
-// reaches memory, so a message, URL, name, token or real ID cannot be stored
+// Entry metadata is filtered by DebugLogAllowlist before it reaches memory
 abstract class DebugLog {
   static const int maxEntries = 500;
   static const Duration maxAge = Duration(days: 7);
@@ -208,13 +207,13 @@ abstract class DebugLog {
         first: now,
         last: now,
         count: 1,
-        reason: cleanReason(reason),
-        stage: cleanStage(stage),
-        route: cleanRoute(route),
-        op: _cleanOp(op),
-        attempt: _cleanCount(attempt),
-        ms: _cleanCount(ms),
-        version: _cleanVersion(version),
+        reason: DebugLogAllowlist.reason(reason),
+        stage: DebugLogAllowlist.stage(stage),
+        route: DebugLogAllowlist.route(route),
+        op: DebugLogAllowlist.op(op),
+        attempt: DebugLogAllowlist.count(attempt),
+        ms: DebugLogAllowlist.count(ms),
+        version: DebugLogAllowlist.version(version),
       );
       if (!_merge(entry)) _entries.add(entry);
       _prune();
@@ -255,119 +254,6 @@ abstract class DebugLog {
     if (_ops.length >= 256) _ops.remove(_ops.keys.first);
     return _ops[key] = '$_session.${++_opSeq}';
   }
-
-  static const Set<String> _reasons = {
-    // FileDecryptError
-    'no_mk', 'wrap_auth_failed', 'sha256_mismatch', 'aead_auth_failed',
-    'unknown_ver', 'http_failed', 'wrong_size',
-    // UploadStageException
-    'bad_album_id', 'epoch_replay', 'no_account', 'outbox_write',
-    'rotation_pending', 'sealed_missing', 'source_missing', 'transport',
-    'undecodable', 'unknown',
-    // EpochBlockReason
-    'selfSignerMismatch', 'signerMismatch', 'unknownSigner', 'localKeyMissing',
-    'replayRejected', 'wrapUnavailable', 'verificationFailed',
-    // Server and keystore error codes
-    'E_ACCOUNT_DELETING', 'E_ALBUM_FULL', 'E_AUTH', 'E_CONFLICT',
-    'E_DELETION_ACCEPTED', 'E_DELETION_PLAN_STALE',
-    'E_EPOCH_PENDING_ROTATION', 'E_EPOCH_REPLAY', 'E_FORBIDDEN',
-    'E_IDENTITY_ALREADY_SET', 'E_INTERNAL', 'E_INVITE_CONSUMED',
-    'E_INVITE_EXPIRED', 'E_KEY_NOT_FOUND', 'E_KEY_TAMPER',
-    'E_MANIFEST_TAMPER', 'E_MEMBER_REVOKED', 'E_NATIVE', 'E_NOT_FOUND',
-    'E_NOT_IMPLEMENTED', 'E_NOT_MEMBER', 'E_OPK_EXHAUSTED', 'E_RATE_LIMITED',
-    'E_SIG_INVALID', 'E_STORE_UNINITIALIZED', 'E_UNAVAILABLE', 'E_UNKNOWN',
-    'E_VALIDATION',
-    // RealtimeService
-    'closed',
-  };
-
-  static const Set<String> _stages = {
-    'flutter', 'async', 'thumb', 'file', 'confirm',
-    'get', 'post', 'put', 'patch', 'delete',
-    // UploadPhase
-    'queued', 'preparing', 'reserving', 'sendingFile', 'sendingThumb',
-    'confirming', 'done', 'failed', 'canceling',
-    // AndroidKeystore methods
-    'initialize', 'getOnce', 'list', 'putMany', 'wipeAll', 'probe',
-  };
-
-  static const Set<String> _routeWords = {
-    'abandon',
-    'account-deletions',
-    'albums',
-    'avatar',
-    'avatars',
-    'by-handle',
-    'confirm',
-    'count',
-    'deletion',
-    'download-url',
-    'epoch',
-    'existing-user',
-    'invite',
-    'invites',
-    'joins',
-    'keys',
-    'me',
-    'media',
-    'members',
-    'opks',
-    'pending',
-    'prekey-bundle',
-    'profile-ct',
-    'spk',
-    'upload-url',
-    'users',
-    'wrap',
-    'ws-ticket',
-  };
-
-  static final RegExp _http = RegExp(r'^http_[1-5]\d\d$');
-  // Exception class names are code identifiers, never user data
-  static final RegExp _errorType =
-      RegExp(r'^_?[A-Z][A-Za-z0-9]{0,40}(Error|Exception)$');
-  static final RegExp _opShape = RegExp(r'^[0-9a-f]{8}\.[0-9]{1,9}$');
-  static final RegExp _versionShape = RegExp(r'^[0-9][0-9A-Za-z.+-]{0,23}$');
-
-  // Known codes, http statuses and Trace.reasonOf output, anything else is
-  // stored as "other"
-  static String? cleanReason(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    if (_reasons.contains(raw) || _http.hasMatch(raw)) return raw;
-    final words = Trace.reasonWords.toSet()..add('deadline');
-    if (words.contains(raw)) return raw;
-    final cut = raw.lastIndexOf('_');
-    final type = cut > 0 && words.contains(raw.substring(cut + 1))
-        ? raw.substring(0, cut)
-        : raw;
-    return _errorType.hasMatch(type) ? raw : 'other';
-  }
-
-  static String? cleanStage(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    return _stages.contains(raw) ? raw : 'other';
-  }
-
-  // Any path segment outside the known API words becomes {id}, so IDs,
-  // handles and invite codes never survive
-  static String? cleanRoute(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    final segments = raw.split('?').first.split('/').where((s) => s.isNotEmpty);
-    if (segments.isEmpty) return 'other';
-    return segments
-        .take(8)
-        .map((s) => _routeWords.contains(s) ? '/$s' : '/{id}')
-        .join();
-  }
-
-  static String? _cleanOp(String? raw) =>
-      raw != null && _opShape.hasMatch(raw) ? raw : null;
-
-  static String? _cleanVersion(String? raw) =>
-      raw != null && _versionShape.hasMatch(raw) ? raw : null;
-
-  static int? _cleanCount(Object? raw) =>
-      raw is int && raw >= 0 ? min(raw, 1 << 30) : null;
 
   static void _prune() {
     final floor = _now().subtract(maxAge);
