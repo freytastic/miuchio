@@ -155,7 +155,7 @@ void main() {
         expect(batch[i].keyPub.length, 32);
       }
 
-      // replenish_sig verifies under ik_pub for the §6.5 message
+      // replenish_sig verifies under ik_pub
       final ikPub = upsert['ik_pub'] as Uint8List;
       final msg = await _replenishMsgForTest(batch);
       final ok = await Sign.verify(ikPub, msg, r.api.replenishSigs.first);
@@ -257,9 +257,7 @@ void main() {
           kBootstrapOpkPool + needed);
     });
 
-    // §7 + new bootstrap resume behavior : when /keys returns 409, bootstrap
-    // must surface a typed conflict instead of bouncing the user back to a
-    // generic "Invalid OTP" loop
+    // A typed conflict, not a generic sign in failure loop
     test('bootstrap throws BootstrapAccountConflictException on 409 from /keys',
         () async {
       final r = await _newService(now: DateTime.utc(2026, 5, 4, 12));
@@ -274,16 +272,13 @@ void main() {
         throwsA(isA<BootstrapAccountConflictException>()),
       );
 
-      // No publish flags should have been flipped : the conflict means the
-      // local IK is unusable, retry must keep the same outcome until the
-      // user clears state out of band
+      // No publish flag flips, so a retry reaches the same conflict
       expect(await r.labels.isIdentityPublished(), isFalse);
       expect(await r.labels.areInitialOpksPublished(), isFalse);
     });
 
-    // Resume: if /keys succeeded but /opks failed (network blip between the
-    // two calls), bootstrap on next launch must NOT regenerate keys or call
-    // /keys again. It should re-use the persisted privs and only retry /opks
+    // /keys succeeded and /opks failed: the next launch reuses the keys and
+    // retries only /opks
     test(
         'bootstrap resumes from a failed initial OPK upload without re-publishing identity',
         () async {
@@ -324,9 +319,7 @@ void main() {
       expect(await r.svc.isBootstrapped(), isTrue);
     });
 
-    // the safety number needs OUR ik_pub. It must be derived from the
-    // seed we hold, never read back from the server (a lying server would
-    // otherwise pick both sides of the comparison)
+    // Derived from our seed, never read back from the server
     test('currentIkPub derives the same ik_pub that bootstrap published',
         () async {
       final r = await _newService(now: DateTime.utc(2026, 5, 4, 12));

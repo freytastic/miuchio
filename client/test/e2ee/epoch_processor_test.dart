@@ -19,9 +19,6 @@ Uint8List _albumId([int seed = 0xA1]) =>
 
 Uint8List _mk(int b) => Uint8List.fromList(List<int>.filled(32, b));
 
-// Helper : seeds an entire processor stack against one album. Returns the
-// pieces tests want to poke (api, store, processor, admin) so each test can
-// stay tight
 class _Stack {
   final FakeEpochApi api;
   final AlbumKeyStore aks;
@@ -146,9 +143,7 @@ void main() {
 
     test('concurrent events for two albums install both without crosstalk',
         () async {
-      // Two stacks share a single FakeEpochApi + MemberDirectory but each
-      // keeps their own SecureKeyStore + IdentityService since the responder
-      // identity is per device. Run handleEvent in parallel : both must land
+      // Shared API and directory, separate device identities, run in parallel
       final api = FakeEpochApi();
       final adminA = await SyntheticAdmin.create();
       final adminB = await SyntheticAdmin.create();
@@ -217,8 +212,7 @@ void main() {
       }
       final bundle =
           await buildResponderBundle(responder: s.responder.svc, spkTs: _spkTs);
-      // Encrypt with AAD epoch=4 but advertise epoch=5 over the wire (D5 :
-      // AEAD AAD binding catches this before installVerified ever runs)
+      // AAD says epoch 4 while the wire says 5, the AEAD must refuse it
       final env = await s.admin.buildWrap(
         albumId: s.albumId,
         epoch: 5,
@@ -298,10 +292,7 @@ void main() {
     });
 
     test('catchUpAll: failure on album A doesnt block album B', () async {
-      // Two responder identities + two album ids share one FakeEpochApi. Album
-      // A has currentEpoch=0 but the wrap is missing on every fetch (404
-      // exceeds maxRetries) : album B has a valid wrap. catchUpAll must
-      // continue past A's failure and install B
+      // Album A 404s past every retry, album B must still install
       final api = FakeEpochApi();
       final adminB = await SyntheticAdmin.create();
       final dirB = MemberDirectory(singletonAdminFetcher(adminB));
@@ -625,9 +616,8 @@ void main() {
 
     test('a signer key contradicting the pin is refused and installs nothing',
         () async {
-      // The substitution attack: roster hands us an attacker IK/LK for the
-      // admin's token, so the server can derive the X3DH secret and sign a wrap
-      // carrying an MK it knows
+      // The roster hands us an attacker IK/LK for the admin's token, so the
+      // server can sign a wrap carrying an MK it knows
       final s = await _bootStack();
       s.pins[_hex(s.admin.senderToken)] =
           Uint8List.fromList(List<int>.filled(32, 0x5E));
@@ -893,9 +883,7 @@ void main() {
 
     test('a refused signer is evicted so a retry re-reads the roster',
         () async {
-      // MemberDirectory caches per (album, token). Without eviction a retry
-      // keeps re checking the same stale key and can never recover, even once
-      // the server serves the honest one
+      // Without eviction a retry keeps checking the stale cached key forever
       final responder = await newResponderIdentity();
       final admin = await SyntheticAdmin.create();
       final roster = _MutableRoster([
@@ -1026,9 +1014,8 @@ void main() {
     });
 
     test('a refused replay surfaces as a blocked album', () async {
-      // The backfill path re installs 0..current unconditionally, so a server
-      // re serving an epoch we hold with DIFFERENT bytes lands on the tamper
-      // branch of installVerified rather than being skipped
+      // Backfill reinstalls every epoch, so different bytes for a held epoch
+      // reach the tamper branch instead of being skipped
       final s = await _bootStack(pinAdmin: true);
       await s.aks.installVerified(
           albumId: s.albumId, epoch: 0, mk: _mk(0x10), backfill: false);

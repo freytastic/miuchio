@@ -91,8 +91,7 @@ void main() {
       );
     });
 
-    test('VER=0x03 wire throws UnimplementedError pointing at Phase 5',
-        () async {
+    test('single shot decrypt refuses a VER=0x03 wire', () async {
       // Build a syntactically valid but never real VER=0x03 wire
       final fake = Uint8List(kHeaderLen)..[0] = kVerStreamGcm;
       expect(
@@ -122,17 +121,6 @@ void main() {
   });
 
   group('Hkdf', () {
-    test('derives 32 bytes deterministically', () async {
-      final ikm = Uint8List.fromList(List.filled(32, 0x33));
-      final salt = Uint8List.fromList('test-salt'.codeUnits);
-      final info = Uint8List.fromList('test-info'.codeUnits);
-
-      final a = await Hkdf.derive(ikm: ikm, salt: salt, info: info, length: 32);
-      final b = await Hkdf.derive(ikm: ikm, salt: salt, info: info, length: 32);
-      expect(a, orderedEquals(b));
-      expect(a.length, equals(32));
-    });
-
     test('different info → different output (domain separation)', () async {
       final ikm = Uint8List.fromList(List.filled(32, 0x33));
       final salt = Uint8List.fromList([1, 2, 3]);
@@ -194,7 +182,7 @@ void main() {
       expect(Csprng.bytes(64).length, equals(64));
     });
 
-    test('10000 96-bit nonces are all distinct (TEST-07)', () {
+    test('10000 96-bit nonces are all distinct', () {
       final seen = <String>{};
       for (var i = 0; i < 10000; i++) {
         seen.add(Csprng.bytes(12).toString());

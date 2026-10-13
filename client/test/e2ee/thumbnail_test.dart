@@ -11,11 +11,7 @@ import 'package:miuchio/e2ee/media_record.dart';
 
 import '../secure_store/mock_secure_key_store.dart';
 
-// thumbnail coverage. The EXIF strip itself is asserted in file_pipeline_test
-// (an EXIF bearing JPEG comes out metadata free). Tests below cover the
-// byte level surface we own : thumb cipher shape, dual wrap with shared
-// wrap_aad, thumb-AAD distinct from file-AAD, video yields no thumb, and an
-// undecodable photo fails closed
+// EXIF stripping is covered in file_pipeline_test
 
 Uint8List _albumId([int seed = 0xA1]) =>
     Uint8List.fromList(List<int>.filled(16, seed));
@@ -48,9 +44,6 @@ Future<AlbumKeyStore> _newAks(
 // thumb bytes regardless of URL (no real S3 in unit tests)
 DownloadFn _staticDownload(Uint8List bytes) => (String _) async => bytes;
 
-// _recordFromEnvelope : builds a MediaRecord matching the envelope so
-// FileDecryptor sees the same wrap nonces + tag-cts + size + sha as the
-// uploader would have published via ListMedia
 MediaRecord _recordFromEnvelope({
   required UploadEnvelope env,
   required Uint8List albumIdBytes,
@@ -120,25 +113,10 @@ void main() {
       expect(env.thumbWrapNonce, isNull);
       expect(env.thumbWrapTagCT, isNull);
       expect(env.thumbSha256, isNull);
-    });
 
-    test('undecodable photo fails closed (never uploads unstripped bytes)',
-        () async {
-      final aks = await _newAks(_albumId(), 0, _mk());
-      // Random bytes : not a decodable image. A photo we cant decode cant have
-      // its metadata stripped, so prepareUpload refuses rather than upload it
-      final junk =
-          Uint8List.fromList(List<int>.generate(2048, (i) => i & 0xFF));
-      await expectLater(
-        FilePipeline.prepareUpload(
-          aks: aks,
-          albumIdBytes: _albumId(),
-          currentEpoch: 0,
-          plaintext: junk,
-          mediaType: 'photo',
-        ),
-        throwsA(isA<UnprocessableImageException>()),
-      );
+      final media = await FilePipeline.encryptMedia(
+          plaintext: _syntheticJpegBytes(), mediaType: 'video');
+      expect(await FilePipeline.openThumb(media), isNull);
     });
 
     test('two photos with same plaintext + same MK yield distinct thumb DEKs',

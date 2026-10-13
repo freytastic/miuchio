@@ -146,9 +146,8 @@ void main() {
       expect(f.pins[_key(_tok(2))], equals(_ik(0x22)));
     });
 
-    // Without this, a server just invents a NEW sender_token, supplies its own
-    // IK, and gets it adopted as an innocent first sight : the original
-    // MK injection with no existing pin disturbed
+    // Otherwise a server invents a new token and its IK is adopted as a
+    // first sight
     test('an unknown signer on an established album is refused', () async {
       final f = build(selfToken: _tok(1));
 

@@ -16,12 +16,8 @@ import 'package:miuchio/secure_store/key_handle_adapter.dart';
 import '../secure_store/mock_secure_key_store.dart';
 import 'identity_label_map_test_helpers.dart';
 
-// Test only synthetic admin. Owns its own IK seed (Ed25519) + LK priv (X25519)
-// + senderToken : builds wraps via X3dhSession.initiate against the responder
-// (whose IdentityService exposes the matching responder side bundle), encrypts
-// MK under SK with AAD = album_id ‖ u32_be(epoch) (§4.1) and signs the
-// SHA256(album_id ‖ u32_be(epoch) ‖ wrap_blob) message under its IK (§4.2 D3)
-// Filename starts with `_` so it is not exported as part of the test catalog
+// Synthetic admin that builds and signs real wraps for a responder. The
+// leading underscore keeps the file out of the test run
 
 // Silent API with an injectable lost-response rotation failure
 class SilentPrekeyApi implements PrekeyApi {
@@ -107,17 +103,13 @@ class SyntheticAdmin {
     return SyntheticAdmin._(svc, Csprng.bytes(32), ikPub, lkPub);
   }
 
-  // Builds a complete signed WrapEnvelope. PrekeyBundle is the responder's,
-  // synthesized by buildResponderBundle. Caller supplies the MK : the helper
-  // returns a (envelope, sharedSecretSnapshot) pair so tests can drop the SK
-  // after install
   Future<WrapEnvelope> buildWrap({
     required Uint8List albumId,
     required int epoch,
     required Uint8List mk,
     required PrekeyBundle responderBundle,
     int aadEpochOverride =
-        -1, // -1 means "use 'epoch'" : otherwise inject for §10.2 #10
+        -1, // -1 means "use 'epoch'", otherwise forge the AAD epoch
     int sigEpochOverride = -1, // -1 means "sign the epoch we encoded"
     DateTime? deliveredAt,
   }) async {
@@ -195,10 +187,7 @@ Future<PrekeyBundle> buildResponderBundle({
   return PrekeyBundle.fromJson(json);
 }
 
-// Bootstrapped responder side IdentityService backed by an in memory secure
-// store + label map. Returned alongside the store so tests can layer
-// AlbumKeyStore on the same SecureKeyStore (so installVerified -> store.put
-// and AlbumKeyStore.initialize round trips through .list)
+// Returns the store too so tests can build an AlbumKeyStore on the same one
 Future<({IdentityService svc, MockSecureKeyStore store, SilentPrekeyApi api})>
     newResponderIdentity({DateTime? now, DateTime Function()? nowFn}) async {
   final clock = nowFn ?? () => (now ?? DateTime.utc(2026, 5, 4, 12));
@@ -217,9 +206,7 @@ Future<({IdentityService svc, MockSecureKeyStore store, SilentPrekeyApi api})>
   return (svc: svc, store: store, api: api);
 }
 
-// Bare TOFU signer gate over an in memory pin map, for tests that are
-// not themselves about the trust rules. Mirrors production first sight
-// behaviour: adopt the presented key, then hold every later one against it
+// Minimal TOFU gate for tests that are not about the trust rules
 SignerGate tofuGate() {
   final pins = <String, Uint8List>{};
   String hex(Uint8List b) => b.map((x) => x.toRadixString(16)).join();
@@ -245,11 +232,8 @@ MemberFetcher singletonAdminFetcher(SyntheticAdmin admin) {
       ];
 }
 
-// In memory EpochApi stub. Tests pre populate per (albumId, epoch) wraps and
-// (optionally) a current epoch. getWrap returns from the map : missing entries
-// throw EpochWrapNotFoundException so the processor's 404 retry path can be
-// exercised. The 404 counter is per (albumId, epoch) so tests can have the
-// nth fetch succeed
+// Missing wraps 404, and the per (album, epoch) miss counter lets the nth
+// fetch succeed
 class FakeEpochApi implements EpochApi {
   final Map<String, EpochCurrent> currents = {};
   final Map<String, WrapEnvelope> wraps = {};
@@ -276,9 +260,6 @@ class FakeEpochApi implements EpochApi {
     return w;
   }
 
-  // setEpoch : unused by the responder side tests but required to satisfy
-  // EpochApi. Use _CaptureEpochApi in epoch_rotator_test.dart for initiator
-  // assertions
   @override
   Future<void> setEpoch(String _, SetEpochRequest __) async {
     throw UnimplementedError('FakeEpochApi.setEpoch not stubbed');

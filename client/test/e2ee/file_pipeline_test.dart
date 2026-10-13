@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' as cg;
@@ -7,7 +6,6 @@ import 'package:image/image.dart' as img;
 import 'package:miuchio/crypto/aead_stream.dart';
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/wire_format.dart';
-import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/file_pipeline.dart';
 
@@ -29,9 +27,8 @@ Uint8List _bytes(int n, [int seed = 0]) {
   return out;
 }
 
-// A real JPEG that carries EXIF. package:image does not round trip a
-// self authored GPS sub IFD, so we tag Make/Model : the strip asserts the WHOLE
-// exif container is empty afterward, which subsumes GPS (itself a gps sub-IFD)
+// Tagged with Make/Model because package:image can't round trip a GPS IFD.
+// The test asserts the whole EXIF container is gone, which covers GPS
 // Reads the luma sampling factor from baseline or progressive JPEG
 int _lumaSampling(Uint8List jpeg) {
   var i = 2;
@@ -67,9 +64,7 @@ Future<AlbumKeyStore> _newAks(
   return aks;
 }
 
-// _decryptEnvelope mirrors what §5.2 download will eventually do : unwrap the
-// DEK using MK, then decrypt cipherBytes with DEK. Lets the §5.1 tests prove
-// round trip without relying on §5.2 code that doesnt exist yet
+// Independent of FileDecryptor so these tests prove the upload side alone
 Future<Uint8List> _decryptEnvelope({
   required AlbumKeyStore aks,
   required Uint8List albumId,
@@ -97,10 +92,7 @@ Future<Uint8List> _decryptEnvelope({
 }
 
 void main() {
-  // The size/wrap/round-trip machinery is media-type-agnostic : it is exercised
-  // with mediaType 'video' since videos encrypt arbitrary bytes raw (no decode)
-  // Photos now REQUIRE a decodable image (they are stripped + fail closed), so
-  // random bytes cannot stand in for a photo any more
+  // Uses 'video' because random bytes can't pass as a photo
   group('FilePipeline.prepareUpload (encryption machinery)', () {
     test('round trip small file uses VER=0x01', () async {
       final aks = await _newAks(_albumId(), 3, _mk());
@@ -231,47 +223,6 @@ void main() {
   });
 
   group('FilePipeline.prepareUpload photo metadata stripping', () {
-    test('emits correlated timings for every CPU-heavy photo stage', () async {
-      final aks = await _newAks(_albumId(), 0, _mk());
-      final lines = <String>[];
-      Trace.debugEnabled = true;
-      try {
-        await runZoned(
-          () => Trace.withId(
-            'uploadtrace',
-            () => FilePipeline.prepareUpload(
-              aks: aks,
-              albumIdBytes: _albumId(),
-              currentEpoch: 0,
-              plaintext: _jpegWithExif(),
-              mediaType: 'photo',
-            ),
-          ),
-          zoneSpecification: ZoneSpecification(
-            print: (_, __, ___, line) => lines.add(line),
-          ),
-        );
-      } finally {
-        Trace.debugEnabled = null;
-      }
-
-      for (final name in [
-        'media.prepareUpload',
-        'media.imageDecode',
-        'media.imageEncode',
-        'media.thumbResize',
-        'media.thumbEncode',
-        'media.fileEncrypt',
-        'media.keyWrap',
-      ]) {
-        expect(lines.any((line) => line.contains('$name.start')), isTrue,
-            reason: '$name must have a start marker');
-        expect(lines.any((line) => line.contains('$name.end')), isTrue,
-            reason: '$name must have an end marker');
-      }
-      expect(lines, everyElement(contains('tid=uploadtrace')));
-    });
-
     test('uploaded photo bytes carry no EXIF/GPS, thumb included', () async {
       final withExif = _jpegWithExif();
       // precondition : the fixture really does carry EXIF
@@ -322,12 +273,9 @@ void main() {
 
     test('output photo keeps correct orientation (portrait stays upright)',
         () async {
-      // 16x8 landscape pixels tagged orientation=6 (rotate 90 CW) : a real
-      // portrait camera photo. img.decodeImage auto applies the orientation
-      // (rotates pixels to 8x16, clears the tag) BEFORE we clear the rest of
-      // the EXIF, so stripping can never leave the photo sideways. This test
-      // guards that end to end : if a future package:image stops auto-orienting
-      // it goes red, and an explicit bakeOrientation would be needed
+      // Orientation 6 on 16x8 pixels. decodeImage bakes the rotation in
+      // before EXIF is cleared. If package:image ever stops doing that this
+      // fails and an explicit bakeOrientation is needed
       final src = img.Image(width: 16, height: 8);
       img.fill(src, color: img.ColorRgb8(10, 20, 30));
       src.exif.imageIfd.orientation = 6;

@@ -111,9 +111,8 @@ void main() {
 
     test('truncation (drop final partial segment of an exact multiple file)',
         () async {
-      // Tougher case : original file is exactly 3 * kSegmentSize. Drop the
-      // last full segment : the new last (was index=1 with is_last=0) still
-      // has its tag, but is_last derivation flips to 1 → tag fails
+      // An exact multiple of kSegmentSize: the new last segment was sealed
+      // with is_last=0, so its tag fails once it is read as last
       final pt = _bytes(3 * kSegmentSize);
       final wire = await AeadStream.encryptBytes(
           dek: _dek(), plaintext: pt, mediaId: _mediaId());
@@ -163,10 +162,8 @@ void main() {
     });
 
     test('header-only blob (no segments) -> FormatException', () async {
-      // A legit empty file is header + ONE authenticated zero length segment
-      // (a 16 byte tag). A blob with a valid header but NO segment tag
-      // authenticates nothing : it must be rejected, not silently decrypted to
-      // empty plaintext (server could forge this to fake an "empty" media item)
+      // A real empty file still carries one tagged segment. A header alone
+      // would let the server forge an empty media item
       final full = await AeadStream.encryptBytes(
           dek: _dek(), plaintext: Uint8List(0), mediaId: _mediaId());
       final headerOnly = Uint8List.sublistView(full, 0, AeadStream.headerLen);
@@ -179,17 +176,11 @@ void main() {
   });
 
   group('AeadStream nonce determinism', () {
-    // Per segment nonces are HKDF derived from (DEK, FILE_NONCE, index). Same
-    // inputs must yield the same output : if a future refactor introduces
-    // any randomness here, segment 0 of two encrypt calls would produce
-    // different ciphertexts even with the same inputs and randomness frozen
     test(
         'two encrypts with the same DEK + same plaintext + injected file_nonce '
         'derive identical per segment nonces', () async {
-      // We cant inject FILE_NONCE through the public API : instead, encrypt
-      // twice with the SAME DEK + SAME plaintext, capture both wires, and
-      // verify the FILE_NONCE bytes differ (Csprng.bytes) but that decrypt
-      // still works on each (proving the nonce derivation pipeline is sane)
+      // FILE_NONCE can't be injected, so encrypt twice and check the nonces
+      // differ while both still decrypt
       final pt = _bytes(2 * kSegmentSize, 0xDE);
       final wireA = await AeadStream.encryptBytes(
           dek: _dek(), plaintext: pt, mediaId: _mediaId());

@@ -75,18 +75,4 @@ void main() {
     expect(media.dek, everyElement(0));
     expect(media.thumbDek, everyElement(0));
   });
-
-  test('a video has no thumbnail to wrap', () async {
-    final media = await FilePipeline.encryptMedia(
-        plaintext: Uint8List(64), mediaType: 'video');
-    final env = await FilePipeline.wrapKeys(
-        aks: await _aks({0: _mk(1)}),
-        albumIdBytes: _album,
-        epoch: 0,
-        media: media);
-
-    expect(env.hasThumb, isFalse);
-    expect(env.thumbWrapNonce, isNull);
-    expect(await FilePipeline.openThumb(media), isNull);
-  });
 }

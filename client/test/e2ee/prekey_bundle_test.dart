@@ -7,10 +7,6 @@ import 'package:miuchio/e2ee/prekey_bundle.dart';
 
 import '../_sodium_setup.dart';
 
-// Tests cover both fromJson decoding and the §6 verify ordering rules
-// (length -> ts skew -> Ed25519 sig). Synthesized JSON is built inline so we
-// stay independent of the data layer adapter
-
 Future<Map<String, dynamic>> _buildBundleJson({
   required Ed25519KeyPair ikKp,
   required Uint8List lkPub,

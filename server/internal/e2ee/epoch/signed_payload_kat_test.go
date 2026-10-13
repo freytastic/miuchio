@@ -12,9 +12,7 @@ import (
 	"github.com/freytastic/miuchio/internal/crypto"
 )
 
-// TestSignedPayloadKAT loads test_vectors/signed_payload_kat.json and asserts
-// that the §4.2 D3 sender_sig msg + Ed25519_verify both agree byte for byte
-// with the frozen fixture. Dart's mk_delivery_kat_test.dart pins the same JSON
+// Dart's mk_delivery_kat_test.dart pins the same fixture
 func TestSignedPayloadKAT(t *testing.T) {
 	path := filepath.Join("..", "..", "..", "test_vectors", "signed_payload_kat.json")
 	raw, err := os.ReadFile(path)

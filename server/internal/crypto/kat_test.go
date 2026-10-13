@@ -225,9 +225,7 @@ func TestKAT_Ed25519(t *testing.T) {
 	}
 }
 
-// runX3dhKat re derives the X3DH shared secret from the fixed seeds in the KAT
-// and asserts it matches the frozen byte value. If the Dart side and Go side
-// both pass on the same vector, byte-level X3DH parity holds
+// runX3dhKat checks the frozen shared secret, the Dart side runs the same vector
 func runX3dhKat(t *testing.T, tv x3dhVector, withOpk bool) {
 	t.Helper()
 	lkASeed := mustHex(t, tv.LkASeedHex)
@@ -336,9 +334,7 @@ func TestKAT_CanonicalJSON(t *testing.T) {
 			if err := json.Unmarshal([]byte(tv.InputJSON), &parsed); err != nil {
 				t.Fatalf("parse input: %v", err)
 			}
-			// json.Unmarshal returns float64 for all JSON numbers : convert
-			// integer-valued floats back to int64 so the canonical serializer
-			// does not reject them
+			// encoding/json yields float64, which the serializer rejects
 			parsed = floatsToInts(parsed)
 			got, err := CanonicalSerialize(parsed)
 			if err != nil {
@@ -351,10 +347,8 @@ func TestKAT_CanonicalJSON(t *testing.T) {
 	}
 }
 
-// floatsToInts walks a parsed JSON tree and converts integer-valued float64
-// (the only number type encoding/json produces by default) to int64. Callers
-// of CanonicalSerialize in production pass typed structs, so this is a test
-// helper only : the canonical serializer itself rejects floats by design
+// floatsToInts undoes encoding/json's float64 numbers, production callers pass
+// typed structs
 func floatsToInts(v any) any {
 	switch x := v.(type) {
 	case float64:

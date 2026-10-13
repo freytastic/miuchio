@@ -47,9 +47,6 @@ Future<AlbumKeyStore> _newAks(
   return aks;
 }
 
-// _recordFromEnvelope : convert an UploadEnvelope (what FilePipeline produces)
-// into a MediaRecord (what GET /media would return for the same row). Lets the
-// tests exercise the full round trip without a live HTTP server
 MediaRecord _recordFromEnvelope({
   required UploadEnvelope env,
   required Uint8List albumIdBytes,

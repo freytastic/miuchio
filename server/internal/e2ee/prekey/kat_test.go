@@ -9,9 +9,7 @@ import (
 	"testing"
 )
 
-// TestSpkRotateKAT loads test_vectors/spk_rotate_kat.json and asserts that the
-// service's RotationMsg + Ed25519_verify both agree byte-for-byte with the
-// frozen fixture. Dart's kat_test.dart pins the same JSON
+// TestSpkRotateKAT shares its fixture with Dart's kat_test.dart
 func TestSpkRotateKAT(t *testing.T) {
 	path := filepath.Join("..", "..", "..", "test_vectors", "spk_rotate_kat.json")
 	raw, err := os.ReadFile(path)

@@ -30,9 +30,7 @@ class _Ports {
   Completer<void>? rotateGate;
   int rotations = 0;
 
-  // expected IK resolver knobs : by default maps token seed s -> ik seed s|0x80
-  // so each recipient's expectedIk is distinguishable. Flip expectedIkThrows to
-  // exercise the fail closed (missing pin) path
+  // Token seed s maps to IK seed s|0x80 so recipients stay distinguishable
   bool expectedIkThrows = false;
   Uint8List _ikFor(Uint8List token) =>
       Uint8List.fromList(List<int>.filled(32, token[0] | 0x80));

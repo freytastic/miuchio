@@ -109,7 +109,7 @@ func TestInviteE2E(t *testing.T) {
 		t.Fatalf("member_token len=%d", len(bobToken))
 	}
 
-	// member_token must be unrelated to the user_id on the wire (§8 DoD)
+	// member_token must be unrelated to the user_id on the wire
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM album_members WHERE album_id=$1 AND member_token=$2 AND role='member'`,
 		albumID, bobToken).Scan(&n); err != nil || n != 1 {

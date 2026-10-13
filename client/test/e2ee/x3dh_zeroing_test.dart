@@ -13,12 +13,8 @@ import '../_sodium_setup.dart';
 import '../secure_store/mock_secure_key_store.dart';
 import 'identity_label_map_test_helpers.dart';
 
-// D10 best effort : the session hands sharedSecret back to caller, caller
-// owns the lifetime, caller is expected to fillRange(0,len,0) after use.
-// This test proves the contract holds at the buffer reference level :
-// zeroing the returned Uint8List actually zeros it. Heap snapshot inspection
-// would need vm_service + custom harness (same trade off as §2.1's
-// memory_zeroing_test.dart) and isnt worth the complexity here
+// The caller owns sharedSecret and zeroes it. This checks zeroing reaches the
+// returned buffer itself, heap inspection would need a vm_service harness
 
 class _SilentApi implements PrekeyApi {
   @override
@@ -122,7 +118,7 @@ void main() {
     expect(r1.sharedSecret.any((b) => b != 0), isTrue,
         reason: 'fresh sharedSecret should be non zero');
 
-    // Caller zeros after use (D10 contract)
+    // The caller zeroes after use
     final captured = r1.sharedSecret;
     captured.fillRange(0, captured.length, 0);
     expect(captured.every((b) => b == 0), isTrue);
