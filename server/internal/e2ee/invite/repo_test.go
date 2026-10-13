@@ -215,7 +215,7 @@ func TestDeliverMember_ReactivatesRevokedMember(t *testing.T) {
 		t.Fatalf("re-invite of revoked member should reactivate, got: %v", err)
 	}
 	if !bytes.Equal(first, second) {
-		t.Fatal("reactivation should reuse the same member_token (M-bridge 1:1 slot)")
+		t.Fatal("reactivation should reuse the same member_token")
 	}
 
 	var role string

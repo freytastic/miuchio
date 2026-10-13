@@ -101,9 +101,7 @@ class _StubPrekeyApi implements PrekeyApi, MemberBundleFetcher {
   }
 }
 
-// Anchored : _spkTs and _now are within the ±90 day window the bundle verifier
-// enforces (PrekeyBundle.verify). The initiator (rotator) verifies the bundle
-// before X3DH initiate, unlike the responder side tests which skip verify
+// Inside the 90 day window, the rotator verifies bundles before X3DH
 final DateTime _now = DateTime.utc(2026, 5, 11, 12);
 final int _spkTs = _now.millisecondsSinceEpoch ~/ 1000 - 3600; // 1h ago
 
@@ -203,11 +201,7 @@ void main() {
       expect(req.memberSetHash.length, 32);
     });
 
-    test('self wrap is decryptable via the §4.2 responder path', () async {
-      // Strongest round trip : take the wrap the rotator produced and run it
-      // through X3dhSession.derive + Aead.decrypt to recover MK. Compare
-      // against the MK AlbumKeyStore holds. Both must match byte for byte if
-      // the wrap is built right
+    test('self wrap is decryptable via the responder path', () async {
       final c = await _newCreatorStack();
       final opkPub = await _opkPubFrom(c.svc, 0);
       final bundle = await buildResponderBundle(
@@ -247,7 +241,7 @@ void main() {
       expect(mk, equals(installed));
     });
 
-    test('envelope_sig verifies against creator IK_pub for the §4.1 byte msg',
+    test('envelope_sig verifies against creator IK_pub over the envelope bytes',
         () async {
       final c = await _newCreatorStack();
       final opkPub = await _opkPubFrom(c.svc, 0);
@@ -271,10 +265,7 @@ void main() {
       );
 
       final req = caps.lastRequest!;
-      // Rebuild the §4.1 envelope message : "epoch-set-v1" ‖ album_id(16) ‖
-      // u32_be(epoch) ‖ member_set_hash(32) ‖ wraps_hash(32). Recompute
-      // wraps_hash independently so this test catches any drift between
-      // rotator and the byte format spec
+      // Rebuilt independently so any drift in the rotator's byte layout fails
       final salt = Uint8List.fromList('epoch-set-v1'.codeUnits);
       final wrapsHash = await _recomputeWrapsHash(req.wraps);
       final msg = BytesBuilder(copy: false)
@@ -293,9 +284,8 @@ void main() {
 
   group('EpochRotator.rotate by-token recipients', () {
     test('fetches the bundle by member_token when userId is null', () async {
-      // The kick/leave rotation knows remaining members only by token (identity
-      // hidden), so recipients carry userId=null and the rotator must go through
-      // the album scoped by token bundle fetch, never the by user_id one
+      // Removal knows members only by token, so the by user_id fetch must
+      // never be used
       final c = await _newCreatorStack();
       final opkPub = await _opkPubFrom(c.svc, 0);
       final bundle = await buildResponderBundle(
@@ -333,13 +323,10 @@ void main() {
     });
   });
 
-  group('EpochRotator IK binding (finding #1)', () {
+  group('EpochRotator IK binding', () {
     test('refuses to wrap when the bundle IK != the expected IK', () async {
-      // The server serves an honest roster but a SUBSTITUTED bundle : the
-      // fetched bundle is internally valid (verify() passes) yet carries an
-      // ik_pub we never authenticated for this member. Wrapping the MK to it
-      // hands the album key to the impostor, so the rotator must fail closed
-      // BEFORE any X3DH / wrap / set_epoch
+      // A self consistent substituted bundle passes verify() but carries an
+      // IK we never authenticated, nothing may be wrapped or sent
       final c = await _newCreatorStack();
       final opkPub = await _opkPubFrom(c.svc, 0);
       final bundle = await buildResponderBundle(
@@ -410,8 +397,7 @@ void main() {
   });
 }
 
-// _recomputeWrapsHash : duplicate of the rotator's private _wrapsHash byte
-// layout. If the rotator drifts from the §4.1 format this test catches it
+// Deliberate copy of the rotator's private _wrapsHash layout
 Future<Uint8List> _recomputeWrapsHash(List<SetEpochWrap> wraps) async {
   final sorted = [...wraps]
     ..sort((a, b) => _byteCompare(a.recipientToken, b.recipientToken));

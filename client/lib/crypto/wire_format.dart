@@ -1,21 +1,19 @@
 import 'dart:typed_data';
 
-// Wire format version bytes (D5). Mirrored in internal/crypto/wire_format.go
+// Mirrored in server/internal/crypto/wire_format.go
 const int kVerAesGcm = 0x01;
 const int kVerChaPo = 0x02;
 const int kVerStreamGcm = 0x03;
 
-// Segment size for VER=0x03 streaming AEAD: 1 MiB (L2)
 const int kSegmentSize = 1 << 20;
 
-// Length constants for X3DH info construction (L1)
 const int kIkPubLen = 32;
 const int kLkPubLen = 32;
 const int kAlbumIdLen = 16;
 const int kX3dhInfoLen = kLkPubLen + kLkPubLen + kAlbumIdLen;
 
-// Domain separation salts (L9). Mirrored byte-for-byte in internal/crypto/salts.go
-// All values are pure ASCII : codeUnits equal UTF-8 bytes here
+// Mirrored byte for byte in server/internal/crypto/salts.go. ASCII only so
+// codeUnits equal the UTF-8 bytes
 final Uint8List kSaltX3dh = Uint8List.fromList('vault-x3dh-v1'.codeUnits);
 final Uint8List kSaltInvite = Uint8List.fromList('invite-v1'.codeUnits);
 final Uint8List kSaltSegNonce = Uint8List.fromList('seg-nonce-v1'.codeUnits);
@@ -29,9 +27,8 @@ final Uint8List kSaltJoinComplete =
 final Uint8List kSaltAlbumNameHint =
     Uint8List.fromList('album-name-v1'.codeUnits);
 
-// Builds the X3DH HKDF info string per L1: LK_pub_A || LK_pub_B || album_id
-// Uses LK_pub (X25519 keys actually used in DH1), not IK_pub (Ed25519 : would
-// silently produce wrong DH output if passed to X25519)
+// LK_pub_A || LK_pub_B || album_id. Takes the X25519 LK keys used in DH1,
+// never the Ed25519 IK keys
 Uint8List kX3dhInfoConstruction(
     Uint8List lkPubA, Uint8List lkPubB, Uint8List albumId) {
   if (lkPubA.length != kLkPubLen) {
@@ -53,9 +50,7 @@ Uint8List kX3dhInfoConstruction(
   return out;
 }
 
-// Wire format byte layout: VER(1) || NONCE(12) || TAG(16) || CT(N)
-// VER selects the AEAD algorithm : anything that picks an algorithm from
-// somewhere other than this byte is a bug (D5)
+// VER(1) || NONCE(12) || TAG(16) || CT(N). The algorithm is chosen only by VER
 const int kNonceLen = 12;
 const int kTagLen = 16;
 const int kHeaderLen = 1 + kNonceLen + kTagLen;
@@ -74,10 +69,7 @@ class ParsedWire {
 }
 
 abstract class WireFormat {
-  // Parses VER(1) || NONCE(12) || TAG(16) || CT(N)
-  // Throws FormatException on under-length input or unknown VER byte
-  // VER=0x03 parses successfully, but Aead.decrypt rejects it bcs the
-  // streaming format requires a different framing (segments) which is handled in p5
+  // VER=0x03 parses here but its body is segments, so Aead.decrypt rejects it
   static ParsedWire parse(Uint8List wire) {
     if (wire.length < kHeaderLen) {
       throw FormatException(
@@ -98,7 +90,6 @@ abstract class WireFormat {
     );
   }
 
-  /// Assembles VER || NONCE || TAG || CT into a single byte array
   static Uint8List assemble({
     required int version,
     required Uint8List nonce,

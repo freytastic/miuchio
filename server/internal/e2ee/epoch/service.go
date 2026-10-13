@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// store is the repo surface the service needs. Tests substitute a mock
+// store is the repo surface the service needs
 type store interface {
 	CurrentEpoch(ctx context.Context, albumID uuid.UUID) (int, bool, time.Time, error)
 	AdminIKByMemberToken(ctx context.Context, memberToken []byte) ([]byte, error)
@@ -212,16 +212,11 @@ func MemberSetHash(tokens [][]byte) []byte {
 	return h.Sum(nil)
 }
 
-// WrapsHash = SHA256( uint32_be(N)
-
-//	‖ for each wrap (sorted by recipient_token):
-//	    recipient_token (32B)
-//	  ‖ ek_pub (32B)
-//	  ‖ uint32_be(opk_idx; 0xFFFFFFFF if absent)
-//	  ‖ uint32_be(len(wrap)) ‖ wrap
-//	  ‖ uint32_be(len(sender_sig)) ‖ sender_sig )
-
-// This binds the envelope_sig to every byte the server will persist
+// WrapsHash binds envelope_sig to every byte the server persists
+//
+//	SHA256(u32_be(N) ‖ per wrap sorted by recipient_token:
+//	  token(32) ‖ ek_pub(32) ‖ u32_be(opk_idx or 0xFFFFFFFF) ‖
+//	  u32_be(len) ‖ wrap ‖ u32_be(len) ‖ sender_sig)
 func WrapsHash(wraps []WrapInput) []byte {
 	dup := make([]WrapInput, len(wraps))
 	copy(dup, wraps)
@@ -251,11 +246,8 @@ func WrapsHash(wraps []WrapInput) []byte {
 	return h.Sum(nil)
 }
 
-// EnvelopeSignMsg = "epoch-set-v1" ‖ album_id (16B) ‖ uint32_be(epoch)
-
-//	‖ member_set_hash (32B) ‖ wraps_hash (32B)
-
-// The album_id binary form is its 16-byte UUID, not the textual rendering
+// EnvelopeSignMsg is "epoch-set-v1" ‖ album_id(16) ‖ u32_be(epoch) ‖
+// member_set_hash(32) ‖ wraps_hash(32)
 func EnvelopeSignMsg(albumID uuid.UUID, epoch int, memberSetHash, wrapsHash []byte) []byte {
 	out := make([]byte, 0, len(crypto.SaltEpochSet)+16+4+32+32)
 	out = append(out, crypto.SaltEpochSet...)

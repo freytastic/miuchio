@@ -32,14 +32,12 @@ void main() {
       );
     });
 
-    test('rejects unknown VER byte (0x00)', () {
-      final wire = Uint8List(kHeaderLen);
-      expect(() => WireFormat.parse(wire), throwsFormatException);
-    });
-
-    test('rejects unknown VER byte (0xFF)', () {
-      final wire = Uint8List(kHeaderLen)..[0] = 0xFF;
-      expect(() => WireFormat.parse(wire), throwsFormatException);
+    test('rejects unknown VER bytes at both ends of the range', () {
+      for (final ver in [0x00, 0xFF]) {
+        final wire = Uint8List(kHeaderLen)..[0] = ver;
+        expect(() => WireFormat.parse(wire), throwsFormatException,
+            reason: 'VER 0x${ver.toRadixString(16)}');
+      }
     });
 
     test('accepts VER=0x03 (parser is permissive; Aead.decrypt rejects)', () {

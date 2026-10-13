@@ -7,22 +7,14 @@ import (
 	"strings"
 )
 
-// SafetyNumber computes the pairwise MITM fingerprint :
-
-//	first 30 decimal digits of SHA256(sort_lex(IK_pub_A, IK_pub_B) || album_id)
-
-// The lex sort makes this symmetric (A,B) == (B,A). Used for user visible
-// out-of-band verification, so byte parity with Dart matters
-
-// Returns the 30-digit unformatted string. Use SafetyNumberFormatted for the
-// space grouped display form
 const safetyNumberDigits = 30
 
-// 2^256 < 10^78, so any SHA-256 fits in 78 decimal digits when zero-padded
-// slicing the leading 30 makes the digits a fixed positional contract :
-// hashes that happen to start with low bytes never produce shorter strings
+// Zero padding to 78 digits (2^256 < 10^78) keeps the digit positions fixed
+// even when the hash has leading zero bytes
 const safetyNumberPad = 78
 
+// SafetyNumber is the first 30 decimal digits of
+// SHA256(sort(IK_pub_A, IK_pub_B) || album_id). Must match the Dart side
 func SafetyNumber(ikPubA, ikPubB, albumID []byte) (string, error) {
 	if len(ikPubA) != IkPubLen {
 		return "", fmt.Errorf("crypto: ikPubA must be %d bytes, got %d", IkPubLen, len(ikPubA))
@@ -50,8 +42,7 @@ func SafetyNumber(ikPubA, ikPubB, albumID []byte) (string, error) {
 	return n[:safetyNumberDigits], nil
 }
 
-// SafetyNumberFormatted returns the 30 digits in six space separated groups
-// of five : "XXXXX XXXXX XXXXX XXXXX XXXXX XXXXX"
+// SafetyNumberFormatted groups the digits in fives
 func SafetyNumberFormatted(ikPubA, ikPubB, albumID []byte) (string, error) {
 	d, err := SafetyNumber(ikPubA, ikPubB, albumID)
 	if err != nil {

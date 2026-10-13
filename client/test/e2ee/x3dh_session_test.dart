@@ -14,11 +14,6 @@ import '../_sodium_setup.dart';
 import '../secure_store/mock_secure_key_store.dart';
 import 'identity_label_map_test_helpers.dart';
 
-// Two IdentityServices wired against an in memory MockSecureKeyStore : both
-// bootstrapped fully so the responder side has IK/LK/SPK/OPK[*] handles
-// available for derive(). PrekeyBundle is synthesized from the responder's
-// pubs so initiate() and derive() share the same key material end to end
-
 class _SilentPrekeyApi implements PrekeyApi {
   // Me intentionally swallow uploads in this test : me only care about the
   // local key material that bootstrap() produced
@@ -78,9 +73,6 @@ Future<
   return (svc: svc, store: store, labels: labels);
 }
 
-// Pulls the bootstrapped responder's pubs back out so me can build a verified
-// PrekeyBundle the initiator will consume. Reads through use<T> so no priv
-// bytes escape the §2.1 zeroing finally
 Future<({Uint8List ikPub, Uint8List lkPub, Uint8List spkPub})> _extractPubs(
     IdentityService svc) async {
   final ikPub = await svc.useIk<Uint8List>((seed) async {
@@ -150,24 +142,6 @@ void main() {
   final spkTs = fixed.millisecondsSinceEpoch ~/ 1000;
 
   group('X3dhSession.initiate', () {
-    test('produces a 32B sharedSecret and a 32B ekPub (4-DH)', () async {
-      final aliceSvc = (await _newBootstrappedSvc(now: fixed)).svc;
-      final bobSvc = (await _newBootstrappedSvc(now: fixed)).svc;
-      final opkPub = await _extractOpkPub(bobSvc, 3);
-      final bundle = await _buildVerifiedBundle(
-          svc: bobSvc, spkTs: spkTs, opk: (idx: 3, keyPub: opkPub));
-
-      final result = await X3dhSession.initiate(
-        bundle: bundle,
-        albumId: albumId,
-        identity: aliceSvc,
-      );
-
-      expect(result.sharedSecret.length, 32);
-      expect(result.ekPub.length, 32);
-      expect(result.opkIdx, 3);
-    });
-
     test(
         'emits a fresh ekPub and never persists EK (no miuchio.ek.* label '
         'after the call)', () async {
@@ -202,12 +176,14 @@ void main() {
       final bundle = await _buildVerifiedBundle(
           svc: bobSvc, spkTs: spkTs, opk: (idx: opkIdx, keyPub: opkPub));
 
-      // Initiator needs alice's LK pub on the wire too (so bob can build the
-      // X3DH info string). Pull it the same way derive() will need it
       final alicePubs = await _extractPubs(aliceSvc);
 
+      await bundle.verify(now: () => fixed);
       final init = await X3dhSession.initiate(
           bundle: bundle, albumId: albumId, identity: aliceSvc);
+      expect(init.sharedSecret.length, 32);
+      expect(init.ekPub.length, 32);
+      expect(init.opkIdx, opkIdx);
       final responderShared = await X3dhSession.derive(
         identity: bobSvc,
         ekPub: init.ekPub,
@@ -264,20 +240,6 @@ void main() {
         ),
         throwsA(isA<OpkNotFoundException>().having((e) => e.idx, 'idx', 999)),
       );
-    });
-  });
-
-  group('X3dhSession bundle verification integration', () {
-    test('initiate accepts a freshly verify()d bundle', () async {
-      final aliceSvc = (await _newBootstrappedSvc(now: fixed)).svc;
-      final bobSvc = (await _newBootstrappedSvc(now: fixed)).svc;
-      final bundle = await _buildVerifiedBundle(svc: bobSvc, spkTs: spkTs);
-
-      // Caller responsibility : verify before initiate. No exception means OKAA
-      await bundle.verify(now: () => fixed);
-      final r = await X3dhSession.initiate(
-          bundle: bundle, albumId: albumId, identity: aliceSvc);
-      expect(r.sharedSecret.length, 32);
     });
   });
 }

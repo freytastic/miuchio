@@ -304,7 +304,7 @@ func (h *Handler) GetPrekeyBundleByMemberToken(w http.ResponseWriter, r *http.Re
 		apierr.Write(w, r, err)
 		return
 	}
-	// identity field = member_token (opaque), never the resolved UUID
+	// member_token stands in for the identity, never the resolved UUID
 	h.writeBundle(w, base64.StdEncoding.EncodeToString(token), bundle, targetID)
 }
 
@@ -321,9 +321,8 @@ func decodeMemberTokenPath(s string) ([]byte, error) {
 	return nil, fmt.Errorf("member_token is not valid base64")
 }
 
-// writeBundle encodes the bundle JSON and fires the post commit opk_low fanout
-// userIDField is the value of the response "user_id": the real UUID for the
-// by id route, the miuchio_id handle for the by handle route
+// writeBundle fires the post commit opk_low fanout. userIDField is the real
+// UUID on the by id route and the miuchio_id on the by handle route
 func (h *Handler) writeBundle(w http.ResponseWriter, userIDField any, bundle *PrekeyBundle, targetID uuid.UUID) {
 	out := map[string]any{
 		"user_id": userIDField,
@@ -354,7 +353,7 @@ func (h *Handler) writeBundle(w http.ResponseWriter, userIDField any, bundle *Pr
 	}
 }
 
-// Pair-scoped limits preserve retries without giving each target a shared bucket
+// Pair scoped limits keep retries cheap without a shared bucket per target
 func KeyByRequesterAndTarget(r *http.Request) string {
 	uid, ok := middleware.GetUserID(r.Context())
 	if !ok {
@@ -399,7 +398,7 @@ func KeyByRequesterHandleLookups(r *http.Request) string {
 	return "prekey-bundle-handle-any:" + uid.String()
 }
 
-// Album-token limits preserve rotation retries without widening probe budgets
+// Album token limits keep rotation retries cheap without widening probes
 func KeyByRequesterAndMemberToken(r *http.Request) string {
 	uid, ok := middleware.GetUserID(r.Context())
 	if !ok {
@@ -413,9 +412,8 @@ func KeyByRequesterAndMemberToken(r *http.Request) string {
 	return "prekey-bundle-token:" + uid.String() + ":" + albumID + ":" + token
 }
 
-// KeyByRequesterTargetHourly returns (set_key, member) for the distinct
-// target probe tracker. The key rolls each hour so the window is naturally
-// bounded : the member is the target user_id being probed
+// KeyByRequesterTargetHourly rolls each hour so the distinct target window
+// is naturally bounded
 func KeyByRequesterTargetHourly(r *http.Request) (string, string) {
 	uid, ok := middleware.GetUserID(r.Context())
 	if !ok {

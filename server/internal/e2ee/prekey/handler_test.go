@@ -256,9 +256,8 @@ func TestPrekeyBundle_DoesNotEmitWhenAtOrAboveThreshold(t *testing.T) {
 	}
 }
 
-// TestPrekeyBundle_ConcurrentConsumesDistinctOPKs exercises the real Postgres
-// SKIP LOCKED path. Skipped without MIUCHIO_TEST_DATABASE_URL since the in mem
-// fixture cannot prove the row level concurrency guarantee
+// TestPrekeyBundle_ConcurrentConsumesDistinctOPKs needs real Postgres to prove
+// the SKIP LOCKED path
 func TestPrekeyBundle_ConcurrentConsumesDistinctOPKs(t *testing.T) {
 	dbURL := os.Getenv("MIUCHIO_TEST_DATABASE_URL")
 	if dbURL == "" {

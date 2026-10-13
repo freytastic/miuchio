@@ -15,14 +15,12 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Notifier matches the EmitToUsers method on *ws.Hub : an interface so the
-// handler tests can stub the fanout
+// Notifier is satisfied by *ws.Hub
 type Notifier interface {
 	EmitToUsers(ctx context.Context, userIDs []uuid.UUID, typ string, payload any) error
 }
 
-// memberLister is the subset of *repository.AlbumRepository the handler needs
-// to resolve recipient_tokens → user_ids for the WS fanout
+// memberLister resolves recipient tokens to user ids for the fanout
 type memberLister interface {
 	UserIDsByMemberTokens(ctx context.Context, tokens [][]byte) ([]uuid.UUID, error)
 	RotationRequired(ctx context.Context, albumID uuid.UUID) (bool, error)
@@ -141,9 +139,7 @@ func (h *Handler) SetEpoch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// fanout emits e2ee.epoch_changed to every user behind the recipient_tokens
-// Runs in a goroutine off the request ctx : the request is already committed
-// before this kicks off
+// fanout runs off the request context because the epoch is already committed
 func (h *Handler) fanout(albumID uuid.UUID, epoch int, tokens [][]byte) {
 	ctx := context.Background()
 	users, err := h.repo.UserIDsByMemberTokens(ctx, tokens)
@@ -199,8 +195,7 @@ func (h *Handler) GetCurrent(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetWrap handles GET /api/v1/albums/{id}/epoch/{n}/wrap
-// Recipient_token is taken from the auth/member context, never from the path,
-// so a client cannot fetch another member's wrap by guessing
+// The recipient token comes from the member context, never the path
 func (h *Handler) GetWrap(w http.ResponseWriter, r *http.Request) {
 	albumID, ok := h.albumID(w, r)
 	if !ok {

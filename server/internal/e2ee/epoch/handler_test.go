@@ -42,9 +42,8 @@ func (c *captureNotifier) EmitToUsers(_ context.Context, ids []uuid.UUID, typ st
 	return nil
 }
 
-// testEnv carries everything one handler test needs : pool, seeded album with
-// 3 members (admin and two plain members), private keys for each, and a router
-// that mounts the epoch routes under the same RequireMember middleware as prod
+// testEnv seeds an album with an admin and two members behind the production
+// RequireMember middleware
 type testEnv struct {
 	t         *testing.T
 	pool      *pgxpool.Pool

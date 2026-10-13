@@ -1,13 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-// Wire wrapper for the §6.1/§6.3 invite endpoints. Mirrors HttpPrekeyApi /
-// HttpEpochApi: the abstract API + HTTP impl live in lib/e2ee/, depending only
-// on a thin InviteJsonClient port the composition root wires to ApiClient
-
-// DeliverEnvelope : one per epoch MK wrap for the invitee. wrapNonce(12) +
-// wrapTagCt(48) are the §4.2 blob split (server stores them separately)
-// senderSig is Ed25519(IK_priv_admin, SHA256(album_id ‖ u32_be(epoch) ‖ wrap_blob))
+// senderSig signs SHA256(album_id ‖ u32_be(epoch) ‖ wrap)
 class DeliverEnvelope {
   final int epoch;
   final Uint8List wrapNonce;
@@ -22,7 +16,7 @@ class DeliverEnvelope {
 }
 
 abstract class InviteApi {
-  // POST /albums/{id}/invites/existing-user. Returns the new member_token bytes
+  // Returns the new member_token
   Future<Uint8List> deliverExistingUser({
     required String albumId,
     required String targetMiuchioId,
@@ -31,7 +25,7 @@ abstract class InviteApi {
     required List<DeliverEnvelope> envelopes,
   });
 
-  // POST /albums/{id}/joins. Signed receipt that the caller installed 'epoch'
+  // Signed receipt that the caller installed 'epoch'
   Future<void> postJoinComplete({
     required String albumId,
     required int epoch,
@@ -41,10 +35,8 @@ abstract class InviteApi {
 }
 
 abstract class InviteJsonClient {
-  // POST returning the decoded JSON response body (deliver → {member_token})
   Future<Map<String, dynamic>> postJsonForResult(
       String path, Map<String, dynamic> body);
-  // POST with no response body (join → 204)
   Future<void> postJson(String path, Map<String, dynamic> body);
 }
 

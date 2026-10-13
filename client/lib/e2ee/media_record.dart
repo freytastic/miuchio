@@ -1,32 +1,31 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-// MediaRecord mirrors one row from GET /albums/{id}/media. The wire shape is
-// what the §5.1 ListMedia handler emits : the bytes a §5.2 download needs to
-// unwrap the DEK and decrypt are exactly wrapNonce + wrapTagCT + epochTag +
-// the album's MK pulled from AlbumKeyStore. blobSha256 is verified after
-// download to catch in flight tamper before the AEAD layer even runs
+import 'package:miuchio/crypto/uuid_bytes.dart';
+
+// One row of GET /albums/{id}/media
 
 class MediaRecord {
-  final String id; // canonical UUID string
+  final String id;
   final String albumId;
-  final String uploaderToken; // base64 raw 32B
-  final Uint8List wrapNonce; // 12 bytes
-  final Uint8List wrapTagCT; // 48 bytes (16 tag + 32 ct of DEK)
+  // base64 of the raw 32B token
+  final String uploaderToken;
+  final Uint8List wrapNonce;
+  // 16 tag + 32 ct of the DEK
+  final Uint8List wrapTagCT;
   final int epochTag;
-  final int blobSize; // exact ciphertext byte count uploaded
-  final Uint8List blobSha256; // 32 bytes
-  final String mediaType; // 'photo' | 'video'
+  final int blobSize;
+  final Uint8List blobSha256;
+  // 'photo' | 'video'
+  final String mediaType;
   final String? mimeType;
   final DateTime createdAt;
-  // present-as-a-group for photos uploaded post, null for videos as of now
-  // and any row uploaded. Caller picks EncryptedThumbnail vs full
-  // EncryptedImage based on 'hasThumb'
+  // All four set together for photos, null for videos
   final Uint8List? thumbWrapNonce;
   final Uint8List? thumbWrapTagCT;
   final int? thumbSize;
   final Uint8List? thumbSha256;
-  // media_generation at confirmation; null for legacy or omitted values
+  // media_generation at confirmation, null on older rows
   final int? albumSeq;
 
   const MediaRecord({
@@ -50,9 +49,7 @@ class MediaRecord {
 
   bool get hasThumb => thumbWrapNonce != null;
 
-  // Mirror of fromJson : produces the same wire shape ListMedia emits
-  // Used by the L2 ciphertext cache to persist rows in records.db so a
-  // restart can still decrypt offline without re listing the album
+  // Same shape as the server emits, persisted so a restart can decrypt offline
   Map<String, dynamic> toJson() => {
         'id': id,
         'album_id': albumId,
@@ -99,31 +96,11 @@ class MediaRecord {
     );
   }
 
-  // Raw 16 byte form of the media id. AAD construction in the §5.1/§5.2
-  // decrypt path uses these bytes, not the canonical string
-  Uint8List get mediaIdBytes {
-    final hex = id.replaceAll('-', '');
-    if (hex.length != 32) {
-      throw FormatException('media id is not a canonical UUID: $id');
-    }
-    final out = Uint8List(16);
-    for (var i = 0; i < 16; i++) {
-      out[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
-    }
-    return out;
-  }
+  Uint8List get mediaIdBytes =>
+      uuidToBytes(id) ??
+      (throw FormatException('media id is not a canonical UUID: $id'));
 
-  // Raw 16 byte form of the album id. Same as mediaIdBytes : AAD construction
-  // for the wrap (album_id ‖ u32_be(epoch)) needs these bytes
-  Uint8List get albumIdBytes {
-    final hex = albumId.replaceAll('-', '');
-    if (hex.length != 32) {
-      throw FormatException('album id is not a canonical UUID: $albumId');
-    }
-    final out = Uint8List(16);
-    for (var i = 0; i < 16; i++) {
-      out[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
-    }
-    return out;
-  }
+  Uint8List get albumIdBytes =>
+      uuidToBytes(albumId) ??
+      (throw FormatException('album id is not a canonical UUID: $albumId'));
 }

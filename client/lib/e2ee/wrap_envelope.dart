@@ -3,19 +3,15 @@ import 'dart:typed_data';
 
 import 'package:miuchio/crypto/wire_format.dart';
 
-// Decoded GET /albums/{id}/epoch/{n}/wrap response. Bytes in / bytes out :
-// EpochProcessor pre validates lengths and the VER prefix (verifyShape) before
-// any expensive crypto runs
-
 class WrapEnvelope {
-  // Total wire wrap length: VER(1) + NONCE(12) + TAG(16) + CT(32) = 61 (§4.1)
+  // VER(1) + NONCE(12) + TAG(16) + CT(32)
   static const int wrapBlobLen = 1 + kNonceLen + kTagLen + 32;
 
   final int epoch;
-  final Uint8List ekPub; // 32B
-  final Uint8List wrap; // 61B (VER ‖ NONCE ‖ TAG ‖ CT)
-  final Uint8List senderToken; // 32B
-  final Uint8List senderSig; // 64B Ed25519
+  final Uint8List ekPub;
+  final Uint8List wrap;
+  final Uint8List senderToken;
+  final Uint8List senderSig;
   final int? opkIdxUsed;
   final DateTime deliveredAt;
 
@@ -43,8 +39,7 @@ class WrapEnvelope {
     );
   }
 
-  // Cheapest checks first : lengths + VER. Anything heavier (sig, AEAD) runs
-  // only after this passes
+  // Runs before any signature or AEAD work
   void verifyShape() {
     if (ekPub.length != 32 ||
         wrap.length != wrapBlobLen ||

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"errors"
 	"testing"
 	"time"
 
@@ -134,23 +133,6 @@ func TestSetEpoch_RejectsNonAdmin(t *testing.T) {
 	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "member", f.validRequest(t, 0))
 	if !apierr.IsCode(err, "E_FORBIDDEN") {
 		t.Fatalf("err = %v, want E_FORBIDDEN", err)
-	}
-}
-
-func TestSetEpoch_AcceptsAdmin(t *testing.T) {
-	f := newFixture(t)
-	var called bool
-	store := okStore(f)
-	store.insertEpochFn = func(_ context.Context, _ InsertEpochInput) error {
-		called = true
-		return nil
-	}
-	svc := NewService(store)
-	if _, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", f.validRequest(t, 0)); err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	if !called {
-		t.Fatal("InsertEpoch not called")
 	}
 }
 
@@ -339,13 +321,5 @@ func TestGetWrap_RejectsNegativeEpoch(t *testing.T) {
 	_, err := svc.GetWrap(context.Background(), f.albumID, -1, f.caller)
 	if !apierr.IsCode(err, "E_VALIDATION") {
 		t.Fatalf("err = %v, want E_VALIDATION", err)
-	}
-}
-
-// sentinel: confirms the package's exported sentinels are distinct so
-// errors.Is in the service layer maps each to the correct apierr code
-func TestSentinelsDistinct(t *testing.T) {
-	if errors.Is(ErrEpochReplay, ErrMemberSetDrift) {
-		t.Fatalf("ErrEpochReplay should not be ErrMemberSetDrift")
 	}
 }

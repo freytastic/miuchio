@@ -3,10 +3,7 @@ import 'dart:typed_data';
 
 import 'prekey_bundle.dart';
 
-// Thin wire format wrapper for the §4 prekey/SPK/OPK endpoints. Stays inside
-// lib/e2ee/ : depends only on a tiny PrekeyJsonClient surface that the
-// composition root wires to ApiClient. Server expects standard base64 (not
-// url-safe)
+// Bodies use standard base64, path segments use unpadded base64url
 
 class PrekeyOpk {
   final int idx;
@@ -41,9 +38,7 @@ class OwnKeys {
   }
 }
 
-// Surfaced when a prekey/SPK/OPK endpoint returns a structured server error
-// Translated from the data layer ApiError by the PrekeyJsonClient adapter so
-// e2ee/ never has to import package:miuchio/data/
+// Translated from ApiError by the adapter so e2ee/ never imports data/
 class PrekeyApiException implements Exception {
   final String code;
   final String message;
@@ -58,8 +53,6 @@ class PrekeyApiException implements Exception {
       'PrekeyApiException($code, http=$httpStatus, message="$message")';
 }
 
-// Bits of ApiClient that PrekeyApi actually needs. The adapter lives in
-// lib/data/api/ so e2ee/ never imports the data layer
 abstract class PrekeyJsonClient {
   Future<Map<String, dynamic>> getJson(String path);
   Future<void> postJson(String path, Map<String, dynamic> body);
@@ -89,22 +82,18 @@ abstract class PrekeyApi {
 
   Future<int> opkCount();
 
-  // Side-effect-free self-read; unlike bundle fetches, it pops no OPK
+  // Unlike bundle fetches this pops no OPK
   Future<OwnKeys> fetchOwnKeys();
 
-  // GET /users/{id}/prekey-bundle. Returns the raw bytes-in/bytes-out value
-  // type : caller MUST gate on PrekeyBundle.verify() before X3dhSession.initiate
+  // Unverified, callers must run PrekeyBundle.verify() before X3DH
   Future<PrekeyBundle> fetchPrekeyBundle(String userId);
 
-  // GET /users/by-handle/{handle}/prekey-bundle (§6.1 discovery). The returned
-  // bundle's userId field carries the miuchio_id, not the real user_id (server
-  // never emits it) : X3dhSession.initiate ignores userId anyway hehe. Throws
-  // HandleNotFoundException on 404 (unknown or malformed handle, indistinguishable)
+  // userId on the result is the miuchio_id, the server never reveals the
+  // real user_id here
   Future<PrekeyBundle> fetchPrekeyBundleByHandle(String handle);
 }
 
-// Thrown when a miuchio_id resolves to no user (or is malformed) : the UI shows
-// a "no such miuchio ID" rather than leaking which case it was
+// Unknown and malformed IDs are indistinguishable on purpose
 class HandleNotFoundException implements Exception {
   final String handle;
   const HandleNotFoundException(this.handle);
@@ -112,23 +101,16 @@ class HandleNotFoundException implements Exception {
   String toString() => 'HandleNotFoundException($handle)';
 }
 
-// MemberBundleFetcher : the by nickname bundle lookup used by member removal
-// An admin rotating an album fetches remaining members' bundles by member_token
-// (identity hidden) rather than by user_id, which it does not know. Kept a
-// separate narrow interface so EpochRotator can depend on just this capability
-// and the many PrekeyApi test fakes stay untouched. HttpPrekeyApi implements both
+// Member removal knows remaining members only by member_token, never user_id
 abstract class MemberBundleFetcher {
-  // GET /albums/{albumId}/members/{member_token}/prekey-bundle. The returned
-  // bundle's userId field carries the member_token, not the real user_id
-  // Throws MemberBundleNotFoundException on 404 (token not in this album)
+  // userId on the result is the member_token
   Future<PrekeyBundle> fetchPrekeyBundleByMemberToken(
     String albumId,
     Uint8List memberToken,
   );
 }
 
-// Thrown when a member_token resolves to no member of the album (revoked,
-// removed, or foreign token) : indistinguishable on purpose
+// Revoked, removed and foreign tokens are indistinguishable on purpose
 class MemberBundleNotFoundException implements Exception {
   const MemberBundleNotFoundException();
   @override
@@ -144,9 +126,6 @@ class HttpPrekeyApi implements PrekeyApi, MemberBundleFetcher {
     String albumId,
     Uint8List memberToken,
   ) async {
-    // member_token goes in the URL path : std base64 has '/' and '+' which
-    // break routing, so carry it as base64url with the padding stripped
-    // (the server accepts padded or unpadded url/std)
     final tokenPath = base64Url.encode(memberToken).replaceAll('=', '');
     try {
       final body = await _client

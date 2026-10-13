@@ -4,9 +4,8 @@ import 'key_handle.dart';
 import 'key_store_exceptions.dart';
 import 'secure_key_store.dart';
 
-// Mirrors AndroidKeystore byte for byte: both are the same MethodChannel
-// surface. Keeping them as two classes (instead of a shared base) makes it
-// obvious in stack traces : revisit after Phase 2
+// Same channel as AndroidKeystore. putMany is not overridden, so it falls back
+// to one put per key
 class IosSecureEnclave extends SecureKeyStore {
   static const _channel = MethodChannel('miuchio/keystore');
 
@@ -33,7 +32,6 @@ class IosSecureEnclave extends SecureKeyStore {
   @override
   Future<Uint8List> getOnce(KeyHandle h) async {
     final r = await _invoke<Map>('getOnce', {'handleId': h.id});
-    // Convert dynamic list from MethodChannel back to typed Uint8List
     return Uint8List.fromList((r['plaintext'] as List).cast<int>());
   }
 
@@ -54,8 +52,6 @@ class IosSecureEnclave extends SecureKeyStore {
   @override
   Future<void> wipeAll() => _invoke<void>('wipeAll', const {});
 
-  // Typed wrapper for MethodChannel.invokeMethod
-  // Maps PlatformException to typed KeyStoreException
   Future<R> _invoke<R>(String method, Map<String, Object?> args) async {
     try {
       final result = await _channel.invokeMethod<Object?>(method, args);

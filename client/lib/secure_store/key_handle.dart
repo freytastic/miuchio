@@ -9,7 +9,7 @@ class KeyHandle {
   @override
   int get hashCode => id.hashCode;
 
-  // Redacts the id : logs/exceptions must never echo full handle ids
+  // Logs and exceptions must never echo a full handle id
   @override
   String toString() {
     final prefix = id.length >= 6 ? id.substring(0, 6) : id;

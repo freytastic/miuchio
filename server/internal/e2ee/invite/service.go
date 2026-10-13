@@ -14,22 +14,19 @@ import (
 
 const (
 	wrapNonceLen = 12
-	wrapTagCTLen = 48 // GCM tag(16) + MK ciphertext(32)
+	wrapTagCTLen = 48 // tag(16) + MK ciphertext(32)
 	sigLen       = ed25519.SignatureSize
 	pubLen       = 32
 )
 
-// ErrAlreadyMember is returned by the repo when the M bridge (user_handle, album)
-// row already exists : the caller maps it to 409 for idempotent reinvite UX
+// ErrAlreadyMember maps to 409 so a reinvite is idempotent
 var ErrAlreadyMember = errors.New("invite: target already a member of this album")
 
 var ErrAlbumFull = errors.New("invite: album has reached the maximum number of members")
 
-// Onboarding only happens through DeliverExistingUser now, so this is the only
-// point for the cap
 const MaxAlbumMembers = 10
 
-// store is the repo surface DeliverExistingUser needs. Tests substitute a mock
+// store is the repo surface DeliverExistingUser needs
 type store interface {
 	FindUserIDByMiuchioID(ctx context.Context, miuchioID string) (uuid.UUID, error)
 	CurrentEpoch(ctx context.Context, albumID uuid.UUID) (int, error)
@@ -42,8 +39,8 @@ type Service struct{ repo store }
 
 func NewService(repo store) *Service { return &Service{repo: repo} }
 
-// Envelope is one per epoch MK wrap for the new member: the §4.2 blob split into
-// nonce + tag‖ct, plus the per epoch sender_sig the recipient verifies
+// Envelope is one epoch's MK wrap split into nonce and tag‖ct, plus the
+// sender_sig the recipient verifies
 type Envelope struct {
 	Epoch     int
 	WrapNonce []byte
@@ -65,7 +62,7 @@ type DeliverMemberInput struct {
 	SenderToken []byte
 	EKPub       []byte
 	OPKIdxUsed  *int
-	Envelopes   []Envelope // sorted ascending by epoch, contiguous 0..current
+	Envelopes   []Envelope // ascending and contiguous from epoch 0
 }
 
 // Validates and delivers every historical MK wrap to the target membership

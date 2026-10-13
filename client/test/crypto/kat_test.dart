@@ -10,9 +10,7 @@ import 'package:miuchio/crypto/canonical_json.dart';
 
 import '../_sodium_setup.dart';
 
-// For cross language KATs. Mirror of the Go runner at
-// server/internal/crypto/kat_test.go : if either side fails on a vector,
-// byte-level parity is broken
+// Mirrors server/internal/crypto/kat_test.go over the same vectors
 const String _katFile = '../test_vectors/crypto_kat.json';
 
 Uint8List _hex(String s) {
@@ -79,15 +77,13 @@ void main() {
     final vectors = (kat['hkdf_sha256'] as List).cast<Map>();
     for (final tv in vectors) {
       test(tv['name'] as String, () async {
-        final hkdf =
-            cg.Hkdf(hmac: cg.Hmac.sha256(), outputLength: tv['length'] as int);
-        final out = await hkdf.deriveKey(
-          secretKey: cg.SecretKey(_hex(tv['ikm_hex'] as String)),
-          nonce: _hex(tv['salt_hex'] as String),
+        final out = await Hkdf.derive(
+          ikm: _hex(tv['ikm_hex'] as String),
+          salt: _hex(tv['salt_hex'] as String),
           info: _hex(tv['info_hex'] as String),
+          length: tv['length'] as int,
         );
-        expect(await out.extractBytes(),
-            orderedEquals(_hex(tv['okm_hex'] as String)));
+        expect(out, orderedEquals(_hex(tv['okm_hex'] as String)));
       });
     }
   });

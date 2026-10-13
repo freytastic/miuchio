@@ -12,9 +12,12 @@ import 'package:miuchio/secure_store/secure_key_store.dart';
 import 'identity_label_map.dart';
 import 'prekey_api.dart';
 
-// Manages device identity keys, signed prekeys, and one time prekeys. Bootstrap
-// publishes five OPKs; steadystate replenishment raises the pool to 20
-// Local keys are persisted before publication so bootstrap can resume safely
+// Device identity (IK, LK), signed prekey and one time prekey lifecycle
+
+// Every key is persisted and labelled before it is published, so an
+// interrupted bootstrap, rotation or replenish resumes instead of minting keys
+// the server may already hold. SPK rotation goes current to pending to current,
+// and pending is only promoted once the server confirms it
 
 typedef Now = DateTime Function();
 
@@ -29,12 +32,9 @@ const int kSpkRotationSeconds = 30 * 24 * 3600;
 // Leaves a margin inside the server's 5 minute spk_ts skew window
 const int kSpkRecoverySkewLimitSeconds = 4 * 60;
 
-// Domain prefix for replenish_sig (§6.5): "opk-batch-v1" || u32_be(N) || SHA256(concat pubs)
 final Uint8List _kSaltOpkBatch = Uint8List.fromList('opk-batch-v1'.codeUnits);
 
-// Thrown when bootstrap detects an unrecoverable mismatch between local key
-// state and the server's stored identity. The UI should surface this clearly
-// rather than retry, since regenerating keys would only reproduce the conflict
+// Not retryable: regenerating keys would only reproduce the conflict
 class BootstrapAccountConflictException implements Exception {
   final String message;
   const BootstrapAccountConflictException([
@@ -78,14 +78,10 @@ class IdentityService {
   final PrekeyApi _api;
   final Now _now;
 
-  // Mutex: WS opk_low + cold start replenish collapse to one in-flight call
+  // WS opk_low and cold start replenish collapse into one in flight call
   Completer<void>? _inflightReplenish;
 
-  // cryptoReady : resolves the first time bootstrap() completes successfully
-  // (or immediately if isBootstrapped() was already true). UI surfaces that
-  // need IK/LK/SPK (album create, invite, etc) 'await identity.cryptoReady'
-  // before calling into the rotator/x3dh so a non-blocking landing flow
-  // doesnt race the crypto hygiene running in the background
+  // Lets flows that need IK/LK/SPK wait for a bootstrap running in the background
   Completer<void> _bootstrapDone = Completer<void>();
   Future<void> get cryptoReady => _bootstrapDone.future;
 
@@ -99,9 +95,8 @@ class IdentityService {
         _api = api,
         _now = now ?? DateTime.now;
 
-  // True when keys are generated locally AND both the identity bundle and the
-  // initial OPK batch have been accepted server-side. A "false" here is the
-  // signal to call bootstrap()
+  // True only once keys exist locally and both the identity and the first
+  // OPK batch were accepted by the server
   Future<bool> isBootstrapped() async {
     if (_labels.handleId(kLabelIK) == null) return false;
     if (!await _labels.isIdentityPublished()) return false;
@@ -109,15 +104,12 @@ class IdentityService {
     return true;
   }
 
-  // Resumable bootstrap: persist keys, publish identity, then publish five OPKs
-  // E_IDENTITY_ALREADY_SET is reserved for genuine key divergence
   Future<void> bootstrap() async {
     if (await isBootstrapped()) {
       if (!_bootstrapDone.isCompleted) _bootstrapDone.complete();
       return;
     }
-    // Resume path : a prior bootstrap completed with-error left the completer
-    // closed. Recreate so callers awaiting cryptoReady get the new outcome
+    // A failed earlier attempt closed the completer, so waiters need a new one
     if (_bootstrapDone.isCompleted) {
       _bootstrapDone = Completer<void>();
     }
@@ -134,9 +126,8 @@ class IdentityService {
       _bootstrapDone.complete();
     } catch (e, s) {
       _bootstrapDone.completeError(e, s);
-      // If nothing happened to be awaiting cryptoReady, .ignore() prevents
-      // the framework from flagging an "unhandled async error" : the
-      // rethrow below still surfaces the failure to bootstrap()'s caller
+      // Avoids an unhandled async error when nobody awaits cryptoReady, the
+      // rethrow still reaches the caller
       _bootstrapDone.future.ignore();
       rethrow;
     }
@@ -164,51 +155,43 @@ class IdentityService {
       );
     }
 
-    // Partial state. Identity must NOT have been marked published, otherwise
-    // we'd be in an unrecoverable conflict (server has matching ik_pub but
-    // we've lost some of the matching privs)
+    // Partial keys after a published identity means private keys were lost
     if (await _labels.isIdentityPublished()) {
       throw const BootstrapAccountConflictException(
         'Server has an identity for this account but local key state is incomplete.',
       );
     }
 
-    // Fresh slate: drop any leftover label sidecars (ts, half set flags) and
-    // generate. Orphaned handles in the secure store (if any) are
-    // unaddressable without labels and cost <2KB : user wipeAll cleans them
+    // Orphaned store handles are unaddressable without labels and tiny, wipeAll
+    // removes them
     await _labels.clearAll();
     return _generateAndPersistKeys();
   }
 
   Future<_BootstrapKeys> _generateAndPersistKeys() async {
-    // Generate every key first, then persist the whole set in one putMany.
-    // 23 separate native puts (each re-encrypting + rewriting the entire
-    // envelope) was the bootstrap bottleneck
+    // One putMany instead of a native put per key, each of which rewrote the
+    // whole keystore envelope
     final entries = <({String label, Uint8List plaintext})>[];
     final seeds = <Uint8List>[];
 
-    // IK = Ed25519 seed (32B)
     final ikSeed = Csprng.bytes(32);
     final ikKp = await KeyHandleAdapter.toEd25519(ikSeed);
     final ikPub = ikKp.publicKey;
     seeds.add(ikSeed);
     entries.add((label: kLabelIK, plaintext: ikSeed));
 
-    // LK = X25519 (32B scalar)
     final lkPriv = Csprng.bytes(32);
     final lkKp = await KeyHandleAdapter.toX25519(lkPriv);
     final lkPub = lkKp.publicKey;
     seeds.add(lkPriv);
     entries.add((label: kLabelLK, plaintext: lkPriv));
 
-    // SPK = X25519
     final spkPriv = Csprng.bytes(32);
     final spkKp = await KeyHandleAdapter.toX25519(spkPriv);
     final spkPub = spkKp.publicKey;
     seeds.add(spkPriv);
     entries.add((label: kLabelSpkCurrent, plaintext: spkPriv));
 
-    // OPKs[0..kBootstrapOpkPool-1] : background replenish raises to target
     final opks = <PrekeyOpk>[];
     for (var i = 0; i < kBootstrapOpkPool; i++) {
       final priv = Csprng.bytes(32);
@@ -218,8 +201,7 @@ class IdentityService {
       opks.add(PrekeyOpk(idx: i, keyPub: kp.publicKey));
     }
 
-    // Single batched persist. Seeds are zeroed once the bytes have been
-    // handed to the store, whether putMany succeeds or throws
+    // Seeds are zeroed whether putMany succeeds or throws
     final List<KeyHandle> handles;
     try {
       handles = await _store.putMany(entries);
@@ -229,7 +211,6 @@ class IdentityService {
       }
     }
 
-    // handles[i] aligns with entries[i] : same order in, same order out
     for (var i = 0; i < handles.length; i++) {
       await _labels.set(entries[i].label, handles[i].id);
     }
@@ -243,9 +224,8 @@ class IdentityService {
     );
   }
 
-  // Reads keys back from the store on a resume path (labels exist, publish
-  // didn't finish). Pubs are derived from privs inside use<T> so no plaintext
-  // bytes escape the §2.1 zeroing finally
+  // Pubs are derived inside use<T> so private bytes never leave the store's
+  // zeroing scope
   Future<_BootstrapKeys> _readKeysFromStore({
     required String ikId,
     required String lkId,
@@ -299,8 +279,8 @@ class IdentityService {
   }
 
   Future<void> _publishIdentity(_BootstrapKeys keys) async {
-    // Fresh ts every publish attempt: a long pause between generation and
-    // (resumed) upload would otherwise blow the server's 5 min skew window
+    // Fresh ts per attempt, a resumed upload would otherwise miss the
+    // server's 5 minute skew window
     final spkTs = _now().toUtc().millisecondsSinceEpoch ~/ 1000;
     final spkSig = await _signWithIk(
       _spkSigMsg(keys.spkPub, spkTs),
@@ -316,8 +296,6 @@ class IdentityService {
       );
     } on PrekeyApiException catch (e) {
       if (e.code == 'E_IDENTITY_ALREADY_SET') {
-        // Server's stored ik_pub differs from the one we just signed under
-        // The keys in our local store can never be used for this account
         throw const BootstrapAccountConflictException();
       }
       rethrow;
@@ -446,8 +424,6 @@ class IdentityService {
   Future<void> _promotePendingSpk(String pendingId, int ts) async {
     final curId = _labels.handleId(kLabelSpkCurrent);
     if (curId != pendingId) {
-      // Demote only : the 30d TTL sweep on .previous is owned by §2.3, not
-      // here (locked: spk-prev-ttl-30d)
       if (curId != null) {
         await _labels.set(kLabelSpkPrevious, curId);
       }
@@ -455,7 +431,7 @@ class IdentityService {
     }
     await _labels.setSpkTs(ts);
     await _labels.remove(kLabelSpkPending);
-    // Clear conflict state only after confirmed promotion.
+    // Clear conflict state only after confirmed promotion
     await _labels.clearSpkConflict();
   }
 
@@ -565,7 +541,6 @@ class IdentityService {
     if (ikHandleId == null) return;
     final ikHandle = KeyHandle(id: ikHandleId, label: kLabelIK);
 
-    // Pick a fresh idx range above any existing miuchio.opk.* label
     final existing = _labels.labelsWithPrefix(kLabelOpkPrefix);
     var maxIdx = -1;
     for (final l in existing) {
@@ -591,8 +566,6 @@ class IdentityService {
     await _api.replenishOpks(opks: opks, replenishSig: replenishSig);
   }
 
-  // Signs 'msg' under the IK seed inside a use<T> callback so the seed never
-  // escapes lib/secure_store/'s zeroing finally
   Future<Uint8List> _signWithIk(Uint8List msg, KeyHandle ikHandle) {
     return _store.use<Uint8List>(ikHandle, (seed) async {
       final kp = await KeyHandleAdapter.toEd25519(seed);
@@ -600,10 +573,6 @@ class IdentityService {
     });
   }
 
-  // Pass through to SecureKeyStore.use<T> for the IK / LK / SPK.current handles
-  // so callers (X3dhSession et al) dont need SecureKeyStore + IdentityLabelMap
-  // refs. Throws StateError when the label isnt set : caller is using a
-  // non bootstrapped identity, which is a bug not an expected path
   Future<T> useIk<T>(Future<T> Function(Uint8List seed) fn) {
     final id = _labels.handleId(kLabelIK);
     if (id == null) {
@@ -614,10 +583,8 @@ class IdentityService {
     return _store.use<T>(KeyHandle(id: id, label: kLabelIK), fn);
   }
 
-  // Our own Ed25519 IK public key, derived from the seed we hold. safety
-  // numbers MUST use this and never the server's copy of our ik_pub : a server
-  // that supplied both sides of the comparison could make any number match
-  // Public + immutable, so it is cached : the keystore read is an IPC round trip
+  // Derived from our own seed. Safety numbers must never use the server's copy
+  // of our ik_pub, or a server supplying both sides could make any number match
   Uint8List? _ikPubCache;
   Future<Uint8List> currentIkPub() async {
     final cached = _ikPubCache;
@@ -668,8 +635,8 @@ class IdentityService {
     return _store.use<T>(KeyHandle(id: id, label: label), fn);
   }
 
-  // Responder side OPK access. Returns null (not StateError) when the label
-  // is missing : caller decides between OpkNotFoundException and 3-DH (D5)
+  // Null when the label is missing so the caller can choose between
+  // OpkNotFoundException and 3 DH
   Future<T>? tryUseOpk<T>(int idx, Future<T> Function(Uint8List priv) fn) {
     final label = '$kLabelOpkPrefix$idx';
     final id = _labels.handleId(label);
@@ -678,7 +645,6 @@ class IdentityService {
   }
 }
 
-// Internal struct shared across the bootstrap stages
 class _BootstrapKeys {
   final KeyHandle ikHandle;
   final Uint8List ikPub;
@@ -694,7 +660,7 @@ class _BootstrapKeys {
   });
 }
 
-// spk_pub (32) || u64_be(spk_ts) , 40 bytes total
+// spk_pub(32) || u64_be(spk_ts)
 Uint8List _spkSigMsg(Uint8List spkPub, int spkTs) {
   final out = Uint8List(40);
   out.setRange(0, 32, spkPub);
@@ -702,7 +668,7 @@ Uint8List _spkSigMsg(Uint8List spkPub, int spkTs) {
   return out;
 }
 
-// "rotate-spk-v1" (13) || spk_pub (32) || u64_be(spk_ts) , 53 bytes total
+// "rotate-spk-v1" || spk_pub(32) || u64_be(spk_ts)
 Uint8List _rotationSigMsg(Uint8List spkPub, int spkTs) {
   final salt = kSaltSpkRotate;
   final out = Uint8List(salt.length + 32 + 8);
@@ -712,9 +678,8 @@ Uint8List _rotationSigMsg(Uint8List spkPub, int spkTs) {
   return out;
 }
 
-// "opk-batch-v1" (12) || u32_be(N) || SHA256(concat raw 32B pubs in order)
+// "opk-batch-v1" || u32_be(N) || SHA256(raw 32B pubs in order)
 Future<Uint8List> _replenishMsg(List<PrekeyOpk> opks) async {
-  // Concat raw pubs (not base64)
   final concat = Uint8List(32 * opks.length);
   for (var i = 0; i < opks.length; i++) {
     concat.setRange(i * 32, (i + 1) * 32, opks[i].keyPub);

@@ -9,24 +9,14 @@ import (
 	"unicode/utf8"
 )
 
-// CanonicalSerialize produces a deterministic JSON byte representation of v
-// Used by both client and server when signing/verifying signed envelopes :
-// any byte difference between the two sides breaks every signature
-
-// Rules (mirror in lib/crypto/canonical_json.dart) :
-
-//	object keys sorted by raw UTF-8 byte order, ascending
-//	no insignificant whitespace
-//	strings: only " and \ escaped, control chars 0x00..0x1F as \uXXXX,
-//	 non-ASCII characters preserved as raw UTF-8 (never \uXXXX-escaped)
-//	integers: decimal, no leading zero, no trailing dot
-//	floats are rejected : this protocol carries only integer fields
-//	accepted types: nil, bool, int / int32 / int64, uint / uint32 / uint64,
-//	 string, []any, map[string]any
-
-// Callers must pre normalize Unicode (NFC) before passing strings :
-// the serializer itself never normalizes, to keep both sides byte-identical
-// without depending on Unicode tables that may diverge
+// CanonicalSerialize produces the signed JSON bytes, mirrored by
+// client/lib/crypto/canonical_json.dart. Any divergence breaks every signature
+//
+//	keys sorted by raw UTF-8 bytes, no whitespace, floats rejected
+//	strings escape only " \ and control chars, everything else stays raw UTF-8
+//
+// No Unicode normalization happens here so both sides stay byte identical
+// without depending on Unicode tables. Callers normalize first
 func CanonicalSerialize(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := encodeCanonical(&buf, v); err != nil {

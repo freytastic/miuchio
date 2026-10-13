@@ -39,7 +39,7 @@ class _Fake404PrekeyClient implements PrekeyJsonClient {
 }
 
 void main() {
-  test('deliverExistingUser encodes the §5.3 wire shape', () async {
+  test('deliverExistingUser encodes the server wire shape', () async {
     final fake = _FakeInviteJsonClient()
       ..result = {
         'member_token': base64Encode(Uint8List.fromList(List.filled(32, 7)))
@@ -70,16 +70,19 @@ void main() {
     expect(envs.length, 2);
     final e0 = envs[0] as Map<String, dynamic>;
     expect(e0['epoch'], 0);
-    expect(e0.keys.toSet(),
-        {'epoch', 'wrap_nonce', 'wrap_tag_ct', 'sender_sig'});
+    expect(
+        e0.keys.toSet(), {'epoch', 'wrap_nonce', 'wrap_tag_ct', 'sender_sig'});
     expect(token.length, 32);
     expect(token[0], 7);
   });
 
-  test('postJoinComplete encodes the §5.5 wire shape', () async {
+  test('postJoinComplete encodes the server wire shape', () async {
     final fake = _FakeInviteJsonClient();
     await HttpInviteApi(fake).postJoinComplete(
-        albumId: 'alb-2', epoch: 5, ekPubAdmin: Uint8List(32), sig: Uint8List(64));
+        albumId: 'alb-2',
+        epoch: 5,
+        ekPubAdmin: Uint8List(32),
+        sig: Uint8List(64));
 
     expect(fake.path, '/albums/alb-2/joins');
     expect(fake.body!['epoch'], 5);

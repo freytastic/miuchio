@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-// Canonical 8-4-4-4-12 hex form for a raw 16B UUID
 String uuidFromBytes(Uint8List b) {
   if (b.length != 16) {
     throw ArgumentError('uuid must be 16 bytes, got ${b.length}');
@@ -10,7 +9,7 @@ String uuidFromBytes(Uint8List b) {
       '-${s.substring(16, 20)}-${s.substring(20)}';
 }
 
-// Raw 16B form of a canonical UUID string. Returns null on malformed input
+// Null on malformed input
 Uint8List? uuidToBytes(String s) {
   final hex = s.replaceAll('-', '');
   if (hex.length != 32) return null;

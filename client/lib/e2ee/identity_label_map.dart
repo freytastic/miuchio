@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:miuchio/data/storage/secure_storage.dart';
 
-// Persists key handle labels and publication sidecars in secure storage
-// Kept off the SecureKeyStore on purpose : metadata, not key material
+// Label to handle metadata, kept out of SecureKeyStore since it isn't key material
 
 const String kIdentityLabelMapKey = 'miuchio.identity.label_map';
 const String kIdentitySpkTsKey = 'miuchio.identity.spk_ts';
@@ -20,7 +19,7 @@ const String kLabelIK = 'miuchio.ik';
 const String kLabelLK = 'miuchio.lk';
 const String kLabelSpkCurrent = 'miuchio.spk.current';
 const String kLabelSpkPrevious = 'miuchio.spk.previous';
-// Addressable key for a rotation whose server outcome is not yet known
+// A rotation whose server outcome is not yet known
 const String kLabelSpkPending = 'miuchio.spk.pending';
 // Most recent unacknowledged key, retained for delayed wraps
 const String kLabelSpkArchived = 'miuchio.spk.archived';
@@ -101,8 +100,6 @@ class IdentityLabelMap {
     return _map.keys.where((k) => k.startsWith(prefix)).toList();
   }
 
-  // SPK rotation cadence sidecar : kept as a separate KV entry so the labels
-  // map stays a pure {label -> handleId} table
   Future<int?> getSpkTs() async {
     final raw = await _kv.read(kIdentitySpkTsKey);
     if (raw == null) return null;
@@ -134,8 +131,6 @@ class IdentityLabelMap {
 
   Future<void> clearSpkConflict() => _kv.delete(kIdentitySpkConflictKey);
 
-  // Drop every label + sidecar. Used by bootstrap recovery flows where the
-  // local key state must not leak into a fresh attempt
   Future<void> clearAll() async {
     _requireLoaded();
     _map = {};

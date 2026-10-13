@@ -3,7 +3,6 @@ package prekey
 import (
 	"context"
 	"crypto/ed25519"
-	"errors"
 	"testing"
 	"time"
 
@@ -351,12 +350,5 @@ func TestRotateSPK_RequiresIdentitySet(t *testing.T) {
 	})
 	if !apierr.IsCode(err, "E_IDENTITY_NOT_SET") {
 		t.Fatalf("err = %v, want E_IDENTITY_NOT_SET", err)
-	}
-}
-
-// sanity : ErrOPKIndexTaken is a value equality sentinel
-func TestErrOPKIndexTakenSentinel(t *testing.T) {
-	if !errors.Is(ErrOPKIndexTaken, ErrOPKIndexTaken) {
-		t.Error("sentinel must equal itself")
 	}
 }

@@ -35,9 +35,7 @@ Map<String, dynamic> _bundleJson(String userId) => {
 void main() {
   test('fetchPrekeyBundleByMemberToken puts an unpadded url-safe token in path',
       () async {
-    // All-0xFF token: its std base64 is all '/' with '=' padding, so if the
-    // client used std base64 the path would contain '/' (breaking routing) and
-    // '='. url safe no pad must contain neither
+    // All 0xFF encodes to '/' and '=' in std base64, neither may reach the path
     final token = Uint8List.fromList(List<int>.filled(32, 0xFF));
     final client = _FakeJsonClient(() => _bundleJson('ignored'));
     final api = HttpPrekeyApi(client);

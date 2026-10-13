@@ -42,10 +42,8 @@ class IdentitySignerMismatchException implements Exception {
       'isSelf=$isSelf)';
 }
 
-// Thrown when a remaining member has no TOFU pin at rotation time : the album
-// stays in pending rotation until the roster is reconciled. Fail closed rather
-// than TOFU here : a server that timed a substituted bundle to the post kick
-// rotation would otherwise become the "first sight" and receive the new MK
+// No TOFU at rotation time, or a server could time a substituted bundle to
+// the post removal rotation and receive the new MK as a first sight
 class MissingIdentityPinException implements Exception {
   final Uint8List memberToken;
   const MissingIdentityPinException(this.memberToken);
@@ -66,10 +64,8 @@ abstract class SignerGate {
       Uint8List albumId, Uint8List memberToken, Uint8List presentedIk);
 }
 
-// Resolves the IK an MK wrap must be bound to for member removal / pending
-// rotation recovery. The local member's own token resolves to currentIkPub
-// (our trust design deliberately never pins "me") : every other member MUST
-// carry a pinned key, and a miss fails closed
+// call() resolves the IK an MK wrap must be bound to. Our own token resolves
+// to currentIkPub since "me" is never pinned, everyone else must be pinned
 class ExpectedIkResolver implements SignerGate {
   final SelfTokenLookup _selfToken;
   final PinnedIkLookup _pinned;
@@ -77,14 +73,11 @@ class ExpectedIkResolver implements SignerGate {
   // member needs the latter for removal rotation but need not be an epoch signer
   final PinnedIkLookup? _signerPinned;
   final CurrentIkLookup _currentIk;
-  // Responder side only : null when the resolver is wired for the initiator
-  // paths (removal / pending rotation recovery), which never adopt a key
+  // Null on initiator paths, which never adopt a key
   final PinIk? _pin;
   final SoleSignerLookup? _soleSigner;
 
-  // Initiator paths only (member removal / pending rotation recovery): resolves
-  // call(). check()/adopt() throw, because a resolver built this way has no
-  // signer ports and MUST NOT quietly fall back to the roster pin for them
+  // check() and adopt() throw on this one rather than fall back to roster pins
   ExpectedIkResolver({
     required SelfTokenLookup selfToken,
     required PinnedIkLookup pinned,
@@ -120,8 +113,8 @@ class ExpectedIkResolver implements SignerGate {
     return pinned;
   }
 
-  // Decide whether the server presented signer IK may verify this wrap. This
-  // writes nothing: first sight authority is adopted only after signature proof
+  // Writes nothing, first sight authority is adopted only after the signature
+  // verifies
   @override
   Future<SignerTrust> check(
     Uint8List albumId,
@@ -140,8 +133,8 @@ class ExpectedIkResolver implements SignerGate {
       throw StateError(
           'check() needs the responder ports : use ExpectedIkResolver.responder');
     }
-    // Before our epoch 0 installs, every peer is refused even if already bound
-    // allowTofu makes an orphaned marker inert once the album has local keys
+    // Before our own epoch 0 installs every peer is refused, even a bound one.
+    // Gating on allowTofu makes a stale marker inert once local keys exist
     if (allowTofu && (_soleSigner?.call(albumId) ?? false)) {
       throw UnknownSignerException(
           memberToken: memberToken, presentedIk: presentedIk);
@@ -162,8 +155,7 @@ class ExpectedIkResolver implements SignerGate {
     return SignerTrust.firstSight;
   }
 
-  // Commit first join signing authority only after this exact key verifies the
-  // wrap, and make it durable before installing the MK
+  // Must be durable before the MK installs
   @override
   Future<void> adopt(
       Uint8List albumId, Uint8List memberToken, Uint8List presentedIk) async {

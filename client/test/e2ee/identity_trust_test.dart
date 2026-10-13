@@ -156,9 +156,8 @@ void main() {
       expect(states['bob'], TrustState.unverified);
     });
 
-    // Self MUST be identified by the member token we hold, never by the ik_pub
-    // the SERVER put in the row : otherwise a server can silence a peer's key
-    // change alarm just by claiming that peer's key is our own
+    // Matching self by ik_pub would let a server silence a peer's alarm by
+    // claiming that peer's key is ours
     test('a peer row carrying OUR ik_pub is flagged, not silently skipped',
         () async {
       final t = await newTrust();
@@ -238,9 +237,7 @@ void main() {
       expect(states['bob'], TrustState.changed);
     });
 
-    // Verifying a key MEANS pinning it : the user read these exact digits back
-    // to the human. Without the re pin the old pin survives and the next
-    // reconcile still screams "changed" at someone who just verified
+    // Without the re pin the next reconcile would still report changed
     test('verifying a CHANGED key re-pins it and clears the alarm', () async {
       final t = await newTrust();
       final alb = _albumId(1);

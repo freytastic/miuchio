@@ -176,7 +176,7 @@ void main() {
           await Aead.decrypt(wire: wrap, key: bobSk, aad: _aad(albumId, i));
       expect(mk, equals(mks[i]), reason: 'epoch $i MK must round-trip');
 
-      // sender_sig verifies against Alice's IK over the §4.2 D3 message
+      // sender_sig verifies against Alice's IK
       final ok = await Sign.verify(
           aliceIkPub, await _senderMsg(albumId, i, wrap), env.senderSig);
       expect(ok, isTrue, reason: 'epoch $i sender_sig must verify');

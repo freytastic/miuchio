@@ -5,10 +5,8 @@ import 'package:miuchio/crypto/primitives.dart';
 
 import 'identity.dart' show Now;
 
-// PrekeyBundle is the GET /users/{id}/prekey-bundle response decoded into
-// raw bytes. verify() runs the §6 length -> ts skew -> Ed25519 sig checks
-// the caller MUST gate on before X3dhSession.initiate. fetchPrekeyBundle
-// stays bytes in / bytes out so the network layer doesnt re-do the math
+// verify() only proves the SPK was signed by the bundle's own IK. Binding that
+// IK to a known identity is the caller's job
 
 class PrekeyBundle {
   final String userId;
@@ -29,9 +27,7 @@ class PrekeyBundle {
     this.opk,
   });
 
-  // Mirrors prekey/handler.go::GetPrekeyBundle. spk_ts is a JSON number; some
-  // libs widen it to double once it crosses 2^53 : take .toInt() to keep
-  // typed and survive any future widening
+  // spk_ts may arrive widened to a double
   factory PrekeyBundle.fromJson(Map<String, dynamic> json) {
     final opkJson = json['opk'] as Map<String, dynamic>?;
     return PrekeyBundle(
@@ -50,9 +46,8 @@ class PrekeyBundle {
     );
   }
 
-  // Order matches D8 : cheapest checks first. ts skew is ±90d
-  // §2.3 : direction split into ts_too_old / ts_in_future so the UI can tell
-  // a stale server from a maliciously future stamped bundle apart
+  // Cheapest checks first. Old and future timestamps fail with different
+  // reasons so a stale server reads differently from a forged stamp
   Future<void> verify({required Now now}) async {
     if (ikPub.length != 32 ||
         lkPub.length != 32 ||
@@ -91,8 +86,7 @@ class BundleVerificationException implements Exception {
 
 const int _kTsSkewSeconds = 90 * 24 * 3600;
 
-// spk_pub (32) || u64_be(spk_ts) , 40 bytes total : same byte layout as the
-// §2.2 spk upload in IdentityService._spkSigMsg
+// spk_pub(32) || u64_be(spk_ts), same layout IdentityService signs
 Uint8List _spkSigMsg(Uint8List spkPub, int spkTs) {
   final out = Uint8List(40);
   out.setRange(0, 32, spkPub);

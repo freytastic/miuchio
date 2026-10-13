@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' as cg;
 import 'package:miuchio/crypto/primitives.dart';
+import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/secure_store/key_handle_adapter.dart';
 import 'package:miuchio/secure_store/key_store_exceptions.dart';
 
@@ -16,16 +17,11 @@ import 'member_directory.dart';
 import 'wrap_envelope.dart';
 import 'x3dh_session.dart';
 
-// Spec §5.4 : OpkNotFoundException is part of the EpochProcessor surface so
-// callers don't need to also import x3dh_session.dart to handle it
 export 'x3dh_session.dart' show OpkNotFoundException;
-// Callers handling a blocked album need the mismatch type without also
-// importing the resolver
 export 'expected_ik_resolver.dart'
     show IdentitySignerMismatchException, UnknownSignerException;
 
-// Why an album stopped installing keys. Peer signer problems require an
-// out-of-band comparison: other failures expose a retry that may block again
+// Signer problems need an out of band comparison, the rest can be retried
 enum EpochBlockReason {
   // A peer's presented IK contradicts the one pinned for that member_token
   signerMismatch,
@@ -33,20 +29,17 @@ enum EpochBlockReason {
   unknownSigner,
   // MY own token carries a foreign IK: there is nothing to confirm
   selfSignerMismatch,
-  // The wrap 404s past the retry ladder. Later epochs stay blocked behind it
+  // Later epochs stay blocked behind it
   wrapUnavailable,
-  // Signature or AEAD failure on a wrap we did fetch
   verificationFailed,
-  // The one time prekey the wrap names is gone from this device, so the X3DH
-  // secret can never be rederived for it
+  // The OPK the wrap names is gone, so the X3DH secret can never be rederived
   localKeyMissing,
-  // installVerified refused the MK : a replayed epoch, or the same epoch
-  // arriving twice with different bytes
+  // A replayed epoch, or the same epoch arriving twice with different bytes
   replayRejected,
 }
 
-// Emitted when key sync stops. Preserve the presented key so the verification
-// UI cannot be switched to a different roster value after the failure
+// Carries the presented key so the verification UI can't be switched to a
+// different roster value after the failure
 class EpochBlocked {
   final Uint8List albumId;
   final int epoch;
@@ -62,9 +55,12 @@ class EpochBlocked {
   });
 }
 
-// Drives MK delivery on incoming e2ee.epoch_changed events and on cold start /
-// reconnect catch up. Per album mutex serialises events so install order can
-// never blip backwards under WS flap : cross album work runs in parallel
+// Installs album MKs from epoch_changed events and cold start catch up
+
+// For each wrap: check signer authority locally, verify the IK signature over
+// SHA256(album_id ‖ u32_be(epoch) ‖ wrap), rederive the X3DH secret, open the
+// MK and install it. Events are chained per album so installs never go
+// backwards when the socket flaps, different albums run in parallel
 
 typedef BackoffSchedule = Duration Function(int attempt);
 
@@ -86,17 +82,14 @@ class EpochProcessor {
   final SignerGate _signerGate;
   final BackoffSchedule _backoff;
   final int _maxRetries;
-  // §6.3 join_complete receipt. Null when the processor is wired without invite
-  // support (older callers / tests that don't exercise the join path)
+  // Null skips the join_complete receipt
   final InviteApi? _invites;
 
-  // hex(albumId) -> tail of the in flight chain : new events queue behind it
+  // hex(albumId) to the tail of its event chain
   final Map<String, Future<void>> _chains = {};
 
-  // Fires after a successful _backfillJoin + postJoinComplete : main.dart
-  // listens to refresh AppState.albums for the freshly joined album. We
-  // emit AFTER the receipt POST succeeds so a listener can trust the keys
-  // are durably installed
+  // Emits only after the join receipt is posted, so listeners can trust the
+  // keys are durably installed
   final StreamController<Uint8List> _joined =
       StreamController<Uint8List>.broadcast();
   Stream<Uint8List> get joinedAlbums => _joined.stream;
@@ -133,9 +126,7 @@ class EpochProcessor {
         _backoff = backoff ?? _defaultBackoff,
         _maxRetries = maxRetries;
 
-  // Mutexed per albumId. Serial within an album, parallel across albums
-  // joined==true (§6.1 epoch_changed{joined:true} or cold start with zero local
-  // MKs) backfills every epoch 0..epoch and posts the join_complete receipt
+  // joined backfills every epoch through 'epoch' and posts join_complete
   Future<void> handleEvent({
     required Uint8List albumId,
     required int epoch,
@@ -148,7 +139,7 @@ class EpochProcessor {
         try {
           await prev;
         } catch (_) {
-          // Prior failure must not poison the chain : the next event still runs
+          // An earlier failure must not stop later events from running
         }
       }
       if (joined) {
@@ -156,8 +147,6 @@ class EpochProcessor {
       } else {
         await _doHandle(albumId, epoch);
       }
-      // Caught up through 'epoch'. Listeners compare against the blocked epoch
-      // so an older duplicate event cannot clear a newer block
       _unblocked.add((albumId: albumId, epoch: epoch));
     }
 
@@ -170,33 +159,29 @@ class EpochProcessor {
     }
   }
 
-  // Cold start and reconnect catch-up. Missing epochs install oldest first
-  // within each album: a failure in one album does not block the others
+  // A failure in one album does not block the others
   Future<void> catchUpAll(List<Uint8List> albumIds) async {
     for (final id in albumIds) {
       try {
-        final cur = await _api.getCurrentEpoch(_uuidString(id));
+        final cur = await _api.getCurrentEpoch(uuidFromBytes(id));
         if (cur == null) continue;
         final latest = await _store.latestEpoch(id);
         if (latest < 0) {
-          // Zero local MKs but the album has epochs : this client just joined and
-          // missed the live event (EmitToUsers is live-only) treat as a join
+          // No local MKs means a join whose live event was missed
           await handleEvent(albumId: id, epoch: cur.currentEpoch, joined: true);
         } else {
-          // The present epoch aware handler also retries holes below latest
           await handleEvent(albumId: id, epoch: cur.currentEpoch);
         }
       } catch (_) {}
     }
   }
 
-  // Installs every missing epoch through the announced one, oldest first. This
-  // handles out-of-order live events and repairs holes left by cursor-only builds
+  // Fills every missing epoch through the announced one, including holes
   Future<void> _doHandle(Uint8List albumId, int epoch) async {
     final present = (await _store.presentEpochs(albumId)).toSet();
     final latest = await _store.latestEpoch(albumId);
-    // Captured ONCE, before anything installs: adopting an unknown signer is
-    // only defensible on a device that holds no keys for this album at all
+    // Captured once before installing: adopting an unknown signer is only
+    // defensible on a device with no keys for this album
     final allowTofu = latest < 0;
     for (var n = 0; n <= epoch; n++) {
       if (present.contains(n)) continue;
@@ -205,13 +190,11 @@ class EpochProcessor {
     }
   }
 
-  // _backfillJoin installs every epoch 0..current (out-of-order safe via
-  // backfill:true) then posts a single join_complete receipt for 'current'
-  // ek_pub_admin is the shared X3DH ephemeral carried on the delivered wraps
+  // The receipt signs the shared X3DH ephemeral carried on the delivered wraps
   Future<void> _backfillJoin(Uint8List albumId, int current) async {
-    final albumStr = _uuidString(albumId);
-    // Derived from LOCAL state, never from the server's joined flag : otherwise
-    // a forged joined:true on an established album would reopen TOFU
+    final albumStr = uuidFromBytes(albumId);
+    // From local state, never the server's joined flag, or a forged join on an
+    // established album would reopen TOFU
     final allowTofu = (await _store.latestEpoch(albumId)) < 0;
     Uint8List? ekPubAdmin;
     for (var e = 0; e <= current; e++) {
@@ -235,15 +218,13 @@ class EpochProcessor {
     _joined.add(albumId);
   }
 
-  // Close the owned broadcast streams
   void dispose() {
     _joined.close();
     _blocked.close();
     _unblocked.close();
   }
 
-  // Reports why key sync stopped, then lets the failure propagate unchanged so
-  // the existing per album resilience still applies
+  // Reports the block reason, then rethrows unchanged
   Future<Uint8List> _installEpoch(Uint8List albumId, int epoch,
       {required bool backfill, required bool allowTofu}) async {
     try {
@@ -305,11 +286,10 @@ class EpochProcessor {
     }
   }
 
-  // Fetch + verify + derive + decrypt + install one epoch's wrap. Returns the
-  // wrap's ek_pub (the X3DH ephemeral) so the join path can build the receipt
+  // Returns the wrap's ek_pub for the join receipt
   Future<Uint8List> _installEpochInner(Uint8List albumId, int epoch,
       {required bool backfill, required bool allowTofu}) async {
-    final albumIdStr = _uuidString(albumId);
+    final albumIdStr = uuidFromBytes(albumId);
     final envelope = await _fetchWithRetry(albumIdStr, epoch);
     envelope.verifyShape();
 
@@ -319,8 +299,8 @@ class EpochProcessor {
       throw const WrapVerificationException('sig_invalid');
     }
 
-    // Verifying with the server supplied roster IK alone is circular. First
-    // check local signer authority: check() writes nothing before signature proof
+    // Trusting the server's roster IK alone would be circular. check() decides
+    // authority locally and writes nothing before the signature is proven
     final trust = await _signerGate
         .check(albumId, envelope.senderToken, pubs.ikPub, allowTofu: allowTofu);
 
@@ -328,14 +308,12 @@ class EpochProcessor {
     final ok = await Sign.verify(pubs.ikPub, msg, envelope.senderSig);
     if (!ok) throw const WrapVerificationException('sig_invalid');
 
-    // The signature proves possession. Persist first join signer authority
-    // before installing an MK under it
     if (trust == SignerTrust.firstSight) {
       await _signerGate.adopt(albumId, envelope.senderToken, pubs.ikPub);
     }
 
-    // Try current -> pending -> previous -> archived. Pending covers an
-    // ambiguous rotation; previous and archived cover delayed wraps
+    // Pending covers an ambiguous rotation, previous and archived cover
+    // delayed wraps
     final aad = _aad(albumId, epoch);
     var vanished = false;
     Future<Uint8List?> attempt(SpkSlot slot) async {
@@ -352,7 +330,6 @@ class EpochProcessor {
     if (mk == null && _identity.hasPreviousSpk) {
       mk = await attempt(SpkSlot.previous);
     }
-    // Archive fallback is bounded to one retained key
     if (mk == null && _identity.hasArchivedSpk) {
       mk = await attempt(SpkSlot.archived);
     }
@@ -376,8 +353,8 @@ class EpochProcessor {
     return envelope.ekPub;
   }
 
-  // Returns a null MK on authentication failure and marks slots that disappear
-  // during concurrent reconciliation. The derived secret is always zeroed
+  // Null MK on auth failure. vanished marks a slot that reconciliation removed
+  // between the presence check and the read
   Future<({Uint8List? mk, bool vanished})> _unwrapWithSpk(
     Uint8List albumId,
     int epoch,
@@ -388,7 +365,6 @@ class EpochProcessor {
   }) async {
     Uint8List? sk;
     try {
-      // A non current slot may disappear after its presence check
       sk = await X3dhSession.derive(
         identity: _identity,
         ekPub: envelope.ekPub,
@@ -430,7 +406,7 @@ class EpochProcessor {
   }
 }
 
-// AAD = album_id(16) ‖ uint32_be(epoch) per §4.1
+// album_id(16) ‖ u32_be(epoch)
 Uint8List _aad(Uint8List albumId, int epoch) {
   final out = Uint8List(16 + 4);
   out.setRange(0, 16, albumId);
@@ -438,7 +414,6 @@ Uint8List _aad(Uint8List albumId, int epoch) {
   return out;
 }
 
-// SHA256(album_id(16) ‖ u32_be(epoch) ‖ wrap_blob_bytes) per §4.2 / D3
 Future<Uint8List> _msgToSign(
     Uint8List albumId, int epoch, Uint8List wrap) async {
   final buf = Uint8List(16 + 4 + wrap.length);
@@ -451,14 +426,3 @@ Future<Uint8List> _msgToSign(
 
 String _hexAlbum(Uint8List albumId) =>
     albumId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-
-// Canonical 8-4-4-4-12 hex form. Avoid pulling package:uuid here so lib/e2ee/
-// stays free of optional dependencies
-String _uuidString(Uint8List albumId) {
-  if (albumId.length != 16) {
-    throw ArgumentError('albumId must be 16 bytes, got ${albumId.length}');
-  }
-  final s = _hexAlbum(albumId);
-  return '${s.substring(0, 8)}-${s.substring(8, 12)}-${s.substring(12, 16)}'
-      '-${s.substring(16, 20)}-${s.substring(20)}';
-}

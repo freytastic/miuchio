@@ -117,7 +117,7 @@ void main() {
   });
 
   group('AlbumKeyStore.useMk', () {
-    test('zeroes the buffer in finally (mirrors §2.1 contract)', () async {
+    test('zeroes the buffer once the callback finishes', () async {
       final aks = await _newStore();
       final id = _albumId();
       await aks.installVerified(

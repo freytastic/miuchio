@@ -8,10 +8,7 @@ import 'package:miuchio/crypto/wire_format.dart';
 
 import '../_sodium_setup.dart';
 
-// Cross language KAT: rotate-spk-v1
-// Sibling lane (Lane A6) emits server/test_vectors/spk_rotate_kat.json. The
-// fixture is a hard contract : if the file is missing the test fails so a
-// silently broken cross-lane agreement can't sneak past
+// Cross language KAT for rotate-spk-v1. A missing fixture fails the test
 const String _katFile = '../server/test_vectors/spk_rotate_kat.json';
 
 Uint8List _hex(String s) {
@@ -40,7 +37,7 @@ Uint8List _rotationMsg(Uint8List spkPub, int spkTs) {
 void main() {
   setUpAll(ensureSodium);
 
-  test('rotate-spk-v1 message construction matches §4.2 byte layout', () async {
+  test('rotate-spk-v1 message construction matches the byte layout', () async {
     // Hand rolled placeholder vector : ik_seed, spk_pub, spk_ts deterministic
     final ikSeed = Uint8List.fromList(List.filled(32, 0xA1));
     final spkPub = Uint8List.fromList(List.filled(32, 0xB2));
@@ -85,7 +82,8 @@ void main() {
           reason: '${tv['name']}: rotate-spk-v1 msg bytes diverged');
 
       final ikKp = await Sign.fromSeed(ikSeed);
-      expect(await Sign.verify(ikKp.publicKey, expectedMsg, expectedSig), isTrue,
+      expect(
+          await Sign.verify(ikKp.publicKey, expectedMsg, expectedSig), isTrue,
           reason: '${tv['name']}: expected_rotation_sig failed Ed25519.verify');
     }
   });

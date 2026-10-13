@@ -5,15 +5,12 @@ import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/mk_seal.dart';
 
-// Display names (album title + member name) sealed under the album MK. The MK
-// rotates per epoch and every member retains all epoch MKs, so the epoch the
-// name was sealed under travels inside the blob : the reader knows which MK to
-// use, and no DB migration is needed (name_ct stays an opaque column)
+// Album titles and member names sealed under the album MK
 
-//   nameWire = u32_be(epoch) || VER||NONCE||TAG||CT
-//   name_ct  = base64(nameWire)
+//   name_ct = base64(u32_be(epoch) || VER||NONCE||TAG||CT)
 
-// AAD binds each blob to its slot so a name cant be replayed into another
+// The epoch travels in the blob so readers know which MK to use. The AAD binds
+// each blob to its slot so a name can't be replayed into another
 class SealedName {
   static final Uint8List _albumTag =
       Uint8List.fromList('miuchio.album-name-v1'.codeUnits);
@@ -31,8 +28,7 @@ class SealedName {
         ks, albumId, epoch, name, _memberNameAad(albumId, memberToken, epoch));
   }
 
-  // Returns null on any failure (malformed blob, missing MK for that epoch,
-  // auth fail). Callers render a fallback
+  // Null on any failure, callers render a fallback
   static Future<String?> openAlbumName(
       AlbumKeyStore ks, Uint8List albumId, String nameCtB64) {
     return _open(
@@ -45,16 +41,13 @@ class SealedName {
         (epoch) => _memberNameAad(albumId, memberToken, epoch));
   }
 
-  // Batch variant : decrypts many members' names with ONE keystore unwrap per
-  // epoch (members usually share the current epoch) instead of one useMk per
-  // member. Returns { token -> name } for entries that decrypt : missing ones
-  // (no MK yet, malformed, auth-fail) are simply absent. Order independent
+  // One keystore read per epoch instead of per member. Entries that fail to
+  // open are left out
   static Future<Map<String, String>> openMemberNames(
     AlbumKeyStore ks,
     Uint8List albumId,
     List<({String token, Uint8List tokenBytes, String nameCt})> items,
   ) async {
-    // Group parsed blobs by the epoch encoded in each so we unwrap each MK once
     final byEpoch =
         <int, List<({String token, Uint8List tokenBytes, Uint8List blob})>>{};
     for (final it in items) {
@@ -83,14 +76,10 @@ class SealedName {
             try {
               final pt = await Aead.decrypt(wire: p.blob, key: mk, aad: aad);
               out[p.token] = utf8.decode(pt);
-            } catch (_) {
-              // malformed / auth-fail : leave this one unresolved
-            }
+            } catch (_) {}
           }
         });
-      } catch (_) {
-        // no MK for this epoch yet : those members stay unresolved
-      }
+      } catch (_) {}
     }
     return out;
   }

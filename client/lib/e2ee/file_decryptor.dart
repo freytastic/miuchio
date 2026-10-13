@@ -10,19 +10,11 @@ import 'package:miuchio/e2ee/media_record.dart';
 
 import 'album_keys.dart';
 
-// File decryption pipeline (§5.2). Mirrors file_pipeline.dart in reverse :
-// fetch ciphertext → unwrap DEK with MK → verify SHA256 → decrypt fully →
-// hand bytes to the caller. Decryption is full file before the caller sees
-// any byte (P5 in e2ee.md §2.14) : a tampered byte gives a clean
-// FileDecryptError, never a partial image rendered to screen
+// Reverse of file_pipeline.dart: unwrap the DEK with the MK, download, check
+// size and SHA256, then decrypt the whole file before returning anything. A
+// tampered byte is a clean FileDecryptError, never a half rendered image
 
-// (video v2) : currently buffers full ciphertext + plaintext in memory.
-// For multi GB videos add a Stream<Uint8List> in / IOSink out variant :
-// AeadStream segment math stays identical
-
-// DownloadFn is the byte fetch seam. Real wiring uses a bare http.Client
-// (no Bearer header : the presigned URL carries auth) ; tests inject in
-// memory bytes
+// The presigned URL carries auth, so no bearer header is sent
 typedef DownloadFn = Future<Uint8List> Function(String url);
 
 class FileDecryptError implements Exception {
@@ -36,17 +28,13 @@ class FileDecryptError implements Exception {
       'FileDecryptError($reason${detail == null ? '' : ': $detail'})';
 }
 
-// "thumb" suffix bound into the thumb cipher AAD. Must match
-// file_pipeline.dart's _kThumbAadSuffix byte for byte
+// Must match _kThumbAadSuffix in file_pipeline.dart
 final Uint8List _kThumbAadSuffix = Uint8List.fromList('thumb'.codeUnits);
 
 abstract class FileDecryptor {
   static const int _wrapNonceLen = 12;
   static const int _wrapTagCTLen = 48;
 
-  // DownloadAndDecrypt runs the full §5.2 sequence. presignedUrl is the
-  // result of MediaApi.requestDownloadURL : download is the byte fetch seam
-  // (defaults to a real http.Client at the call site). Returns plaintext bytes
   static Future<Uint8List> downloadAndDecrypt({
     required AlbumKeyStore aks,
     required MediaRecord record,
@@ -65,10 +53,8 @@ abstract class FileDecryptor {
     final albumIdBytes = record.albumIdBytes;
     final mediaIdBytes = record.mediaIdBytes;
 
-    // unwrap DEK using MK_(album, epoch). Reassemble the wrap wire
-    // VER ‖ NONCE ‖ TAG_CT and call Aead.decrypt with AAD = album_id ‖ u32_be
-    // (epoch). If the server tampered with epoch_tag, AAD diverges and the
-    // tag fails before any download starts
+    // A tampered epoch_tag changes the AAD, so the unwrap fails before any
+    // download starts
     final wrapAad = _wrapAad(albumIdBytes, record.epochTag);
     final wrapWire = Uint8List(1 + _wrapNonceLen + _wrapTagCTLen);
     wrapWire[0] = kVerAesGcm;
@@ -84,16 +70,11 @@ abstract class FileDecryptor {
         }),
       );
     } on StateError catch (e) {
-      // useMk throws StateError when no MK exists for that (album, epoch)
-      // Caller may want to trigger catchUpAll and retry
       throw FileDecryptError('no_mk', e.toString());
     } on AeadAuthFailed catch (e) {
-      // Either MK is wrong or AAD doesnt match what was used at wrap time
-      // (someone tampered with epoch_tag). Either way : refuse
       throw FileDecryptError('wrap_auth_failed', e.toString());
     }
 
-    // download the ciphertext bytes
     final Uint8List cipher;
     try {
       cipher = await download(presignedUrl);
@@ -103,9 +84,7 @@ abstract class FileDecryptor {
     }
 
     try {
-      //  SHA256 sanity check before any AEAD work. Catches in flight
-      // tamper + S3 drift cheaply : AEAD would catch it too but failing early
-      // saves cycles on big videos
+      // AEAD would catch this too, the hash just fails earlier and cheaper
       if (cipher.length != record.blobSize) {
         throw FileDecryptError(
             'wrong_size', 'got ${cipher.length}, want ${record.blobSize}');
@@ -119,10 +98,6 @@ abstract class FileDecryptor {
         throw FileDecryptError('sha256_mismatch');
       }
 
-      //decrypt fully BEFORE returning anything to the caller. Per
-      // P5 / §5.2 : never stream partial decrypted bytes to a renderer :
-      // a half decrypted JPEG already on screen when the tag fails is worse
-      // than a clean error honestly
       final ver = cipher[0];
       final aeadFields = {
         'bytes': cipher.length,
@@ -158,10 +133,7 @@ abstract class FileDecryptor {
     }
   }
 
-  //  thumb decrypt : same shape as the file path but uses the row's
-  // thumb_wrap_nonce/thumb_wrap_tag_ct + thumb_sha256 + AAD = media_id ‖
-  // "thumb". Always VER=0x01 (~20 KB so no streaming math). Caller MUST
-  // check record.hasThumb first : throws 'no_thumb' otherwise
+  // Thumbs are always VER=0x01 with AAD media_id ‖ "thumb"
   static Future<Uint8List> downloadAndDecryptThumb({
     required AlbumKeyStore aks,
     required MediaRecord record,

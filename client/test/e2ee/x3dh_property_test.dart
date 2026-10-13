@@ -7,16 +7,11 @@ import 'package:miuchio/crypto/x3dh.dart';
 
 import '../_sodium_setup.dart';
 
-// D9 fuzzer : 1000 random key tuples + album_ids, both 4-DH and 3-DH paths,
-// asserts initiator/responder byte equal agreement on every iteration.
-// Calls X3dh.initiator/responder directly (NOT X3dhSession) bcs the math
-// primitive is what needs the fuzz coverage : the session wrapper adds
-// IdentityService bootstrap + label resolution that would dominate runtime
-// without testing anything new
+// Fuzzes the X3DH math directly, the session wrapper would only add
+// bootstrap cost without new coverage
 
 Future<X25519KeyPair> _randomX25519(Random rng) async {
-  // X25519 private scalars are arbitrary 32B blobs : libsodium
-  // clamps inside scalarmult per RFC 7748 §5
+  // Any 32 bytes work, libsodium clamps inside scalarmult
   final priv = Uint8List(32);
   for (var i = 0; i < 32; i++) {
     priv[i] = rng.nextInt(256);
