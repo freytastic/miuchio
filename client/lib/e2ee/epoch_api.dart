@@ -49,8 +49,7 @@ abstract class EpochApi {
   // null when the album has no epoch yet (server returns 404)
   Future<EpochCurrent?> getCurrentEpoch(String albumId);
 
-  // Throws EpochWrapNotFoundException on 404 so the processor's catch up loop
-  // can apply the D7 retry with backoff for racy fetches
+  // A 404 can be a race with the fanout, the processor retries with backoff
   Future<WrapEnvelope> getWrap(String albumId, int epoch);
 
   Future<void> setEpoch(String albumId, SetEpochRequest req);

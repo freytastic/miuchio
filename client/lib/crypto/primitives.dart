@@ -3,9 +3,7 @@ import 'package:cryptography/cryptography.dart' as cg;
 import 'package:sodium/sodium_sumo.dart';
 import 'wire_format.dart';
 
-// Byte backed EC key types. Owned here so the EC backend (currently
-// libsodium) can swap without touching callers. Private bytes are 32B
-// seeds in both cases : matches what SecureKeyStore persists
+// Private bytes are 32B seeds, the same form SecureKeyStore persists
 class Ed25519KeyPair {
   final Uint8List seed;
   final Uint8List publicKey;
@@ -22,9 +20,8 @@ class X25519KeyPair {
         assert(publicKey.length == 32, 'X25519 pub must be 32B');
 }
 
-// Thrown when an AEAD authentication tag fails verification
-// Distinct from FormatException so callers can differentiate "wire malformed"
-// from "wire well formed but tampered with"
+// Tag failure, kept apart from FormatException so callers can tell tampered
+// bytes from malformed ones
 class AeadAuthFailed implements Exception {
   final String message;
   AeadAuthFailed([this.message = 'AEAD authentication failed']);
@@ -32,8 +29,7 @@ class AeadAuthFailed implements Exception {
   String toString() => 'AeadAuthFailed: $message';
 }
 
-// Authenticated encryption / decryption with a 96-bit fresh CSPRNG nonce per call
-// Returns / consumes wire bytes VER||NONCE||TAG||CT , no never raw ciphertext
+// Fresh random 96 bit nonce per call, always framed as VER||NONCE||TAG||CT
 abstract class Aead {
   static Future<Uint8List> encrypt({
     required int version,
@@ -69,7 +65,7 @@ abstract class Aead {
     final parsed = WireFormat.parse(wire);
     if (parsed.version == kVerStreamGcm) {
       throw UnimplementedError(
-          'VER=0x03 streaming AEAD lands in p5: use the streaming pipeline.');
+          'VER=0x03 is segmented: use AeadStream.decryptBytes');
     }
     final algo = _algoFor(parsed.version);
     final box = cg.SecretBox(
@@ -96,7 +92,7 @@ abstract class Aead {
       case kVerChaPo:
         return cg.Chacha20.poly1305Aead();
       case kVerStreamGcm:
-        throw UnimplementedError('VER=0x03 streaming lands in p5');
+        throw UnimplementedError('VER=0x03 is segmented: use AeadStream');
       default:
         throw FormatException(
             'unknown VER: 0x${version.toRadixString(16).padLeft(2, '0')}');
@@ -121,8 +117,8 @@ abstract class Hkdf {
   }
 }
 
-// Sign/Kex are backed by libsodium (sumo variant for raw scalarmult)
-// Call bindSodium() exactly once at app startup before any sign/dh use
+// Sumo build is needed for raw scalarmult. bindSodium must run at startup
+// before any sign or dh call
 abstract class Sign {
   static SodiumSumo? _sodium;
   static void bindSodium(SodiumSumo s) => _sodium = s;
@@ -182,7 +178,7 @@ abstract class Kex {
   }
 
   static Future<X25519KeyPair> generateX25519() async {
-    // 32 random bytes : libsodium clamps inside scalarmult.base
+    // libsodium clamps inside scalarmult.base
     final priv = Csprng.bytes(32);
     return fromSeed(priv);
   }
@@ -200,7 +196,6 @@ abstract class Kex {
     }
   }
 
-  // X25519 Diffie Hellman : returns the 32B shared u coordinate
   static Future<Uint8List> dh(X25519KeyPair self, Uint8List peerPub) async {
     if (peerPub.length != 32) {
       throw ArgumentError('peer pub must be 32B, got ${peerPub.length}');
@@ -220,15 +215,12 @@ abstract class Kex {
 }
 
 abstract class Csprng {
-  // n random bytes from the OS CSPRNG. Backed by Dart's Random.secure() through
-  // package :cryptography's SecretKeyData.random
   static Uint8List bytes(int n) {
     if (n < 0) throw ArgumentError('n must be >= 0');
     final data = cg.SecretKeyData.random(length: n);
     return Uint8List.fromList(data.bytes);
   }
 
-  // 32-bit unsigned int in little endian over 4 random bytes
   static int u32() {
     final b = bytes(4);
     return b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);

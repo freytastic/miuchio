@@ -7,34 +7,30 @@ import 'package:miuchio/e2ee/identity.dart';
 // Local TOFU state for the roster UI. Roster pins detect key changes but do not
 // authorize epoch signers: only markVerified writes both trust layers
 enum TrustState {
-  // seen, pinned, never compared out of band. NOT a claim of safety : a MITM
-  // present at the very first sight is exactly what TOFU cannot rule out
+  // Pinned but never compared, TOFU can't rule out a MITM at first sight
   unverified,
-  // the digits were read back to us by the human, and the key hasnt moved since
+  // Compared out of band and unchanged since
   verified,
-  // the same stable member token is being presented with a different ik_pub
-  // Account IKs are immutable for now, so this requires out-of-band checking
+  // Same member token, different ik_pub
   changed,
 }
 
 class PeerIdentity {
-  final String memberToken; // base64, stable per (user, album)
-  final Uint8List ikPub; // 32B Ed25519, as served in the roster
+  // base64, stable per (user, album)
+  final String memberToken;
+  final Uint8List ikPub;
   const PeerIdentity({required this.memberToken, required this.ikPub});
 }
 
-// The pin store takes an opaque album key : everything album scoped in e2ee/
-// speaks 16 raw bytes, so hex them at the boundary rather than plumbing both
 String hexAlbumId(Uint8List albumId) =>
     albumId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
-// Carries the replacement key without coupling E2EE to Activity
-// A later replacement key must create a distinct alarm
+// Carries the new key so each later replacement raises its own alarm
 typedef TrustChanged = void Function(
     Uint8List albumId, String memberToken, Uint8List newIkPub);
 
-// The comparison matched but the pin store could not write it. The in-memory
-// state is updated as before; after a restart the album alarms again
+// The comparison matched but the write failed, so after a restart the album
+// alarms again
 class VerificationNotSaved implements Exception {
   const VerificationNotSaved();
 }
@@ -52,14 +48,9 @@ class IdentityTrust {
         _pins = pins,
         _onChanged = onChanged;
 
-  // Establishes first sight roster pins for display and change detection. It
-  // never moves an existing pin or grants epoch signing authority
-
-  // myMemberToken identifies OUR row. It must be the token we hold locally and
-  // NEVER an ik_pub comparison : a server that could get us to skip a row by
-  // choosing what key to put in it could silence a peer's change alarm just by
-  // claiming that peer's key is our own. A row that isnt ours but carries our
-  // ik_pub is an anomaly, and falls through to 'changed' exactly as it should
+  // Pins first sights only, never moves a pin or grants signing authority.
+  // Our own row is skipped by local token, never by ik_pub, or a server could
+  // silence a peer's alarm by claiming that peer's key is ours
   Future<Map<String, TrustState>> reconcile(
     Uint8List albumId,
     List<PeerIdentity> roster, {
@@ -81,16 +72,15 @@ class IdentityTrust {
         _onChanged?.call(albumId, peer.memberToken, peer.ikPub);
         continue;
       }
-      // Runs on a first sight too : the same peer in a new album shows up with
-      // a fresh token but the SAME ik_pub, and that key may already be verified
+      // Also on first sight, the same peer in a new album has a fresh token
+      // but may already be verified
       out[peer.memberToken] =
           _pins.isVerified(myIkPub: myIk, peerIkPub: peer.ikPub)
               ? TrustState.verified
               : TrustState.unverified;
     }
-    // A first sight IS the TOFU baseline : persist it before anyone can act on
-    // it. A kill inside the debounce window would otherwise drop the real key
-    // and let the next (possibly substituted) one become an innocent first sight
+    // Flushed now, a kill inside the debounce window would drop the baseline
+    // and let a substituted key become the next first sight
     if (pinnedAny) await _pins.flush();
     return out;
   }
@@ -104,8 +94,8 @@ class IdentityTrust {
         ikPubA: myIk, ikPubB: peerIkPub, albumId: albumId);
   }
 
-  // Verify the exact displayed key, then update both its roster pin and signer
-  // binding. Moving the roster pin clears any prior changed key state
+  // The only path that moves a roster pin or grants signing authority outside
+  // first join, there is deliberately no accept without comparing
   Future<void> markVerified({
     required Uint8List albumId,
     required String memberToken,
@@ -114,22 +104,18 @@ class IdentityTrust {
     final myIk = await _identity.currentIkPub();
     final album = hexAlbumId(albumId);
     _pins.pin(album, memberToken, peerIkPub);
-    // Outside first join signer adoption, only out-of-band confirmation may
-    // grant or move epoch signing authority
     _pins.pinSigner(album, memberToken, peerIkPub);
     _pins.markVerified(myIkPub: myIk, peerIkPub: peerIkPub);
     await _pins.flush();
     if (_pins.lastWriteFailed) throw const VerificationNotSaved();
   }
 
-  // Resolution needs global verification and this album's matching pin
-  // Otherwise this album still reports the key as changed
+  // Needs both global verification and this album's matching pin
   Future<bool> isResolved({
     required Uint8List albumId,
     required String memberToken,
     required Uint8List peerIkPub,
   }) async {
-    // A failed write may leave only session memory, so it cannot resolve history
     if (_pins.lastWriteFailed) return false;
     final pinned = _pins.pinnedIk(hexAlbumId(albumId), memberToken);
     if (pinned == null || !_eq(pinned, peerIkPub)) return false;
@@ -142,10 +128,7 @@ class IdentityTrust {
     return _pins.verifiedAt(myIkPub: myIk, peerIkPub: peerIkPub);
   }
 
-  // There is no accept without comparing path: markVerified also grants signer
-  // authority, so a one tap override would bypass the out-of-band check
-
-  // Drop album scoped trust state: global verification claims remain
+  // Global verification claims remain
   Future<void> forgetAlbum(Uint8List albumId) =>
       _pins.clearAlbum(hexAlbumId(albumId));
 

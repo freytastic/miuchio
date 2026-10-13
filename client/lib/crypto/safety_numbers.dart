@@ -2,20 +2,12 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart' as cg;
 import 'wire_format.dart';
 
-// Pairwise safety number for MITM detection
-
-//   SafetyNumber(A, B) =
-//     first 30 decimal digits of :
-//       SHA256(SORT_LEXICOGRAPHIC(IK_pub_A, IK_pub_B) || album_id)
-//     formatted as: XXXXX XXXXX XXXXX XXXXX XXXXX XXXXX
-
-// IKs are the Ed25519 32-byte identity keys. The sort makes the function
-// symmetric : both A and B compute the same number for a given album
+// First 30 decimal digits of SHA256(sort(IK_pub_A, IK_pub_B) || album_id).
+// The sort makes both sides compute the same number
 class SafetyNumber {
   static const int totalDigits = 30;
   static const int groupSize = 5;
 
-  // Returns the unformatted 30 digit string (no spaces)
   static Future<String> compute({
     required Uint8List ikPubA,
     required Uint8List ikPubB,
@@ -46,7 +38,6 @@ class SafetyNumber {
     return _firstNDecimalDigits(Uint8List.fromList(hash.bytes), totalDigits);
   }
 
-  // Returns the formatted "XXXXX XXXXX XXXXX XXXXX XXXXX XXXXX"
   static Future<String> formatted({
     required Uint8List ikPubA,
     required Uint8List ikPubB,
@@ -65,16 +56,14 @@ class SafetyNumber {
     return a.length - b.length;
   }
 
-  // SHA-256 (32 bytes, BE) is < 10^78. Format as a 78-char zero-padded decimal
-  // string and slice the first n. This makes "first 30 decimal digits" a fixed
-  // positional contract regardless of whether the hash's leading byte is zero
+  // Zero padding to 78 digits (2^256 < 10^78) keeps the digit positions fixed
+  // even when the hash has leading zero bytes
   static String _firstNDecimalDigits(Uint8List digest, int n) {
-    // Big-endian → BigInt
     BigInt v = BigInt.zero;
     for (final b in digest) {
       v = (v << 8) | BigInt.from(b);
     }
-    const int totalLen = 78; // 2^256 < 10^78
+    const int totalLen = 78;
     final s = v.toString().padLeft(totalLen, '0');
     return s.substring(0, n);
   }

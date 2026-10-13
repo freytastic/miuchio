@@ -2,17 +2,14 @@ import 'dart:typed_data';
 import 'primitives.dart';
 import 'wire_format.dart';
 
-// X3DH key agreement (4 DH with OPK, 3 DH fallback when OPK exhausted)
-
-// Peer pubs are raw 32B X25519 u-coordinates. Passing IK (Ed25519) bytes
-// here would silently produce wrong DH output : callers must source pubs
-// from PrekeyBundle.lk/spk/opk fields, never the ik field
+// Peer pubs are X25519 keys from the bundle's lk/spk/opk fields. Passing the
+// Ed25519 ik bytes would silently derive a wrong secret
 
 //   A computes: DH1=X25519(LK_a, SPK_b)  DH2=X25519(EK_a, LK_b)
 //               DH3=X25519(EK_a, SPK_b)  DH4=X25519(EK_a, OPK_b)
 //   B mirrors:  DH1=X25519(SPK_b, LK_a)  DH2=X25519(LK_b, EK_a)
 //               DH3=X25519(SPK_b, EK_a)  DH4=X25519(OPK_b, EK_a)
-//   KM = DH1 || DH2 || DH3 || DH4   (160 bytes, or 128 if no OPK)
+//   KM = DH1 || DH2 || DH3 || DH4   (DH4 dropped when the OPK pool is empty)
 //   shared = HKDF-SHA256(IKM=KM, salt=kSaltX3dh,
 //                        info=LK_pub_A || LK_pub_B || album_id, length=32)
 abstract class X3dh {

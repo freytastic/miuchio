@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-// join-complete-v1 signed message (§6.3 D9). MUST stay byte identical to the Go
-// invite.JoinCompleteMsg (cross-lang KAT in join_kat_test.dart) :
-//   "join-complete-v1" ‖ album_id(16) ‖ uint32_be(epoch) ‖ ek_pub_admin(32)
+// "join-complete-v1" ‖ album_id(16) ‖ u32_be(epoch) ‖ ek_pub_admin(32)
+// Byte identical to invite.JoinCompleteMsg in Go, pinned by join_kat_test
 const _joinCompletePrefix = 'join-complete-v1';
 
 Uint8List joinCompleteMsg(Uint8List albumId, int epoch, Uint8List ekPubAdmin) {

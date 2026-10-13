@@ -7,16 +7,11 @@ import 'package:miuchio/secure_store/key_handle_adapter.dart';
 import 'identity.dart';
 import 'prekey_bundle.dart';
 
-// Session level wrapper around the §1.1 X3dh.* math. Owns the EK lifecycle
-// (generated inline, never persisted, dies when the use<T> closure does)
-// and the responder side label -> handle resolution. Does NOT re verify the
-// bundle : caller MUST PrekeyBundle.verify() upfront so the call sites stay
-// the single source of truth for "is this peer's bundle trustworthy"
+// Runs X3DH with keys from IdentityService. The EK is never persisted. Bundles
+// are not re verified here, callers must run PrekeyBundle.verify() first
 
 class X3dhInitiateResult {
-  // sharedSecret + ekPub are Uint8List by value, returned as fields of a value
-  // object : layering test regex over public method signatures doesnt catch
-  // field access. Caller owns the lifetime of sharedSecret per D10
+  // The caller must zero sharedSecret
   final Uint8List sharedSecret;
   final Uint8List ekPub;
   final int? opkIdx;
@@ -35,8 +30,6 @@ class OpkNotFoundException implements Exception {
 }
 
 abstract class X3dhSession {
-  // Initiator. Bundle MUST be verify()'d by caller. EK is generated fresh
-  // inside the useLk callback and never escapes the closure
   static Future<X3dhInitiateResult> initiate({
     required PrekeyBundle bundle,
     required Uint8List albumId,
@@ -63,10 +56,8 @@ abstract class X3dhSession {
     });
   }
 
-  // Responder. Resolves OPK[idx] when wire claims one : OpkNotFoundException
-  // on miss instead of silent fallthrough so server side ledger drift surfaces
-  // (D5). OPK is NOT marked consumed here : that lives in §4 after MK delivery
-  // verifies end to end
+  // A missing OPK throws instead of falling back to 3 DH, so server ledger
+  // drift surfaces
   static Future<Uint8List> derive({
     required IdentityService identity,
     required Uint8List ekPub,
@@ -112,10 +103,8 @@ abstract class X3dhSession {
   }
 }
 
-// Library private composition helper around X3dh.responder. Top level + leading
-// underscore is allowed by the linter and skipped by the §2.2 layering test
-// (it filters identifier names starting with _). Public byte secret surface
-// stays X3dhSession.derive, which is the lone allowlisted name
+// Kept private, the layering test allows only X3dhSession.derive to return
+// secret bytes
 Future<Uint8List> _runResponder({
   required IdentityService identity,
   required X25519KeyPair? opkSk,

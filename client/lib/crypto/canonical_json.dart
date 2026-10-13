@@ -1,21 +1,14 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-// Deterministic JSON byte representation : mirror of internal/crypto/canonical_json.go
-// Any divergence between the two sides breaks every signature in flight
+// Signed bytes, mirrored by server/internal/crypto/canonical_json.go. Any
+// divergence breaks every signature
 
-// Rules :
-//   object keys sorted by raw UTF-8 byte order, ascending
-//   no insignificant whitespace
-//   strings : only " and \ escaped, control chars 0x00..0x1F as \uXXXX,
-//             non-ASCII characters preserved as raw UTF-8 (never \uXXXX-escaped)
-//   integers : decimal, no leading zero, no trailing dot
-//   floats are rejected : this protocol carries only integer fields
-//   accepted types : null, bool, int, String, List, Map<String, ...>
+//   keys sorted by raw UTF-8 bytes, no whitespace, floats rejected
+//   strings escape only " \ and control chars, everything else stays raw UTF-8
 
-// Callers must pre normalize Unicode (NFC) before passing strings : the
-// serializer itself never normalizes, to keep both sides byte identical
-// without depending on Unicode tables that may diverge
+// No Unicode normalization happens here so both sides stay byte identical
+// without depending on Unicode tables. Callers normalize first
 abstract class CanonicalJson {
   static Uint8List encode(Object? v) {
     final sb = StringBuffer();
@@ -48,7 +41,6 @@ abstract class CanonicalJson {
       }
       sb.write(']');
     } else if (v is Map) {
-      // Keys must all be strings : sort by raw UTF-8 byte order
       final keys = <String>[];
       v.forEach((k, _) {
         if (k is! String) {
@@ -84,8 +76,8 @@ abstract class CanonicalJson {
 
   static void _writeString(StringBuffer sb, String s) {
     sb.write('"');
-    // Iterate by code units so we can detect surrogates and emit raw UTF-8
-    // for the assembled BMP/non-BMP characters via writeCharCode
+    // Surrogate halves are written back as code units, so non BMP characters
+    // still come out as raw UTF-8
     for (var i = 0; i < s.length; i++) {
       final c = s.codeUnitAt(i);
       switch (c) {

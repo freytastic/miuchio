@@ -11,7 +11,6 @@ typedef ActiveTokensFn = Future<List<Uint8List>> Function(Uint8List albumId);
 typedef CurrentEpochFn = Future<int> Function(Uint8List albumId);
 typedef RotateFn = Future<void> Function(
     Uint8List albumId, int epoch, List<RotateRecipient> recipients);
-// Missing or changed recipient pins must fail rotation before MK creation
 typedef ExpectedIkFn = Future<Uint8List> Function(
     Uint8List albumId, Uint8List memberToken);
 typedef DropDirectoryFn = void Function(

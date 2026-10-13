@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
-// Keeps JPEG picture segments and removes metadata and trailing payloads
+// Allowlist rewrite: only pixel segments and a bare JFIF header survive. APPn,
+// COM, unknown markers and bytes after EOI are dropped or rejected
 
 const int _kSoi = 0xD8;
 const int _kEoi = 0xD9;

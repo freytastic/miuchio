@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' as cg;
 import 'package:miuchio/crypto/primitives.dart';
+import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/crypto/wire_format.dart';
 import 'package:miuchio/secure_store/key_handle_adapter.dart';
 
@@ -12,30 +13,23 @@ import 'prekey_api.dart';
 import 'prekey_bundle.dart';
 import 'x3dh_session.dart';
 
-// EpochRotator : the initiator side of an epoch transition (§4.1 + §4.2 + §5
-// bootstrap). The bootstrap case (epoch 0 on album create) is the lone member
-// = creator scenario : member add (§6) and member remove (§7) reuse the same
-// machinery with multi recipient member lists
+// Initiator side of an epoch change. Album create (epoch 0) and member removal
+// mint a fresh MK and wrap it for the full member set. Adding a member is not
+// a rotation: InviteInitiator wraps the existing MKs for the newcomer
 
-// Foundation now : the rotate() method takes any list of recipients, so §6 /
-// §7 will pass non self lists when those phases land. Self wrap on epoch 0 is
-// ceremonial today (no device recovery flow yet : new device = new IK = old
-// wraps dont decrypt anyway) but it keeps the wire format consistent for when
-// recovery does land
+//   wrap          AES-GCM(X3DH secret, MK, aad = album_id ‖ u32_be(epoch))
+//   sender_sig    over SHA256(album_id ‖ u32_be(epoch) ‖ wrap)
+//   envelope_sig  over "epoch-set-v1" ‖ album_id ‖ u32_be(epoch) ‖
+//                 member_set_hash ‖ wraps_hash
+
+// The hashes mirror server/internal/e2ee/epoch/service.go byte for byte
 
 class RotateRecipient {
-  // memberToken : 32B raw token (the same bytes that appear in album_members
-  // member_token on the server). userId : canonical UUID string used to fetch
-  // the recipient's prekey bundle via GET /users/{id}/prekey-bundle. When null
-  // (member removal : the admin knows remaining members only by token, identity
-  // hidden) the rotator fetches by member_token via MemberBundleFetcher instead
   final Uint8List memberToken;
+  // Null on member removal, where remaining members are known only by token
   final String? userId;
-  // expectedIk : 32B Ed25519 IK_pub the caller has locally authenticated for
-  // this member (self = currentIkPub, others = the TOFU pinned key). The
-  // rotator wraps the MK ONLY if the fetched bundle carries this exact IK : a
-  // server that substitutes a bundle to harvest the MK is refused here, since
-  // bundle.verify() alone only proves the SPK was signed by the bundle's OWN IK
+  // The IK the caller authenticated locally (own key or the TOFU pin). The MK
+  // is wrapped only for a bundle carrying exactly this IK
   final Uint8List expectedIk;
   const RotateRecipient({
     required this.memberToken,
@@ -44,9 +38,7 @@ class RotateRecipient {
   });
 }
 
-// Thrown when a fetched prekey bundle's IK_pub does not match the IK the caller
-// expected for that member : an active server substituting keys to intercept
-// the album MK. Fail closed : no X3DH, no wrap, no set_epoch
+// A server substituting a bundle to harvest the MK. Nothing is wrapped or sent
 class IdentityMismatchException implements Exception {
   final Uint8List memberToken;
   const IdentityMismatchException(this.memberToken);
@@ -76,10 +68,6 @@ class EpochRotator {
         _memberBundles = memberBundles,
         _now = now ?? DateTime.now;
 
-  // Bootstrap : first epoch (=0) for a brand new album with the creator as
-  // the only member. Generates MK_0, self wraps it via X3DH against the
-  // creator's own prekey bundle, posts /albums/{id}/epoch, and installs
-  // MK_0 locally so the upload pipeline can immediately use it
   Future<void> bootstrap({
     required Uint8List albumIdBytes,
     required Uint8List creatorMemberToken,
@@ -98,10 +86,8 @@ class EpochRotator {
     );
   }
 
-  // Rotate : the general path. Wraps the new MK for each recipient. epoch is
-  // the new epoch number (next_epoch = current_epoch + 1, or 0 for bootstrap)
-  // recipients must be the FULL active member set : the server recomputes
-  // member_set_hash live in the txn and rejects on drift
+  // recipients must be the full active member set, the server recomputes
+  // member_set_hash in the transaction and rejects drift
   Future<void> rotate({
     required Uint8List albumIdBytes,
     required int epoch,
@@ -118,14 +104,10 @@ class EpochRotator {
       throw ArgumentError('epoch must be >= 0, got $epoch');
     }
 
-    // mint a fresh MK
     final mk = Csprng.bytes(32);
     try {
-      // Per recipient : bundle fetch + verify + X3DH + wrap MK. Defer the
-      // sender_sig until we have all sender msgs : we batch every sig
-      // (per recipient sender_sig + the one envelope_sig) into a single
-      // _identity.useIk call below, so the IK seed only leaves the secure
-      // store once per epoch instead of (N+1) times
+      // Signing is deferred so every signature happens in one useIk call, one
+      // keystore read per epoch instead of N+1
       final partials = <({
         Uint8List ekPub,
         int? opkIdx,
@@ -136,9 +118,7 @@ class EpochRotator {
       for (final r in recipients) {
         final bundle = await _fetchBundle(albumIdBytes, r);
         await bundle.verify(now: _now);
-        // verify() only proves the SPK was signed by the bundle's OWN IK. Bind
-        // that IK to the one we locally authenticated for this member : a
-        // substituted bundle is refused here, before it can receive the MK
+        // verify() only proves the SPK was signed by the bundle's own IK
         if (!_ctEq(bundle.ikPub, r.expectedIk)) {
           throw IdentityMismatchException(r.memberToken);
         }
@@ -156,7 +136,6 @@ class EpochRotator {
             epoch: epoch,
           );
         } finally {
-          // zero the X3DH shared secret even if the wrap throws
           init.sharedSecret.fillRange(0, init.sharedSecret.length, 0);
         }
         final senderMsg = await _buildSenderMsg(albumIdBytes, epoch, wrap);
@@ -170,7 +149,6 @@ class EpochRotator {
         ));
       }
 
-      // Single IK fetch : sign all sender msgs, compute hashes, sign envelope
       final tokens = recipients.map((r) => r.memberToken).toList();
       final memberSetHash = await _memberSetHash(tokens);
       final signed = await _identity
@@ -209,9 +187,8 @@ class EpochRotator {
       ];
       final envelopeSig = signed.envelope;
 
-      // POST /albums/{id}/epoch. Server validates everything atomically
       await _epochs.setEpoch(
-        _uuidStringFromBytes(albumIdBytes),
+        uuidFromBytes(albumIdBytes),
         SetEpochRequest(
           epoch: epoch,
           memberSetHash: memberSetHash,
@@ -220,9 +197,7 @@ class EpochRotator {
         ),
       );
 
-      //install MK locally. installVerified is idempotent on byte
-      // equal re install so if a fanout race already installed it (via §4.2
-      // responder path) we no op cleanly
+      // Idempotent if the responder path already installed the same bytes
       await _aks.installVerified(
         albumId: albumIdBytes,
         epoch: epoch,
@@ -234,9 +209,6 @@ class EpochRotator {
     }
   }
 
-  // _fetchBundle : by user_id when known (bootstrap / self-wrap), else by
-  // member_token (member removal : identity hidden). A by token recipient with
-  // no MemberBundleFetcher wired is a programming error, not a runtime state
   Future<PrekeyBundle> _fetchBundle(Uint8List albumIdBytes, RotateRecipient r) {
     final userId = r.userId;
     if (userId != null) {
@@ -248,12 +220,9 @@ class EpochRotator {
           'by-token recipient requires a MemberBundleFetcher (none wired)');
     }
     return fetcher.fetchPrekeyBundleByMemberToken(
-        _uuidStringFromBytes(albumIdBytes), r.memberToken);
+        uuidFromBytes(albumIdBytes), r.memberToken);
   }
 
-  // _wrapMK : AES-GCM(SK, fresh_nonce, MK, aad = album_id ‖ u32_be(epoch))
-  // Output is the full 61 byte wire (VER ‖ NONCE ‖ TAG ‖ CT) : server splits
-  // off VER+NONCE and stores NONCE + TAG_CT separately
   Future<Uint8List> _wrapMK({
     required Uint8List sk,
     required Uint8List mk,
@@ -271,9 +240,6 @@ class EpochRotator {
     );
   }
 
-  // sender msg : SHA256(album_id ‖ u32_be(epoch) ‖ wrap_blob) per §4.2 D3
-  // Same hash the §4.2 responder recomputes before accepting the wrap
-  // Build only : the actual Ed25519 sign happens inside the batched useIk
   Future<Uint8List> _buildSenderMsg(
       Uint8List albumIdBytes, int epoch, Uint8List wrap) async {
     final buf = Uint8List(16 + 4 + wrap.length);
@@ -284,9 +250,6 @@ class EpochRotator {
     return Uint8List.fromList(h.bytes);
   }
 
-  // envelope msg : "epoch-set-v1" ‖ album_id ‖ u32_be(epoch) ‖
-  // member_set_hash ‖ wraps_hash per §4.1. Server verifies this against
-  // the caller's IK_pub before committing the transaction
   Uint8List _buildEnvelopeMsg(Uint8List albumIdBytes, int epoch,
       Uint8List memberSetHash, Uint8List wrapsHash) {
     final salt = _kSaltEpochSet;
@@ -305,11 +268,10 @@ class EpochRotator {
   }
 }
 
-// _kSaltEpochSet : mirrors internal/crypto/salts.go SaltEpochSet byte for byte
+// Mirrors SaltEpochSet in server/internal/crypto/salts.go
 final Uint8List _kSaltEpochSet = Uint8List.fromList('epoch-set-v1'.codeUnits);
 
-// _memberSetHash : SHA256( u32_be(N) ‖ sorted tokens ). Mirrors
-// internal/e2ee/epoch/service.go MemberSetHash exactly
+// SHA256(u32_be(N) ‖ sorted tokens)
 Future<Uint8List> _memberSetHash(List<Uint8List> tokens) async {
   final sorted = [...tokens]..sort(_byteCompare);
   final builder = BytesBuilder(copy: false);
@@ -323,10 +285,8 @@ Future<Uint8List> _memberSetHash(List<Uint8List> tokens) async {
   return Uint8List.fromList(h.bytes);
 }
 
-// _wrapsHash : SHA256( u32_be(N) ‖ for each wrap sorted by recipient_token :
-// token(32) ‖ ek_pub(32) ‖ u32_be(opk_idx; 0xFFFFFFFF if null) ‖
-// u32_be(len(wrap)) ‖ wrap ‖ u32_be(len(sender_sig)) ‖ sender_sig )
-// Mirrors internal/e2ee/epoch/service.go WrapsHash exactly
+// SHA256(u32_be(N) ‖ per wrap sorted by token: token ‖ ek_pub ‖
+// u32_be(opk_idx or 0xFFFFFFFF) ‖ u32_be(len) ‖ wrap ‖ u32_be(len) ‖ sender_sig)
 Future<Uint8List> _wrapsHash(List<SetEpochWrap> wraps) async {
   final sorted = [...wraps]
     ..sort((a, b) => _byteCompare(a.recipientToken, b.recipientToken));
@@ -351,8 +311,7 @@ Future<Uint8List> _wrapsHash(List<SetEpochWrap> wraps) async {
   return Uint8List.fromList(h.bytes);
 }
 
-// constant time 32B equality : the compare sits on the MK wrap decision, so it
-// must not leak how many leading bytes of a substituted IK matched
+// Constant time so a substituted IK can't learn how many leading bytes matched
 bool _ctEq(Uint8List a, Uint8List b) {
   if (a.length != b.length) return false;
   var d = 0;
@@ -369,10 +328,4 @@ int _byteCompare(Uint8List a, Uint8List b) {
     if (d != 0) return d;
   }
   return a.length - b.length;
-}
-
-String _uuidStringFromBytes(Uint8List b) {
-  final s = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
-  return '${s.substring(0, 8)}-${s.substring(8, 12)}-${s.substring(12, 16)}'
-      '-${s.substring(16, 20)}-${s.substring(20)}';
 }
