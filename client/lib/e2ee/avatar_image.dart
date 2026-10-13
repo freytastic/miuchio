@@ -21,10 +21,9 @@ class AvatarCrop {
 }
 
 abstract class AvatarImage {
-  //Throws UnprocessableImageException for anything that cannot be decoded, same as a photo upload
   static Future<Uint8List> prepare(Uint8List picked,
       {ImageTranscoder? transcode}) async {
-    final clean = await FilePipeline.cleanPhoto(picked, transcode: transcode);
+    final clean = await cleanPhoto(picked, transcode: transcode);
     return clean.jpeg;
   }
 
