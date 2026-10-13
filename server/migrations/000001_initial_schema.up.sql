@@ -1,24 +1,15 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- All DEFAULT timestamps are quantized to the hour. Per second precision on
--- joined_at/started_at/created_at/etc. lets a snapshot adversary correlate
--- "Alice and Bob joined within 90 seconds" or "Ghost_A always uploads on
--- Friday 21:14":  hour precision preserves rough chronology + diurnal patterns
--- without that correlation power. Call sites that pass an explicit timestamp
--- (e.g. sessions.expires_at = now()+30d) keep their precision until the call
--- site itself is quantized
+-- DEFAULT timestamps are quantized to the hour, so a database snapshot cannot
+-- correlate who joined or uploaded within seconds of whom. Explicit timestamps
+-- such as sessions.expires_at keep full precision
 
--- email_hmac : HMAC-SHA256(MIUCHIO_EMAIL_HMAC_KEY, lower(trim(email))). The
--- raw email never lands on disk : it passes through the OTP send path in
--- memory only, then drops. Lookup goes via the HMAC. Loses the "is this
--- email registered?" oracle (intended) and the "email already taken" UX
--- (intended : matches Blind ID design)
+-- email_hmac = HMAC-SHA256(MIUCHIO_EMAIL_HMAC_KEY, lower(trim(email))). The raw
+-- email never reaches disk, which also removes any "is this email registered"
+-- oracle
 
--- name + avatar_key intentionally absent (M7) : display names live encrypted
--- per album in album_members.name_ct, locked under that album's MK so only
--- members can read them. Avatars come back in Phase 5 wired through the
--- encrypted media pipeline. Client owns its own typed name locally for the
--- profile screen (StorageService.saveName)
+-- No name or avatar here: both live encrypted per album, sealed under that
+-- album's MK so only members can read them
 CREATE TABLE users (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email_hmac      BYTEA UNIQUE NOT NULL,
@@ -59,14 +50,12 @@ CREATE TABLE albums (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT date_trunc('hour', now())
 );
 
--- M-bridge : user_id is severed at rest. user_handle is the deterministic
--- HMAC handle (forward lookups : "is this user a member?", "what albums for
--- this user?"). user_id_enc is the AEAD blob (reverse lookups : "which user
--- owns this member_token?" , needed by WS fanout + epoch admin IK lookup)
--- Both are useless without the live MIUCHIO_USER_LINK_KEY, so a stolen DB
--- snapshot cant reconstruct the social graph. The FK to users(id) is
--- intentionally absent : ON DELETE CASCADE was the only consumer and a
--- future user delete flow will compute the handle and DELETE explicitly
+-- Links user_id to member_token without storing it in the clear (see the
+-- userlink package). user_handle is a deterministic HMAC for "which albums is
+-- this user in", user_id_enc an AEAD blob for "which user owns this token".
+-- Without MIUCHIO_USER_LINK_KEY a snapshot does not reveal which user owns a
+-- token. There is deliberately no FK to users(id), account deletion computes
+-- the handle and deletes explicitly
 CREATE TABLE album_member_identities (
     member_token    BYTEA PRIMARY KEY,
     user_handle     BYTEA NOT NULL,
@@ -78,10 +67,8 @@ CREATE TABLE album_member_identities (
 CREATE INDEX idx_amid_user_handle ON album_member_identities(user_handle);
 CREATE INDEX idx_amid_album ON album_member_identities(album_id);
 
--- name_ct : member's display name encrypted under MK_current of THIS album
--- The wire format is the §1.1 wrap (VER ‖ NONCE ‖ TAG ‖ CT). Server treats
--- it as opaque bytes : only members holding the album's MK can decrypt
--- NULL until the member publishes (placeholder shown by client until then)
+-- name_ct is the member's name sealed under this album's MK, opaque to the
+-- server. NULL until the member publishes one
 CREATE TABLE album_members (
     album_id        UUID NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
     member_token    BYTEA NOT NULL REFERENCES album_member_identities(member_token) ON DELETE CASCADE,
@@ -91,9 +78,8 @@ CREATE TABLE album_members (
     PRIMARY KEY (album_id, member_token)
 );
 
--- epoch_sig : Ed25519 over (album_id ‖ epoch ‖ member_set_hash ‖ wraps_hash)
--- Server verifies against any active co-admin's IK_pub and stores only the sig,
--- never which co-admin matched. Authorization without revealing the rotater
+-- epoch_sig is Ed25519 over (album_id ‖ epoch ‖ member_set_hash ‖ wraps_hash),
+-- verified against the admin's IK before the row is written
 CREATE TABLE album_epochs (
     album_id        UUID NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
     epoch           INT NOT NULL,
@@ -116,11 +102,9 @@ CREATE TABLE album_epoch_wraps (
     PRIMARY KEY (album_id, epoch, recipient_token)
 );
 
--- Two phase upload (§5.1) : RequestUploadURL inserts a pending row + returns a
--- presigned S3 PUT : client uploads : ConfirmUpload HEADs S3 to validate the
--- size + sha256, then flips confirmed=TRUE. Pending rows whose upload never
--- completes are GC'd by a periodic sweep (TODOOOO §5.x). storage_key is a server
--- generated random opaque value (M9) : never carries album_id
+-- Two phase upload: a reservation inserts a pending row, the client PUTs to S3,
+-- and confirmation checks size and SHA256 before setting confirmed. Abandoned
+-- pending rows are swept. storage_key is random and never carries album_id
 CREATE TABLE media (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     album_id        UUID NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
@@ -171,9 +155,8 @@ CREATE TABLE invite_links (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT date_trunc('hour', now())
 );
 
--- spk_rotations : append only audit of monthly SPK turnover. IP + User-Agent
--- intentionally absent : per privacy audit M2 they built a long term
--- IP/device fingerprint per user with no offsetting product value
+-- Append only audit of SPK rotations. IP and User-Agent are deliberately not
+-- stored, they would build a long term device fingerprint per user
 CREATE TABLE spk_rotations (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
