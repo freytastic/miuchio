@@ -501,7 +501,7 @@ class _Faces extends StatelessWidget {
                       height: _size,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: Warm.ctaFill,
+                        color: Warm.cta,
                       ),
                       child: const Icon(Icons.check_rounded,
                           size: 16, color: Warm.ctaInk),

@@ -27,6 +27,7 @@ import 'package:miuchio/ui/screens/onboarding_screen.dart';
 import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/camera_stage.dart';
+import 'package:miuchio/ui/widgets/hello_wordmark.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -108,7 +109,10 @@ class _LandingPageState extends State<LandingPage> {
     // Preview builds show the first page without signing out
     final intro = !valid || Fx.intro;
     // Hide clip preparation behind the route fade
-    if (intro) CameraStage.prewarm();
+    if (intro) {
+      CameraStage.prewarm();
+      WordmarkPrep.prewarm(kWordmarkMiuchio);
+    }
     final destination =
         intro ? OnboardingScreen(preview: valid) : const MainShell();
 
@@ -238,30 +242,23 @@ class _LandingPageState extends State<LandingPage> {
           width: 72,
           height: 72,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Warm.ctaTop, Warm.ctaBottom],
-            ),
+            color: Warm.cta,
             borderRadius: BorderRadius.circular(22),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
-                color: Warm.ctaTop.withValues(alpha: 0.18),
+                color: Color(0x2E3B281E),
                 blurRadius: 30,
-                offset: const Offset(0, 8),
+                offset: Offset(0, 8),
               ),
             ],
           ),
-          child: const Center(
-            child: Text(
-              'k',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 36,
-                fontWeight: FontWeight.w800,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
+          alignment: Alignment.center,
+          child: const HelloWordmark(
+            glyphs: kWordmarkM,
+            height: 22,
+            color: Warm.ctaInk,
+            duration: Duration(milliseconds: 900),
+            semanticsLabel: 'Miuchio',
           ),
         ),
       ),

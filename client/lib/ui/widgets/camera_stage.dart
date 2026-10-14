@@ -47,12 +47,22 @@ const Duration _kShrinkDuration = Duration(milliseconds: 280);
 const Curve _kShrinkCurve = Curves.easeOutCubic;
 
 class CameraStage extends StatefulWidget {
-  const CameraStage({super.key, this.onComplete});
+  const CameraStage({super.key, this.onStart, this.onFrame, this.onComplete});
 
+  // When the last polaroid lands in the clip's own timeline
+  static const Duration printsSettled = Duration(milliseconds: 2540);
+
+  // Fires once, when the first clip frame or the still is on screen, with the
+  // tier playing or null for the still
+  final ValueChanged<StageTier?>? onStart;
+  // The clip time of each newly shown frame
+  final ValueChanged<Duration>? onFrame;
   final VoidCallback? onComplete;
 
   static Widget positioned(
     BuildContext context, {
+    ValueChanged<StageTier?>? onStart,
+    ValueChanged<Duration>? onFrame,
     VoidCallback? onComplete,
     bool shrink = false,
     double shrunkScale = _kStageShrunkScale,
@@ -76,7 +86,8 @@ class CameraStage extends StatefulWidget {
         // Scale around the camera rather than the photo fan
         alignment: Alignment(2 * _kCameraXInImage - 1, -1),
         scale: shrink ? shrunkScale : scale,
-        child: CameraStage(onComplete: onComplete),
+        child: CameraStage(
+            onStart: onStart, onFrame: onFrame, onComplete: onComplete),
       ),
     );
   }
@@ -147,6 +158,7 @@ class _CameraStageState extends State<CameraStage>
   Duration _elapsed = Duration.zero;
   bool _done = false;
   bool _settling = false;
+  bool _started = false;
 
   int _shown = 0;
   int _skipped = 0;
@@ -184,8 +196,15 @@ class _CameraStageState extends State<CameraStage>
     _shown = 1;
     _dueAt = _clampDuration(first.duration);
     _frame.value = first.image;
+    _start(clip.tier);
     unawaited(clip.fill(clip.depth));
     _ticker = createTicker(_onTick)..start();
+  }
+
+  void _start(StageTier? tier) {
+    if (_started) return;
+    _started = true;
+    widget.onStart?.call(tier);
   }
 
   void _onTick(Duration elapsed) {
@@ -211,13 +230,19 @@ class _CameraStageState extends State<CameraStage>
       previous?.dispose();
       _decoded++;
       advanced++;
+      // The frame now shown starts where the previous one was due to end
+      final shownAt = _dueAt;
       if (_decoded >= clip.frameCount - 1) {
         _shown++;
         _skipped += advanced - 1;
+        widget.onFrame?.call(shownAt);
         _finish(intended: _dueAt);
         return;
       }
       _dueAt += _clampDuration(next.duration);
+      if (clip.ahead.isEmpty || _dueAt > elapsed) {
+        widget.onFrame?.call(shownAt);
+      }
     }
     if (advanced > 0) {
       _shown++;
@@ -241,6 +266,7 @@ class _CameraStageState extends State<CameraStage>
       _frame.value = still;
       previous?.dispose();
     }
+    _start(null);
     _finish(intended: _dueAt, settled: true);
   }
 

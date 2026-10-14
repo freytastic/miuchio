@@ -43,12 +43,13 @@ abstract class Warm {
     orbClay,
   ];
 
-  static const Color ctaTop = Color(0xFF2A2622);
-  static const Color ctaBottom = Color(0xFF17130F);
-  static const Color ctaInk = Color(0xFFF7F3EC);
-  // The button face as the glow warms it, for marks that echo the buttons
-  static const Color cocoa = Color(0xFF4A3A30);
-  static const Color cocoaSoft = Color(0x804A3A30);
+  // Soil brown, shared by every primary button and the wordmark
+  static const Color cta = Color(0xFF3B281E);
+  static const Color ctaPressed = Color(0xFF2E1F17);
+  static const Color ctaInk = Color(0xFFFAF1E7);
+  // For marks that echo the buttons
+  static const Color cocoa = cta;
+  static const Color cocoaSoft = Color(0x803B281E);
 
   static ThemeData get theme => ThemeData(
         brightness: Brightness.light,
@@ -56,7 +57,7 @@ abstract class Warm {
         fontFamily: fontFamily,
         scaffoldBackgroundColor: ground,
         colorScheme: const ColorScheme.light(
-          primary: ctaTop,
+          primary: cta,
           onPrimary: ctaInk,
           secondary: warn,
           surface: ground,
@@ -97,25 +98,16 @@ abstract class Warm {
     colors: [stoneTop, stoneBottom],
   );
 
-  static const LinearGradient ctaFill = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [ctaTop, ctaBottom],
-  );
+  // Tinted with the button's own soil so it sits warmly on the cream
+  static const List<BoxShadow> ctaShadow = [
+    BoxShadow(color: Color(0x2E3B281E), blurRadius: 2, offset: Offset(0, 1)),
+    BoxShadow(color: Color(0x243B281E), blurRadius: 12, offset: Offset(0, 4)),
+  ];
 
-  static List<BoxShadow> get ctaShadow => [
-        BoxShadow(
-            color: shadow(0.10), blurRadius: 2, offset: const Offset(0, 1)),
-        BoxShadow(
-            color: shadow(0.12), blurRadius: 18, offset: const Offset(0, 6)),
-      ];
-
-  static List<BoxShadow> get ctaShadowIdle => [
-        BoxShadow(
-            color: shadow(0.08), blurRadius: 2, offset: const Offset(0, 1)),
-        BoxShadow(
-            color: shadow(0.08), blurRadius: 10, offset: const Offset(0, 4)),
-      ];
+  static const List<BoxShadow> ctaShadowIdle = [
+    BoxShadow(color: Color(0x1A3B281E), blurRadius: 2, offset: Offset(0, 1)),
+    BoxShadow(color: Color(0x143B281E), blurRadius: 8, offset: Offset(0, 3)),
+  ];
 
   static List<BoxShadow> get stoneShadow => [
         BoxShadow(
@@ -288,13 +280,7 @@ abstract class Warm {
   static const Color fieldFill = Color(0x0E1C1917);
   static const Color fieldFillFocus = Color(0xE6FDFCFA);
 
-  static const TextStyle wordmark = TextStyle(
-    fontSize: 66,
-    fontWeight: FontWeight.w700,
-    letterSpacing: -1.45,
-    height: 1,
-    color: ink,
-  );
+  static const double wordmarkHeight = 90;
 
   static const TextStyle lead = TextStyle(
     fontSize: 18.6,

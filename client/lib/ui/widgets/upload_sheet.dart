@@ -212,7 +212,7 @@ class _Track extends StatelessWidget {
         value: value,
         minHeight: 5,
         backgroundColor: Warm.wellEmpty,
-        valueColor: const AlwaysStoppedAnimation<Color>(Warm.ctaTop),
+        valueColor: const AlwaysStoppedAnimation<Color>(Warm.cta),
       ),
     );
   }
@@ -317,7 +317,7 @@ class _Notice extends StatelessWidget {
                 _NoticeAction(
                   label: actionLabel!,
                   onTap: onAction,
-                  color: Warm.ctaTop,
+                  color: Warm.cta,
                 ),
             ],
           ),

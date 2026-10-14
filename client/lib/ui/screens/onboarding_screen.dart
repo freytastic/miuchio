@@ -22,6 +22,7 @@ import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/camera_stage.dart';
 import 'package:miuchio/ui/widgets/caret_blink.dart';
+import 'package:miuchio/ui/widgets/hello_wordmark.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/widgets/warm_field.dart';
 
@@ -77,6 +78,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   _Phase _phase = _Phase.intro;
   bool _busy = false;
+  // The wordmark writes with the camera clip, not with the screen
+  final _wordCue = WordmarkCue();
 
   @override
   void initState() {
@@ -93,6 +96,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _otpCtrl.dispose();
     _emailFocus.dispose();
     _otpFocus.dispose();
+    _wordCue.dispose();
     super.dispose();
   }
 
@@ -332,7 +336,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final messenger = ScaffoldMessenger.of(context)..removeCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       content: Text(message, style: const TextStyle(color: Warm.ctaInk)),
-      backgroundColor: Warm.ctaBottom,
+      backgroundColor: Warm.cta,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -355,12 +359,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final leadWidth = math.min(Warm.leadMaxWidth, width);
     switch (_phase) {
       case _Phase.intro:
-        final mark = laid(
-            const TextSpan(text: 'Miuchio', style: Warm.wordmark),
-            double.infinity);
-        final markHeight = mark.width > width
-            ? mark.height * width / mark.width
-            : mark.height;
+        final markHeight = math.min(
+            Warm.wordmarkHeight, width / kWordmarkMiuchio.aspect);
         return markHeight +
             Warm.headingToLead +
             laid(const TextSpan(text: _kIntroLead, style: Warm.lead),
@@ -448,6 +448,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
               CameraStage.positioned(
                 context,
+                // The lite clip runs at 30 fps, so the pen follows its frames
+                onStart: (tier) =>
+                    _wordCue.start(followClip: tier == StageTier.lite),
+                onFrame: _wordCue.clip,
+                onComplete: _wordCue.hurry,
                 shrink: keyboardOpen,
                 shrunkScale: compactStageScale,
                 scale: stageScale,
@@ -464,6 +469,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   duration: const Duration(milliseconds: 700),
                   curve: Warm.easeSoft,
                   child: _Copy(
+                    wordCue: _wordCue,
                     phase: _phase,
                     email: _email,
                     compact: keyboardOpen,
