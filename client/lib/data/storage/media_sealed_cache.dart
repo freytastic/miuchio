@@ -74,7 +74,7 @@ class MediaSealedCache
         Directory(p.join(
             (await getApplicationCacheDirectory()).path, 'miuchio_media'));
     if (!root.existsSync()) root.createSync(recursive: true);
-    // iOS must exclude this durable tree from backup before release
+    // prepareInstall excludes Application Support from iOS backup
     // Tests passing only rootDir keep the legacy single root layout
     final durable = durableDir ??
         (rootDir ??
