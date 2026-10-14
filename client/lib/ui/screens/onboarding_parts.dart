@@ -54,12 +54,14 @@ class _Scrim extends StatelessWidget {
 
 class _Copy extends StatelessWidget {
   const _Copy({
+    required this.wordCue,
     required this.phase,
     required this.email,
     required this.compact,
     required this.box,
   });
 
+  final WordmarkCue wordCue;
   final _Phase phase;
   final String email;
   final bool compact;
@@ -91,7 +93,8 @@ class _Copy extends StatelessWidget {
               children: [...previous, if (current != null) current],
             ),
             child: onIntro
-                ? const _IntroCopy(key: ValueKey('intro'))
+                ? _IntroCopy(
+                    key: const ValueKey('intro'), wordCue: wordCue)
                 : _PhaseCopy(
                     key: ValueKey(phase),
                     phase: phase,
@@ -122,19 +125,37 @@ class _TrustMark extends StatelessWidget {
 }
 
 class _IntroCopy extends StatelessWidget {
-  const _IntroCopy({super.key});
+  const _IntroCopy({super.key, required this.wordCue});
 
+  final WordmarkCue wordCue;
+
+  // The box shrinks to the email copy while this fades out, so it may overhang
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return OverflowBox(
+      alignment: Alignment.topCenter,
+      maxHeight: double.infinity,
+      child: _content(),
+    );
+  }
+
+  Widget _content() {
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         FittedBox(
           fit: BoxFit.scaleDown,
-          child: Text('Miuchio', style: Warm.wordmark, maxLines: 1),
+          child: HelloWordmark(
+            glyphs: kWordmarkMiuchio,
+            height: Warm.wordmarkHeight,
+            color: Warm.cta,
+            duration: CameraStage.printsSettled,
+            cue: wordCue,
+            semanticsLabel: 'Miuchio',
+          ),
         ),
-        SizedBox(height: Warm.headingToLead),
-        SizedBox(
+        const SizedBox(height: Warm.headingToLead),
+        const SizedBox(
           width: Warm.leadMaxWidth,
           child: Text(
             _kIntroLead,
@@ -258,7 +279,7 @@ class _Dots extends StatelessWidget {
           width: active ? 20 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: Warm.ink.withValues(alpha: active ? 1 : 0.28),
+            color: Warm.cta.withValues(alpha: active ? 1 : 0.28),
             borderRadius: BorderRadius.circular(3),
           ),
         );
