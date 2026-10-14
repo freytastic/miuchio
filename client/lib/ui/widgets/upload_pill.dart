@@ -44,7 +44,7 @@ class UploadPill extends StatelessWidget {
                   value: batch.fraction <= 0 ? null : batch.fraction,
                   strokeWidth: 2,
                   backgroundColor: Warm.wellEmpty,
-                  valueColor: const AlwaysStoppedAnimation<Color>(Warm.ctaTop),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Warm.cta),
                 ),
               ),
             const SizedBox(width: 9),

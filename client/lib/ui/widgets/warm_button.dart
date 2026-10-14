@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
@@ -57,182 +55,38 @@ class _WarmButtonState extends State<WarmButton> {
           scale: _pressed ? 0.965 : 1,
           duration: Warm.quick,
           curve: Warm.easeOut,
-          child: SizedBox(
+          child: Container(
             width: widget.width,
             height: height,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: widget.small ? 18 : 24),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: Warm.ctaFill,
-                    borderRadius: BorderRadius.circular(radius),
-                    boxShadow: enabled ? Warm.ctaShadow : Warm.ctaShadowIdle,
-                  ),
-                  child: widget.busy
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Warm.ctaInk),
-                        )
-                      : AnimatedSwitcher(
-                          duration: Warm.quick,
-                          child: Text(
-                            widget.label,
-                            key: ValueKey(widget.label),
-                            maxLines: 1,
-                            style: widget.small
-                                ? Warm.ctaLabel.copyWith(fontSize: 13.5)
-                                : Warm.ctaLabel,
-                          ),
-                        ),
-                ),
-                Positioned.fill(child: WarmGlow(lit: _pressed, radius: radius)),
-                Positioned(
-                  top: 1,
-                  left: 1,
-                  right: 1,
-                  height: height * 0.4,
-                  child: IgnorePointer(child: WarmSheen(radius: radius)),
-                ),
-              ],
+            padding: EdgeInsets.symmetric(horizontal: widget.small ? 18 : 24),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _pressed ? Warm.ctaPressed : Warm.cta,
+              borderRadius: BorderRadius.circular(radius),
+              boxShadow: enabled ? Warm.ctaShadow : Warm.ctaShadowIdle,
             ),
+            child: widget.busy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Warm.ctaInk),
+                  )
+                : AnimatedSwitcher(
+                    duration: Warm.quick,
+                    child: Text(
+                      widget.label,
+                      key: ValueKey(widget.label),
+                      maxLines: 1,
+                      style: widget.small
+                          ? Warm.ctaLabel.copyWith(fontSize: 13.5)
+                          : Warm.ctaLabel,
+                    ),
+                  ),
           ),
         ),
       ),
     );
-  }
-}
-
-class WarmSheen extends StatelessWidget {
-  final double radius;
-
-  const WarmSheen({super.key, required this.radius});
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(radius - 1),
-          bottom: Radius.elliptical(radius, 12),
-        ),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white.withValues(alpha: 0.07),
-            Colors.white.withValues(alpha: 0),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class WarmGlow extends StatelessWidget {
-  final bool lit;
-  final double radius;
-
-  const WarmGlow({super.key, required this.lit, required this.radius});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: IgnorePointer(
-        child: AnimatedOpacity(
-          opacity: lit ? 1 : 0.37,
-          duration: Warm.quick,
-          child: const _GlowImage(),
-        ),
-      ),
-    );
-  }
-}
-
-const double _kGlowSigma = 18;
-
-final RadialGradient _kGlowGradient = RadialGradient(
-  // Expand the short side radius across the wide pill
-  radius: 2.4,
-  colors: [
-    Warm.orbPeach.withValues(alpha: 0.55),
-    Warm.orbBlush.withValues(alpha: 0.28),
-    Warm.orbPeach.withValues(alpha: 0),
-  ],
-  stops: const [0, 0.45, 0.72],
-);
-
-// Cache the glow by size to avoid repeated blur passes
-class _GlowImage extends StatefulWidget {
-  const _GlowImage();
-
-  @override
-  State<_GlowImage> createState() => _GlowImageState();
-}
-
-typedef _GlowKey = ({int w, int h});
-
-class _GlowImageState extends State<_GlowImage> {
-  static final Map<_GlowKey, ui.Image> _cache = {};
-  static final Map<_GlowKey, Future<ui.Image>> _pending = {};
-
-  _GlowKey? _requested;
-
-  void _request(_GlowKey key, Size size, double dpr) {
-    if (_requested == key) return;
-    _requested = key;
-    final job = _pending[key] ??= _render(size, dpr, key).then((image) {
-      _cache[key] = image;
-      _pending.remove(key);
-      return image;
-    });
-    job.then((_) {
-      if (mounted && _requested == key) setState(() {});
-    }, onError: (Object _) => _pending.remove(key));
-  }
-
-  static Future<ui.Image> _render(Size size, double dpr, _GlowKey key) {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder)..scale(dpr);
-    final rect = Offset.zero & size;
-    canvas.saveLayer(
-        null,
-        Paint()
-          ..imageFilter =
-              ui.ImageFilter.blur(sigmaX: _kGlowSigma, sigmaY: _kGlowSigma));
-    canvas.drawRect(rect, Paint()..shader = _kGlowGradient.createShader(rect));
-    canvas.restore();
-    final picture = recorder.endRecording();
-    return picture.toImage(key.w, key.h).whenComplete(picture.dispose);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final size = constraints.biggest;
-      if (!size.isFinite || size.isEmpty) return const SizedBox.shrink();
-      final dpr = MediaQuery.devicePixelRatioOf(context);
-      final key = (w: (size.width * dpr).ceil(), h: (size.height * dpr).ceil());
-      final image = _cache[key];
-      if (image != null) {
-        return RawImage(image: image, fit: BoxFit.fill);
-      }
-      _request(key, size, dpr);
-      return ImageFiltered(
-        imageFilter:
-            ui.ImageFilter.blur(sigmaX: _kGlowSigma, sigmaY: _kGlowSigma),
-        child: DecoratedBox(
-          decoration: BoxDecoration(gradient: _kGlowGradient),
-        ),
-      );
-    });
   }
 }
 
