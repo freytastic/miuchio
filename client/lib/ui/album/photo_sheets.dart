@@ -118,9 +118,12 @@ Future<void> showPhotoDetails(
     );
 
 String formatPhotoDay(DateTime at, {DateTime? now}) {
-  final today = now ?? DateTime.now();
+  // Server times parse as UTC, so a late night upload read in UTC days
+  // lands on the previous calendar day
+  final local = at.toLocal();
+  final today = (now ?? DateTime.now()).toLocal();
   final days = DateTime(today.year, today.month, today.day)
-      .difference(DateTime(at.year, at.month, at.day))
+      .difference(DateTime(local.year, local.month, local.day))
       .inDays;
   if (days == 0) return 'Today';
   if (days == 1) return 'Yesterday';
@@ -128,10 +131,10 @@ String formatPhotoDay(DateTime at, {DateTime? now}) {
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
-  if (days < 365 && at.year == today.year) {
-    return '${at.day} ${months[at.month - 1]}';
+  if (days < 365 && local.year == today.year) {
+    return '${local.day} ${months[local.month - 1]}';
   }
-  return '${at.day} ${months[at.month - 1]} ${at.year}';
+  return '${local.day} ${months[local.month - 1]} ${local.year}';
 }
 
 class _Grab extends StatelessWidget {
