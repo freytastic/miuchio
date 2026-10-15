@@ -93,7 +93,7 @@ void main() {
     expect(find.textContaining('1 photo · '), findsOneWidget);
   });
 
-  testWidgets('Done hands off instead of dropping the tiles itself',
+  testWidgets('closing a finished sheet hands off instead of dropping tiles',
       (tester) async {
     final dismissed = <String>[];
     final id = model.startBatch(albumId: _album, sources: pick(1));
@@ -104,24 +104,27 @@ void main() {
         ChangeNotifierProvider<AppState>(create: (_) => AppState()),
       ],
       child: MaterialApp(
-        home: Scaffold(
-          body: UploadSheet(
-            batchId: id,
-            onDismiss: (b) async => dismissed.add(b),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => UploadSheet.show(context,
+                  batchId: id, onDismiss: (b) async => dismissed.add(b)),
+              child: const Text('open'),
+            ),
           ),
         ),
       ),
     ));
+    await tester.tap(find.text('open'));
     await tester.pump();
-
-    await tester.tap(find.text('Done'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pumpAndSettle();
 
     expect(dismissed, [id]);
     expect(model.state.batch(id), isNotNull);
   });
 
-  testWidgets('Done is withheld while a retry is still on offer',
+  testWidgets('a retry on offer keeps the sheet open without the check',
       (tester) async {
     uploader.failStage('putFile',
         const UploadStageException(UploadFailureKind.transport, 'reset'),
@@ -131,7 +134,7 @@ void main() {
     await pumpSheet(tester, id);
 
     expect(find.text('Try again'), findsOneWidget);
-    expect(find.text('Done'), findsNothing);
+    expect(find.byIcon(Icons.check_rounded), findsNothing);
     expect(find.text('Remove them'), findsOneWidget);
   });
 
@@ -161,6 +164,44 @@ void main() {
 
     expect(find.text('1 photo couldn’t be opened.'), findsOneWidget);
     expect(find.text('Try again'), findsNothing);
+  });
+
+  testWidgets('a skipped photo keeps the sheet open, and closing it hands off',
+      (tester) async {
+    preparer.failWith = const UploadStageException(
+        UploadFailureKind.unprocessable, 'undecodable');
+    final dismissed = <String>[];
+    final id = model.startBatch(albumId: _album, sources: pick(1));
+    await tester.pump(Duration.zero);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<UploadQueueModel>.value(value: model),
+        ChangeNotifierProvider<AppState>(create: (_) => AppState()),
+      ],
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => UploadSheet.show(context,
+                  batchId: id, onDismiss: (b) async => dismissed.add(b)),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pumpAndSettle();
+    expect(find.byType(UploadSheet), findsOneWidget,
+        reason: 'the user has to read why a photo was skipped');
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(UploadSheet), findsNothing);
+    expect(dismissed, [id], reason: 'without Done, closing is the hand off');
   });
 
   testWidgets('the title names the album once its title has decrypted',

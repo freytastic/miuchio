@@ -9,7 +9,6 @@ import 'package:provider/provider.dart';
 
 import 'pressable_scale.dart';
 import 'upload_copy.dart';
-import 'warm_button.dart';
 
 // Closing the sheet does not cancel its app scoped queue
 class UploadSheet extends StatefulWidget {
@@ -43,7 +42,16 @@ class UploadSheet extends StatefulWidget {
       ),
       builder: (_) => UploadSheet(
           batchId: batchId, onPickMore: onPickMore, onDismiss: onDismiss),
-    ).whenComplete(() => model.endPresenting(batchId));
+    ).whenComplete(() {
+      model.endPresenting(batchId);
+      // Any close of a finished batch with nothing left to retry does what
+      // Done did, so a swipe down cannot strand its overlays
+      final b = model.state.batch(batchId);
+      if (b != null && b.settled && b.retryableCount == 0) {
+        model.requestDismiss(batchId);
+        if (onDismiss != null) unawaited(onDismiss(batchId));
+      }
+    });
   }
 
   @override
@@ -55,6 +63,7 @@ class _UploadSheetState extends State<UploadSheet> {
   bool _busy = false;
   bool _closing = false;
   bool _closeArmed = false;
+  Timer? _autoClose;
 
   @override
   void didChangeDependencies() {
@@ -68,6 +77,7 @@ class _UploadSheetState extends State<UploadSheet> {
 
   @override
   void dispose() {
+    _autoClose?.cancel();
     _model?.endPresenting(widget.batchId);
     super.dispose();
   }
@@ -120,6 +130,15 @@ class _UploadSheetState extends State<UploadSheet> {
 
     final unprocessable = batch.unprocessableCount;
     final retryable = batch.retryableCount;
+    // Nothing to act on, so the check is the confirmation and the sheet
+    // leaves by itself
+    final allAdded = batch.settled &&
+        batch.doneCount > 0 &&
+        retryable == 0 &&
+        unprocessable == 0;
+    if (allAdded) {
+      _autoClose ??= Timer(const Duration(milliseconds: 1200), _close);
+    }
 
     return SafeArea(
       child: Padding(
@@ -139,7 +158,18 @@ class _UploadSheetState extends State<UploadSheet> {
               ),
             ),
             const SizedBox(height: 18),
-            Text(sheetTitle(batch, albumName), style: Warm.sheetTitle),
+            Row(
+              children: [
+                if (allAdded) ...[
+                  const Icon(Icons.check_rounded, size: 22, color: Warm.cta),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: Text(sheetTitle(batch, albumName),
+                      style: Warm.sheetTitle),
+                ),
+              ],
+            ),
             const SizedBox(height: 18),
             _Track(value: batch.fraction),
             const SizedBox(height: 10),
@@ -174,23 +204,6 @@ class _UploadSheetState extends State<UploadSheet> {
                 onSecondary: _busy
                     ? null
                     : () => _guarded(() => model.removeFailed(batchId)),
-              ),
-            ],
-            // Done would discard sources still needed for retry
-            if (batch.settled && retryable == 0) ...[
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: WarmButton(
-                  label: 'Done',
-                  // Keep overlays until the album listing replaces them
-                  onTap: () {
-                    model.requestDismiss(batchId);
-                    final refresh = widget.onDismiss;
-                    if (refresh != null) unawaited(refresh(batchId));
-                    _close();
-                  },
-                ),
               ),
             ],
           ],
