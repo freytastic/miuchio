@@ -31,13 +31,13 @@ part 'onboarding_parts.dart';
 const int _kOtpLength = 6;
 final RegExp _kEmailRe = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 
-const double _kTrustMarkExtent = 14;
-const double _kCompactTrustGap = 12;
+// Air above the headline that keeps the hero and copy in place
+const double _kCopyLead = 34;
+const double _kCompactCopyLead = 26;
 const double _kCompactEmailCopyBox = 64;
 const double _kCompactOtpCopyBox = 88;
 const double _kCompactFootExtent = 148;
 const double _kCompactContentGap = 8;
-const double _kTrustGap = 20;
 const double _kCopyBox = 168;
 const double _kDotsExtent = 6;
 const double _kDotsGap = 22;
@@ -388,7 +388,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final compactCopyBox =
         _phase == _Phase.otp ? _kCompactOtpCopyBox : _kCompactEmailCopyBox;
     final compactCopyExtent =
-        _kTrustMarkExtent + _kCompactTrustGap + compactCopyBox;
+        _kCompactCopyLead + compactCopyBox;
     final compactFootBottom = keyboard + 20;
     final compactFootTop =
         size.height - compactFootBottom - _kCompactFootExtent;
@@ -422,8 +422,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       topInset + size.height * Warm.topAir,
       footTop -
           _kFootClearance -
-          _kTrustMarkExtent -
-          _kTrustGap -
+          _kCopyLead -
           copyBody,
     );
     final stageScale = CameraStage.scaleToFit(
@@ -486,7 +485,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: AnimatedOpacity(
                     opacity: onIntro && !keyboardOpen ? 1 : 0,
                     duration: Warm.quick,
-                    child: Text('Beta 1.0',
+                    child: Text('End-to-end encrypted · Beta 1.0',
                         textAlign: TextAlign.center, style: Warm.footMark),
                   ),
                 ),

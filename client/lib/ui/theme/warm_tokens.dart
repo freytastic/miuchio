@@ -290,13 +290,6 @@ abstract class Warm {
     color: inkSoft,
   );
 
-  static const TextStyle trustMark = TextStyle(
-    fontSize: 11,
-    fontWeight: FontWeight.w600,
-    letterSpacing: 0.88,
-    color: inkFaint,
-  );
-
   static const TextStyle input = TextStyle(
     fontSize: 17,
     fontWeight: FontWeight.w500,
