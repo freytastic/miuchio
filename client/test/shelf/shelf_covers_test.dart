@@ -211,6 +211,37 @@ void main() {
         reason: 'plaintext must not come back after the wipe');
   });
 
+  test('a key landing mid failure requeues the cover, and its own key loads it',
+      () async {
+    final c = await _realCover();
+    final store = MockSecureKeyStore();
+    await store.initialize();
+    final aks = AlbumKeyStore(store);
+    await aks.initialize();
+    api.cipher = c.cipher;
+    api.gate = Completer<void>();
+    final waiting = ShelfCoversImpl(
+        sealedCache: l2, cache: _manager(l2, api, aks));
+
+    waiting.ensureCover(_realAlbumId, [c.preview]);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    // Lands before the cover is in the failed set
+    await aks.install(_albumIdBytes, 1, Uint8List(32));
+    api.gate!.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final thumbFetches =
+        api.downloads.where((d) => d == '${c.preview.mediaId}:thumb').length;
+    expect(thumbFetches, 2, reason: 'the in flight load must try again');
+    expect(waiting.bytes(_realAlbumId, 0), isNull);
+
+    await aks.install(
+        _albumIdBytes, 0, Uint8List.fromList(List<int>.filled(32, 0x42)));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(waiting.bytes(_realAlbumId, 0), isNotNull,
+        reason: 'the cover heals without a resume');
+  });
+
   group('with a cover that really decrypts', () {
     late PreviewMedia real;
     late ShelfCoversImpl live;

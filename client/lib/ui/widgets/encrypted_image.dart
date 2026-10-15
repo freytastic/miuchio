@@ -7,6 +7,7 @@ import 'package:miuchio/e2ee/file_decryptor.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 
 import 'decrypted_image_preview.dart';
+import 'missing_key_retry.dart';
 
 // Decrypts fully before rendering so tampered files never reach the screen
 
@@ -36,7 +37,8 @@ class EncryptedImage extends StatefulWidget {
   State<EncryptedImage> createState() => _EncryptedImageState();
 }
 
-class _EncryptedImageState extends State<EncryptedImage> {
+class _EncryptedImageState extends State<EncryptedImage>
+    with MissingKeyRetry<EncryptedImage> {
   Uint8List? _bytes;
   String? _error;
   bool _loading = true;
@@ -56,6 +58,7 @@ class _EncryptedImageState extends State<EncryptedImage> {
   void didUpdateWidget(covariant EncryptedImage old) {
     super.didUpdateWidget(old);
     if (old.record.id != widget.record.id || old.traceId != widget.traceId) {
+      stopWaitingForKey();
       _toFrameSpan?.fail('record_changed_before_frame');
       _toFrameSpan = null;
       _bytes = null;
@@ -72,6 +75,7 @@ class _EncryptedImageState extends State<EncryptedImage> {
 
   Future<void> _decrypt() async {
     final requestedId = widget.record.id;
+    final keyGen = widget.cache.keyGeneration(widget.record.albumId);
     _toFrameSpan = Trace.start('media.fullImageToFrame',
         traceId: _resolvedTraceId,
         fields: {
@@ -89,6 +93,7 @@ class _EncryptedImageState extends State<EncryptedImage> {
       if (!mounted || widget.record.id != requestedId) return;
       setState(() {
         _bytes = pt;
+        _error = null;
         _loading = false;
       });
       if (preview != null) {
@@ -101,6 +106,14 @@ class _EncryptedImageState extends State<EncryptedImage> {
       _toFrameSpan?.fail(e.reason);
       _toFrameSpan = null;
       if (!mounted) return;
+      if (e.reason == 'no_mk') {
+        waitForKey(widget.cache, widget.record.albumId, keyGen, _decrypt,
+            () => setState(() {
+                  _error = e.reason;
+                  _loading = false;
+                }));
+        return;
+      }
       setState(() {
         _error = e.reason;
         _loading = false;

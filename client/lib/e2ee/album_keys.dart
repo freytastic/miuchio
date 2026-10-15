@@ -15,6 +15,12 @@ class AlbumKeyStore {
 
   AlbumKeyStore(this._store);
 
+  // Per epoch, not per sync, so a landed key opens its photos even when a
+  // later epoch fails. Sync so generations are current when a sync returns
+  final StreamController<Uint8List> _installed =
+      StreamController<Uint8List>.broadcast(sync: true);
+  Stream<Uint8List> get installed => _installed.stream;
+
   Future<void> initialize() {
     return _initFuture ??= _rebuildPresence().catchError((Object e) {
       _initFuture = null;
@@ -58,6 +64,7 @@ class AlbumKeyStore {
     final label = '$kAlbumLabelPrefix$hex.mk.$epoch';
     final h = await _store.put(label, mk);
     _present.putIfAbsent(hex, () => {})[epoch] = h;
+    _installed.add(albumId);
   }
 
   // Reinstalling an epoch requires identical key bytes

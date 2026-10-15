@@ -8,6 +8,7 @@ import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/widgets/encrypted_image.dart';
 
 import 'decrypted_image_preview.dart';
+import 'missing_key_retry.dart';
 
 // Uses the encrypted full file only when no thumbnail exists
 
@@ -42,7 +43,8 @@ class EncryptedThumbnail extends StatefulWidget {
   State<EncryptedThumbnail> createState() => _EncryptedThumbnailState();
 }
 
-class _EncryptedThumbnailState extends State<EncryptedThumbnail> {
+class _EncryptedThumbnailState extends State<EncryptedThumbnail>
+    with MissingKeyRetry<EncryptedThumbnail> {
   Uint8List? _bytes;
   String? _error;
   bool _loading = true;
@@ -66,6 +68,7 @@ class _EncryptedThumbnailState extends State<EncryptedThumbnail> {
   void didUpdateWidget(covariant EncryptedThumbnail old) {
     super.didUpdateWidget(old);
     if (old.record.id != widget.record.id || old.traceId != widget.traceId) {
+      stopWaitingForKey();
       _toFrameSpan?.fail('record_changed_before_frame');
       _toFrameSpan = null;
       _bytes = null;
@@ -82,6 +85,7 @@ class _EncryptedThumbnailState extends State<EncryptedThumbnail> {
 
   Future<void> _decrypt() async {
     final requestedId = widget.record.id;
+    final keyGen = widget.cache.keyGeneration(widget.record.albumId);
     _toFrameSpan = Trace.start('media.thumbnailToFrame',
         traceId: _resolvedTraceId,
         fields: {
@@ -99,6 +103,7 @@ class _EncryptedThumbnailState extends State<EncryptedThumbnail> {
       if (!mounted || widget.record.id != requestedId) return;
       setState(() {
         _bytes = pt;
+        _error = null;
         _loading = false;
       });
       if (preview != null) {
@@ -111,6 +116,14 @@ class _EncryptedThumbnailState extends State<EncryptedThumbnail> {
       _toFrameSpan?.fail(e.reason);
       _toFrameSpan = null;
       if (!mounted) return;
+      if (e.reason == 'no_mk') {
+        waitForKey(widget.cache, widget.record.albumId, keyGen, _decrypt,
+            () => setState(() {
+                  _error = e.reason;
+                  _loading = false;
+                }));
+        return;
+      }
       setState(() {
         _error = e.reason;
         _loading = false;

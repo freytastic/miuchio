@@ -322,6 +322,9 @@ class _CountingAks implements AlbumKeyStore {
   }
 
   @override
+  Stream<Uint8List> get installed => _inner.installed;
+
+  @override
   Future<int> latestEpoch(Uint8List albumId) => _inner.latestEpoch(albumId);
 
   @override

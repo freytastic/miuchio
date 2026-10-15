@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:miuchio/data/models/album_summary.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/media_sealed_cache.dart';
+import 'package:miuchio/e2ee/file_decryptor.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/shelf/shelf_data.dart';
 
@@ -34,12 +35,29 @@ class ShelfCoversImpl extends ChangeNotifier implements ShelfCovers {
 
   bool _suspended = false;
   bool _closed = false;
+  late final StreamSubscription<String> _keySub;
 
   ShelfCoversImpl({
     required MediaSealedCache sealedCache,
     required MediaCacheManager cache,
   })  : _l2 = sealedCache,
-        _cache = cache;
+        _cache = cache {
+    _keySub = cache.keysInstalled.listen(_retryAfterKeys);
+  }
+
+  // Covers that failed on a missing key retry when their album's keys land
+  void _retryAfterKeys(String albumId) {
+    if (_closed || _suspended) return;
+    for (final entry in _preview.entries) {
+      if (entry.key.toLowerCase() != albumId) continue;
+      var cleared = false;
+      for (final p in entry.value) {
+        if (_failed.remove(p.mediaId)) cleared = true;
+      }
+      // Riffle slots reload on their next request, as after resume
+      if (cleared) _want(entry.key, entry.value, 0);
+    }
+  }
 
   @override
   Uint8List? bytes(String albumId, int slot) {
@@ -148,6 +166,10 @@ class ShelfCoversImpl extends ChangeNotifier implements ShelfCovers {
   }
 
   Future<void> _load(String albumId, PreviewMedia p, int epoch) async {
+    // A key landing mid failure finds nothing in _failed to clear, so the
+    // load requeues itself when the generation moved
+    final keyGen = _cache.keyGeneration(albumId);
+    var again = false;
     try {
       if (_stale(albumId, epoch)) return;
 
@@ -158,10 +180,21 @@ class ShelfCoversImpl extends ChangeNotifier implements ShelfCovers {
       if (_suspended || _closed) return;
       _bytes[p.mediaId] = plaintext;
       notifyListeners();
-    } catch (_) {
-      if (_current(albumId, p.mediaId, epoch)) _failed.add(p.mediaId);
+    } catch (e) {
+      if (_current(albumId, p.mediaId, epoch)) {
+        if (e is FileDecryptError &&
+            e.reason == 'no_mk' &&
+            _cache.keyGeneration(albumId) != keyGen) {
+          again = true;
+        } else {
+          _failed.add(p.mediaId);
+        }
+      }
     } finally {
       _inflight.remove(p.mediaId);
+    }
+    if (again && !_closed && !_suspended && _inflight.add(p.mediaId)) {
+      _enqueue(() => _track(albumId, _load(albumId, p, epoch)));
     }
   }
 
@@ -209,6 +242,7 @@ class ShelfCoversImpl extends ChangeNotifier implements ShelfCovers {
   // Refuse wipe success until active loads finish and cover bytes are zeroed
   Future<void> shutdown({Duration wait = const Duration(seconds: 20)}) async {
     _closed = true;
+    unawaited(_keySub.cancel());
     _queue.clear();
     try {
       final albums = {..._preview.keys, ..._owned.keys, ..._active.keys};

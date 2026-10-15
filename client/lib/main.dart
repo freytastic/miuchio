@@ -14,6 +14,7 @@ import 'package:miuchio/app/album_wipe.dart';
 import 'package:miuchio/app/app.dart';
 import 'package:miuchio/app/avatar_wiring.dart';
 import 'package:miuchio/app/device_wipe.dart';
+import 'package:miuchio/app/key_recovery.dart';
 import 'package:miuchio/app/name_resolvers.dart';
 import 'package:miuchio/app/realtime_router.dart';
 import 'package:miuchio/app/sign_in_wiring.dart';
@@ -384,6 +385,17 @@ void main() async {
     if (cur == null) return;
     await epochProcessor.handleEvent(albumId: albumId, epoch: cur.currentEpoch);
   }
+
+  final keyRecovery = KeyRecovery(
+    catchUp: (albumId) {
+      final bytes = uuidToBytes(albumId);
+      if (bytes == null) throw ArgumentError.value(albumId, 'albumId');
+      return epochProcessor.catchUp(bytes);
+    },
+    generation: mediaCacheManager.keyGeneration,
+    onGaveUp: mediaCacheManager.notifyKeySyncFailed,
+  );
+  mediaCacheManager.onMissingKey = keyRecovery.request;
 
   late final AlbumWipe wipeLocalAlbum;
 
