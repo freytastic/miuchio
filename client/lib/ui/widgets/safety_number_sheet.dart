@@ -85,16 +85,25 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
           "both phones. You can't undo this.",
           style: Warm.pageSoft.copyWith(color: Warm.inkSoft),
         ),
-        actionsAlignment: MainAxisAlignment.end,
+        // The default inset is too narrow for both labels on one line, and
+        // the dialog then stacks the pair unevenly
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         actions: [
-          WarmTextButton(
-            label: "They didn't",
-            onTap: () => Navigator.of(ctx).pop(false),
-          ),
-          WarmButton(
-            label: 'They matched',
-            small: true,
-            onTap: () => Navigator.of(ctx).pop(true),
+          Row(
+            children: [
+              WarmTextButton(
+                label: "They didn't",
+                onTap: () => Navigator.of(ctx).pop(false),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: WarmButton(
+                  label: 'They matched',
+                  small: true,
+                  onTap: () => Navigator.of(ctx).pop(true),
+                ),
+              ),
+            ],
           ),
         ],
       ),

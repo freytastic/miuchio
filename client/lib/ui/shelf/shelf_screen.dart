@@ -335,15 +335,8 @@ class _FootMark extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 38),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.lock_outline_rounded,
-              size: 11, color: Warm.inkFaint),
-          const SizedBox(width: 5),
-          Text('END-TO-END ENCRYPTED', style: Warm.sectionLabel),
-        ],
-      ),
+      child: Text('Your photos are end-to-end encrypted',
+          textAlign: TextAlign.center, style: Warm.footMark),
     );
   }
 }

@@ -107,7 +107,9 @@ void main() {
 
     expect(model.state.batch(id), isNotNull,
         reason: 'the sheet already owns this batch, even before it builds');
-    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('a settled batch is not swept away under its open sheet',
@@ -121,10 +123,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(model.state.batch(id), isNotNull);
-    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pumpAndSettle();
   });
 
-  testWidgets('closing the sheet releases the batch it was holding',
+  testWidgets('a fully added batch closes its sheet and releases the batch',
       (tester) async {
     uploader.holdFile = Completer<void>();
     final id = model.startBatch(albumId: _album, sources: pick(2));
@@ -134,20 +138,21 @@ void main() {
     uploader.holdFile!.complete();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Done'));
+    await tester.pump(const Duration(milliseconds: 1300));
     await tester.pumpAndSettle();
 
+    expect(find.byType(UploadSheet), findsNothing);
     expect(model.state.batch(id), isNull);
   });
 
-  testWidgets('Done from the pill holds overlays until the records land',
+  testWidgets('closing a finished sheet holds overlays until the records land',
       (tester) async {
     model.observeAlbum(_album);
     final id = model.startBatch(albumId: _album, sources: pick(2));
     await tester.pump(Duration.zero);
     await pumpHost(tester, id);
 
-    await tester.tap(find.text('Done'));
+    await tester.pump(const Duration(milliseconds: 1300));
     await tester.pumpAndSettle();
 
     expect(model.state.batch(id), isNotNull,

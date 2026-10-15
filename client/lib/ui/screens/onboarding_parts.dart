@@ -73,11 +73,7 @@ class _Copy extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(
-          height: _kTrustMarkExtent,
-          child: _TrustMark(),
-        ),
-        SizedBox(height: compact ? _kCompactTrustGap : _kTrustGap),
+        SizedBox(height: compact ? _kCompactCopyLead : _kCopyLead),
         SizedBox(
           height: compact
               ? (phase == _Phase.otp
@@ -103,22 +99,6 @@ class _Copy extends StatelessWidget {
                   ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _TrustMark extends StatelessWidget {
-  const _TrustMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.lock_outline_rounded, size: 12, color: Warm.inkSoft),
-        SizedBox(width: 6),
-        Text('END-TO-END ENCRYPTED', style: Warm.trustMark),
       ],
     );
   }

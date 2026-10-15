@@ -478,22 +478,9 @@ class _Caption extends StatelessWidget {
     );
   }
 
-  static String formatWhen(DateTime at, {DateTime? now}) {
-    final today = now ?? DateTime.now();
-    final days = DateTime(today.year, today.month, today.day)
-        .difference(DateTime(at.year, at.month, at.day))
-        .inDays;
-    if (days == 0) return 'Today';
-    if (days == 1) return 'Yesterday';
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-    if (days < 365 && at.year == today.year) {
-      return '${at.day} ${months[at.month - 1]}';
-    }
-    return '${at.day} ${months[at.month - 1]} ${at.year}';
-  }
+  static String formatWhen(DateTime at, {DateTime? now}) =>
+      formatPhotoDay(at, now: now);
+
 }
 
 class _CaptionDot extends StatelessWidget {
