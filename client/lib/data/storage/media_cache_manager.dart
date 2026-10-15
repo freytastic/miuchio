@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/data/api/api_error.dart';
 import 'package:miuchio/data/api/media_api.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
@@ -29,6 +31,32 @@ class MediaCacheManager {
   final Map<String, int> _albumGen = {};
   bool _closed = false;
 
+  // Missing key tiles wait on these. The generation catches an install that
+  // lands mid attempt
+  final Map<String, int> _keyGen = {};
+  final StreamController<String> _keysInstalled =
+      StreamController<String>.broadcast();
+  final StreamController<String> _keySyncFailed =
+      StreamController<String>.broadcast();
+  late final StreamSubscription<Uint8List> _installSub;
+  Stream<String> get keysInstalled => _keysInstalled.stream;
+  Stream<String> get keySyncFailed => _keySyncFailed.stream;
+  int keyGeneration(String albumId) => _keyGen[albumId.toLowerCase()] ?? 0;
+  // Requests a key sync so a missed realtime event cannot strand tiles
+  void Function(String albumId)? onMissingKey;
+
+  void _onKeyInstalled(Uint8List albumId) {
+    if (_closed) return;
+    final id = uuidFromBytes(albumId).toLowerCase();
+    _keyGen[id] = (_keyGen[id] ?? 0) + 1;
+    _keysInstalled.add(id);
+  }
+
+  // Tiles show the failure but still heal on a later install
+  void notifyKeySyncFailed(String albumId) {
+    if (!_closed) _keySyncFailed.add(albumId.toLowerCase());
+  }
+
   MediaCacheManager({
     required MediaPlaintextCache plaintext,
     required MediaSealedCache ciphertext,
@@ -37,7 +65,9 @@ class MediaCacheManager {
   })  : _l1 = plaintext,
         _l2 = ciphertext,
         _api = api,
-        _aks = aks;
+        _aks = aks {
+    _installSub = aks.installed.listen(_onKeyInstalled);
+  }
 
   // Preview records lack full file wraps and must not replace complete records
   Future<Uint8List> getDecrypted(MediaRecord r,
@@ -179,6 +209,9 @@ class MediaCacheManager {
       return pt;
     } catch (e) {
       span.fail(e is FileDecryptError ? e.reason : e.runtimeType.toString());
+      if (e is FileDecryptError && e.reason == 'no_mk') {
+        onMissingKey?.call(k.albumId);
+      }
       DebugLog.record(DebugEvent.downloadFailed,
           reason: switch (e) {
             FileDecryptError() => e.reason,
@@ -356,6 +389,9 @@ class MediaCacheManager {
   // Drain work that could write plaintext before completing the wipe
   Future<void> shutdown({Duration wait = const Duration(seconds: 20)}) async {
     _closed = true;
+    unawaited(_installSub.cancel());
+    unawaited(_keysInstalled.close());
+    unawaited(_keySyncFailed.close());
     try {
       final running = [
         for (final p in _inflightPt.values) p.f,

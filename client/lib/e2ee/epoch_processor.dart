@@ -163,16 +163,22 @@ class EpochProcessor {
   Future<void> catchUpAll(List<Uint8List> albumIds) async {
     for (final id in albumIds) {
       try {
-        final cur = await _api.getCurrentEpoch(uuidFromBytes(id));
-        if (cur == null) continue;
-        final latest = await _store.latestEpoch(id);
-        if (latest < 0) {
-          // No local MKs means a join whose live event was missed
-          await handleEvent(albumId: id, epoch: cur.currentEpoch, joined: true);
-        } else {
-          await handleEvent(albumId: id, epoch: cur.currentEpoch);
-        }
+        await catchUp(id);
       } catch (_) {}
+    }
+  }
+
+  // Throws on failure so a caller can retry
+  Future<void> catchUp(Uint8List albumId) async {
+    final cur = await _api.getCurrentEpoch(uuidFromBytes(albumId));
+    if (cur == null) return;
+    final latest = await _store.latestEpoch(albumId);
+    if (latest < 0) {
+      // No local MKs means a join whose live event was missed
+      await handleEvent(
+          albumId: albumId, epoch: cur.currentEpoch, joined: true);
+    } else {
+      await handleEvent(albumId: albumId, epoch: cur.currentEpoch);
     }
   }
 
