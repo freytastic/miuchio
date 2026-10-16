@@ -23,6 +23,7 @@ import 'package:miuchio/ui/album/album_info_screen.dart';
 import 'package:miuchio/ui/album/album_menu.dart';
 import 'package:miuchio/ui/album/album_stats.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
+import 'package:miuchio/ui/album/photo_delete.dart';
 import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/album/photo_peek.dart';
 import 'package:miuchio/ui/providers/latest_only.dart';
@@ -179,6 +180,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final removal = context.read<MemberRemovalCoordinator>();
+    final appState = context.read<AppState>();
     if (!await confirmSheet(
       context,
       key: 'album-delete',
@@ -189,9 +191,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     )) {
       return;
     }
+    // Leave at once, the shelf hides the album until the server answers
     _accessLost = true;
+    appState.setDeleting(widget.album.id, true);
+    navigator.pop();
+    messenger.showSnackBar(_note(AlbumCopy.deletingAlbum, brief: true));
     if (!await widget.albumService.deleteAlbum(widget.album.id)) {
-      _accessLost = false;
+      appState.setDeleting(widget.album.id, false);
       messenger.showSnackBar(_note(AlbumCopy.deleteAlbumFailed));
       return;
     }
@@ -200,7 +206,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     } catch (_) {
       // The album is gone on the server, a failed local wipe is retried by cleanup
     }
-    if (mounted) navigator.pop();
+    appState.setDeleting(widget.album.id, false);
   }
 
   Future<void> _removeMember(AlbumMember m, {required bool invited}) async {
@@ -310,7 +316,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         albumId: widget.album.id,
         albumName: _appState?.albumDisplayName(widget.album.id) ?? 'Album',
         createdAt: widget.album.createdAt,
-        stats: AlbumStats.of(_items, peopleCount: people),
+        stats: AlbumStats.of(_visible, peopleCount: people),
         nameOf: (token) => names[token],
         madeBy: owner == null
             ? null
@@ -385,8 +391,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   Future<void> _openViewer(MediaRecord record) async {
     final records = _filterToken == null
-        ? _items
-        : _items.where((r) => r.uploaderToken == _filterToken).toList();
+        ? _visible
+        : _visible.where((r) => r.uploaderToken == _filterToken).toList();
     final index = records.indexWhere((r) => r.id == record.id);
     if (index < 0) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(
@@ -402,29 +408,43 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     ));
   }
 
-  // The viewer handles navigation after deletion
-  Future<bool> _deleteFromViewer(MediaRecord record) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await _media.deleteMedia(widget.album.id, record.id);
-      unawaited(_loadMedia());
-      return true;
-    } catch (_) {
-      messenger.showSnackBar(_note(AlbumCopy.deleteFailed));
-      return false;
-    }
-  }
+  Future<bool> _deleteFromViewer(MediaRecord record) => _deletePhoto(record);
 
   Future<void> _deleteMedia(MediaRecord record) async {
     final navigator = Navigator.of(context);
+    if (navigator.canPop()) navigator.pop();
+    await _deletePhoto(record);
+  }
+
+  // Hidden before the request, so the grid answers at once
+  Future<bool> _deletePhoto(MediaRecord record) async {
     final messenger = ScaffoldMessenger.of(context);
+    MediaCacheManager? cache;
     try {
-      await _media.deleteMedia(widget.album.id, record.id);
-      if (navigator.canPop()) navigator.pop();
-      await _loadMedia();
-    } catch (_) {
+      cache = context.read<MediaCacheManager>();
+    } catch (_) {}
+    final done = deletePhoto(
+      app: context.read<AppState>(),
+      media: _media,
+      cache: cache,
+      albumId: widget.album.id,
+      record: record,
+    );
+    messenger.showSnackBar(_note(AlbumCopy.deletingPhoto, brief: true));
+    if (!await done) {
       messenger.showSnackBar(_note(AlbumCopy.deleteFailed));
+      return false;
     }
+    if (mounted) unawaited(_loadMedia());
+    return true;
+  }
+
+  // Hidden deletes stay in _items, so a refused one returns in album order
+  List<MediaRecord> get _visible {
+    final app = _appState;
+    if (app == null) return _items;
+    final id = widget.album.id;
+    return _items.where((r) => !app.hidesMedia(id, r.id)).toList();
   }
 
   Future<void> _openLocalFirst() async {
@@ -874,7 +894,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       final current = _feedRefresh.commit(token);
       span.end(fields: {'n': items.length, 'stale': !current});
       if (!current) return;
-      // Reconcile only from the complete server listing
+      // Reconcile only from the complete server listing. The catalog refuses
+      // photos already confirmed deleted
       unawaited(_reconcileLocal(items));
       if (!mounted) return;
       final hadRenderableItems = _items.isNotEmpty;
@@ -1023,6 +1044,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           s.rotationFor(id)?.phase,
           s.rotationFor(id)?.failure,
           s.albumDisplayName(id),
+          s.hiddenMediaVersion,
           [
             for (final m in widget.album.memberPreviews)
               s.memberDisplayName(id, m.memberToken) ?? '',
@@ -1040,10 +1062,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final loaded = _members.isNotEmpty;
     final avatars = loaded ? _avatars() : _previewAvatars(state);
     final invited = loaded ? avatars.where((a) => a.pending).length : 0;
+    final visible = _visible;
     final shown = _filterToken == null
-        ? _items
-        : _items.where((r) => r.uploaderToken == _filterToken).toList();
-    final stats = AlbumStats.of(_items,
+        ? visible
+        : visible.where((r) => r.uploaderToken == _filterToken).toList();
+    final stats = AlbumStats.of(visible,
         peopleCount: loaded
             ? avatars.length - invited
             : widget.album.activeMemberCount);
@@ -1159,8 +1182,9 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 }
 
 // Lift snackbars above the foot bar
-SnackBar _note(String text) => SnackBar(
+SnackBar _note(String text, {bool brief = false}) => SnackBar(
       content: Text(text),
+      duration: brief ? const Duration(seconds: 1) : const Duration(seconds: 4),
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, AlbumFoot.clearance),
     );
