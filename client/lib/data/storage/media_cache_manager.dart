@@ -16,19 +16,37 @@ import 'media_cache_key.dart';
 import 'media_plaintext_cache.dart';
 import 'media_sealed_cache.dart';
 
+// A photo the server confirmed deleted, refused even if its fetch had already
+// started
+class MediaDeletedError implements Exception {
+  final String mediaId;
+  const MediaDeletedError(this.mediaId);
+  @override
+  String toString() => 'MediaDeletedError($mediaId)';
+}
+
 class MediaCacheManager {
   final MediaPlaintextCache _l1;
   final MediaSealedCache _l2;
   final MediaApiInterface _api;
   final AlbumKeyStore _aks;
 
-  final Map<MediaCacheKey, ({Future<Uint8List> f, bool preview})>
-      _inflightPt = {};
+  final Map<MediaCacheKey, ({Future<Uint8List> f, bool preview})> _inflightPt =
+      {};
   final Map<MediaCacheKey, Future<Uint8List>> _inflightCt = {};
   // Drain pending writes before deletion so they cannot recreate cached blobs
   final Set<_Write> _writes = {};
   // Album generations prevent older fills from repopulating wiped caches
   final Map<String, int> _albumGen = {};
+  // Confirmed deletions keep late fills out of RAM, the sealed cache guards
+  // its own writes
+  final Set<String> _deleted = {};
+  final StreamController<String> _mediaDeleted =
+      StreamController<String>.broadcast();
+  // Holders of their own plaintext, like shelf covers, drop these
+  Stream<String> get mediaDeleted => _mediaDeleted.stream;
+  final Future<void> Function(String albumId, String mediaId) _saveMark;
+  final List<Duration> _markRetries;
   bool _closed = false;
 
   // Missing key tiles wait on these. The generation catches an install that
@@ -62,17 +80,34 @@ class MediaCacheManager {
     required MediaSealedCache ciphertext,
     required MediaApiInterface api,
     required AlbumKeyStore aks,
+    // Tests swap these to fail the mark and shorten the waits
+    Future<void> Function(String albumId, String mediaId)? saveMark,
+    List<Duration> markRetries = const [
+      Duration(seconds: 2),
+      Duration(seconds: 15),
+      Duration(minutes: 1),
+    ],
   })  : _l1 = plaintext,
         _l2 = ciphertext,
         _api = api,
-        _aks = aks {
+        _aks = aks,
+        _saveMark = saveMark ?? ciphertext.markDeleted,
+        _markRetries = markRetries {
     _installSub = aks.installed.listen(_onKeyInstalled);
   }
 
   // Preview records lack full file wraps and must not replace complete records
   Future<Uint8List> getDecrypted(MediaRecord r,
       {required bool thumb, bool preview = false}) async {
+    final pt = await _getDecrypted(r, thumb: thumb, preview: preview);
+    if (_deleted.contains(r.id)) throw MediaDeletedError(r.id);
+    return pt;
+  }
+
+  Future<Uint8List> _getDecrypted(MediaRecord r,
+      {required bool thumb, required bool preview}) async {
     if (_closed) throw StateError('media cache is shut down');
+    if (_deleted.contains(r.id)) throw MediaDeletedError(r.id);
     final k = MediaCacheKey(
       albumId: r.albumId,
       mediaId: r.id,
@@ -331,7 +366,7 @@ class MediaCacheManager {
   int _genOf(String albumId) => _albumGen[albumId] ?? 0;
 
   bool _writable(MediaCacheKey k, int gen) =>
-      !_closed && gen == _genOf(k.albumId);
+      !_closed && gen == _genOf(k.albumId) && !_deleted.contains(k.mediaId);
 
   // Prevent older fills from writing after an album wipe
   void fence(String albumId) => _albumGen[albumId] = _genOf(albumId) + 1;
@@ -355,10 +390,28 @@ class MediaCacheManager {
   // Wait for writes pending when this call starts
   Future<void> flushWrites() => _settleWrites((_) => true);
 
-  Future<void> invalidate(String mediaId) async {
-    await _settleWrites((k) => k.mediaId == mediaId);
+  // Server confirmed deletions only. A mark that fails to save retries in the
+  // background, without it an offline restart could show the photo again
+  Future<void> markDeleted(String albumId, String mediaId) async {
+    _deleted.add(mediaId);
     _l1.removeByMediaId(mediaId);
-    await _l2.invalidate(mediaId);
+    if (!_closed) _mediaDeleted.add(mediaId);
+    try {
+      await _saveMark(albumId, mediaId);
+    } catch (_) {
+      unawaited(_retryMark(albumId, mediaId));
+    }
+  }
+
+  Future<void> _retryMark(String albumId, String mediaId) async {
+    for (final wait in _markRetries) {
+      await Future<void>.delayed(wait);
+      if (_closed) return;
+      try {
+        await _saveMark(albumId, mediaId);
+        return;
+      } catch (_) {}
+    }
   }
 
   Future<void> clearAlbum(String albumId) async {
@@ -392,6 +445,7 @@ class MediaCacheManager {
     unawaited(_installSub.cancel());
     unawaited(_keysInstalled.close());
     unawaited(_keySyncFailed.close());
+    unawaited(_mediaDeleted.close());
     try {
       final running = [
         for (final p in _inflightPt.values) p.f,

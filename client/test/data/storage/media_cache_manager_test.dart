@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -71,6 +72,7 @@ class _FakeMediaApi implements MediaApiInterface {
   final List<MediaRecord> records = [];
   final Map<String, Uint8List> bytesByUrl = {};
   String? lastRequestedAsset;
+  Completer<void>? gate;
 
   @override
   Future<List<MediaRecord>> listMedia(String albumId) async {
@@ -91,6 +93,7 @@ class _FakeMediaApi implements MediaApiInterface {
   Future<Uint8List> downloadCiphertext(String url,
       {int expectedBytes = 0, Future<String> Function()? refreshUrl}) async {
     downloadCiphertextCalls++;
+    await gate?.future;
     final b = bytesByUrl[url];
     if (b == null) throw StateError('no bytes for $url');
     return b;
@@ -181,7 +184,7 @@ void main() {
   test('a delete during the background write leaves nothing on disk',
       () async {
     await mgr.getDecrypted(record, thumb: false);
-    await mgr.invalidate(record.id);
+    await mgr.markDeleted(record.albumId, record.id);
     await mgr.flushWrites();
     expect(await l2.readBlob(fileKey), isNull);
     expect(l1.get(fileKey), isNull);
@@ -288,11 +291,48 @@ void main() {
     expect(local.single.blobSize, env.blobSize);
   });
 
-  test('invalidate drops both layers', () async {
+  test('a fetch that finishes after the delete is refused', () async {
+    api.gate = Completer<void>();
+    final pending = mgr.getDecrypted(record, thumb: false);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    await mgr.markDeleted(record.albumId, record.id);
+    api.gate!.complete();
+
+    await expectLater(pending, throwsA(isA<MediaDeletedError>()));
+    await mgr.flushWrites();
+    expect(l1.get(fileKey), isNull);
+    expect(await l2.readBlob(fileKey), isNull);
+  });
+
+  test('a delete mark that fails to save is retried', () async {
+    var tries = 0;
+    final retrying = MediaCacheManager(
+      plaintext: l1,
+      ciphertext: l2,
+      api: api,
+      aks: aks,
+      saveMark: (albumId, mediaId) {
+        if (++tries == 1) throw StateError('database busy');
+        return l2.markDeleted(albumId, mediaId);
+      },
+      markRetries: const [Duration.zero],
+    );
+
+    await retrying.markDeleted(record.albumId, record.id);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(tries, 2);
+    await l2.reconcileAlbum(record.albumId, [record]);
+    expect(await l2.listRecordsForAlbum(record.albumId), isEmpty,
+        reason: 'the retried mark keeps a stale listing out');
+  });
+
+  test('a confirmed delete drops both layers', () async {
     l1.put(fileKey, _plain());
     await l2.writeRecord(record);
     await l2.writeBlob(fileKey, _plain());
-    await mgr.invalidate(record.id);
+    await mgr.markDeleted(record.albumId, record.id);
     expect(l1.get(fileKey), isNull);
     expect(await l2.readBlob(fileKey), isNull);
     expect(await l2.readRecord(record.id), isNull);

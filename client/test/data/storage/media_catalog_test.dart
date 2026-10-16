@@ -155,4 +155,70 @@ void main() {
     expect(ids(await cache.listRecordsForAlbum('album-1')), ['a', 'b']);
     expect(ids(await cache.listRecordsForAlbum('album-2')), ['z']);
   });
+
+  group('confirmed deletion', () {
+    MediaCacheKey thumbOf(String id) => MediaCacheKey(
+        albumId: 'album-1', mediaId: id, epochTag: 0, asset: CacheAsset.thumb);
+    File thumbFile(String id) => File('${dir.path}/$id.thumb.kec');
+
+    test('survives a stale listing and a reopen, and takes the files',
+        () async {
+      await cache.reconcileAlbum('album-1', [rec('a'), rec('b')]);
+      await cache.writeBlob(thumbOf('b'), Uint8List.fromList([1, 2, 3]));
+
+      await cache.markDeleted('album-1', 'b');
+      expect(thumbFile('b').existsSync(), isFalse);
+
+      await cache.reconcileAlbum('album-1', [rec('a'), rec('b')]);
+      expect(ids(await cache.listRecordsForAlbum('album-1')), ['a']);
+
+      await cache.close();
+      cache = await MediaSealedCache.open(
+          rootDir: dir, cacheRootKey: Uint8List(32));
+      await cache.reconcileAlbum('album-1', [rec('a'), rec('b')]);
+      expect(ids(await cache.listRecordsForAlbum('album-1')), ['a']);
+    });
+
+    test('a download that lands after the delete leaves nothing behind',
+        () async {
+      await cache.markDeleted('album-1', 'b');
+
+      await cache.writeRecord(rec('b'));
+      await cache.writeRecordIfAbsent(rec('b'));
+      await cache.writeBlob(thumbOf('b'), Uint8List.fromList([1, 2, 3]));
+      await cache.setCovers('album-1', ['b']);
+
+      expect(await cache.listRecordsForAlbum('album-1'), isEmpty);
+      expect(await cache.readBlob(thumbOf('b')), isNull);
+      expect(thumbFile('b').existsSync(), isFalse);
+      expect(await cache.coversFor('album-1'), isEmpty);
+    });
+
+    test('an old mark expires only after its files are cleaned up', () async {
+      await cache.markDeleted('album-1', 'b');
+      thumbFile('b').writeAsBytesSync([1, 2, 3]);
+      File('${thumbFile('b').path}.tmp').writeAsBytesSync([1, 2, 3]);
+
+      await cache.close();
+      cache = await MediaSealedCache.open(
+          rootDir: dir,
+          cacheRootKey: Uint8List(32),
+          now: () => DateTime.now().add(const Duration(days: 31)));
+
+      expect(thumbFile('b').existsSync(), isFalse);
+      expect(File('${thumbFile('b').path}.tmp').existsSync(), isFalse,
+          reason: 'an interrupted write leaves a temp file');
+      await cache.reconcileAlbum('album-1', [rec('b')]);
+      expect(ids(await cache.listRecordsForAlbum('album-1')), ['b'],
+          reason: 'the cleaned mark expired');
+    });
+
+    test('freeing space never hides a photo for good', () async {
+      await cache.reconcileAlbum('album-1', [rec('a')]);
+      await cache.invalidate('a');
+
+      await cache.reconcileAlbum('album-1', [rec('a')]);
+      expect(ids(await cache.listRecordsForAlbum('album-1')), ['a']);
+    });
+  });
 }

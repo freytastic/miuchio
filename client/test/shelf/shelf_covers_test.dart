@@ -359,6 +359,32 @@ void main() {
               'could not reach it');
     });
 
+    test('a confirmed delete takes the cover off the shelf', () async {
+      final mgr = _manager(l2, api, realAks);
+      final shelf = ShelfCoversImpl(sealedCache: l2, cache: mgr);
+      shelf.ensureCover(_realAlbumId, [real]);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(shelf.bytes(_realAlbumId, 0), isNotNull);
+
+      await mgr.markDeleted(_realAlbumId, real.mediaId);
+      expect(shelf.bytes(_realAlbumId, 0), isNull);
+    });
+
+    test('a cover that finishes loading after the delete is not shown',
+        () async {
+      final mgr = _manager(l2, api, realAks);
+      final shelf = ShelfCoversImpl(sealedCache: l2, cache: mgr);
+      api.gate = Completer<void>();
+      shelf.ensureCover(_realAlbumId, [real]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      await mgr.markDeleted(_realAlbumId, real.mediaId);
+      api.gate!.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      expect(shelf.bytes(_realAlbumId, 0), isNull);
+    });
+
     test('suspend drops plaintext the album no longer shows', () async {
       final c2 = await _realCover();
       live.ensureCover(_realAlbumId, [real]);
