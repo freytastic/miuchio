@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 type S3Client struct {
@@ -154,12 +155,25 @@ func (s *S3Client) GetPresignedDownloadURL(ctx context.Context, key string, expi
 	return request.URL, nil
 }
 
-func (s *S3Client) DeleteObject(ctx context.Context, key string) error {
-	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+// DeleteObjects removes up to 1000 keys in one request and returns the keys
+// storage refused. A missing key counts as deleted
+func (s *S3Client) DeleteObjects(ctx context.Context, keys []string) ([]string, error) {
+	ids := make([]types.ObjectIdentifier, len(keys))
+	for i, key := range keys {
+		ids[i] = types.ObjectIdentifier{Key: aws.String(key)}
+	}
+	out, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
+		Delete: &types.Delete{Objects: ids, Quiet: aws.Bool(true)},
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	failed := make([]string, 0, len(out.Errors))
+	for _, e := range out.Errors {
+		failed = append(failed, aws.ToString(e.Key))
+	}
+	return failed, nil
 }
 
 func (s *S3Client) CreateBucketIfNotExists(ctx context.Context) error {
