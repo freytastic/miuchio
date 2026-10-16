@@ -21,11 +21,13 @@ import 'package:miuchio/ui/album/album_foot.dart';
 import 'package:miuchio/ui/album/album_header.dart';
 import 'package:miuchio/ui/album/album_info_screen.dart';
 import 'package:miuchio/ui/album/album_menu.dart';
+import 'package:miuchio/ui/album/album_rename.dart';
 import 'package:miuchio/ui/album/album_stats.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/album/photo_delete.dart';
 import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/album/photo_peek.dart';
+import 'package:miuchio/ui/album/photo_select.dart';
 import 'package:miuchio/ui/providers/latest_only.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/widgets/upload_pill.dart';
@@ -100,6 +102,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   final ScrollController _scroll = ScrollController();
   bool _collapsed = false;
   String? _filterToken;
+  final PhotoSelection _selection = PhotoSelection();
 
   @override
   void initState() {
@@ -131,11 +134,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   Future<void> _openMenu() => AlbumMenu.show(
         context,
-        onSelectPhotos: _notYet,
+        onSelectPhotos: _startSelect,
         onDownloadAlbum: _notYet,
         onAlbumInfo: _openAlbumInfo,
         onPeople: _openPeople,
         onAddSomeone: _viewerIsAdmin ? _openAddMember : null,
+        onRename: _viewerIsAdmin ? _rename : null,
         onLeave: _me == null || _viewerIsAdmin ? null : _leave,
         onDeleteAlbum: _viewerIsAdmin ? _deleteAlbum : null,
       );
@@ -247,7 +251,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         load: () async => _people(),
         onOpen: (p) async {
           final m = _members.where((m) => m.memberToken == p.id).firstOrNull;
-          if (m != null) await _openSafetyNumber(m);
+          if (m != null) await _openPerson(m);
         },
         onAdd: _viewerIsAdmin ? _openAddMember : null,
         onOpenInvited: _viewerIsAdmin
@@ -262,6 +266,32 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             : 'Only the owner can add people.',
       ),
     ));
+  }
+
+  Future<void> _openPerson(AlbumMember m) async {
+    final album = ModalRoute.of(context);
+    final name = _resolvedNames()[m.memberToken];
+    final action = await showPersonSheet(
+      context,
+      face: _face(m.memberToken, name, 46),
+      name: name,
+      owner: m.role == 'admin',
+      canVerify: _peerIk(m) != null,
+      // The creator can't be removed, they delete the album instead
+      canRemove: _viewerIsAdmin && m.role != 'admin',
+    );
+    if (!mounted) return;
+    switch (action) {
+      case PersonAction.photos:
+        Navigator.of(context).popUntil((r) => r == album);
+        setState(() => _filterToken = m.memberToken);
+      case PersonAction.safetyNumber:
+        await _openSafetyNumber(m);
+      case PersonAction.remove:
+        await _removeMember(m, invited: false);
+      case null:
+        break;
+    }
   }
 
   // Everyone but us: our own key has nothing to compare
@@ -295,6 +325,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         size: size,
         style: Warm.acFace.copyWith(fontSize: size * 0.36),
       );
+
+  Future<void> _rename() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final done = await renameAlbum(context,
+        albumId: widget.album.id, albumService: widget.albumService);
+    if (done == false) messenger.showSnackBar(_note(AlbumCopy.renameFailed));
+  }
 
   void _notYet() {
     if (!mounted) return;
@@ -390,9 +427,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 
   Future<void> _openViewer(MediaRecord record) async {
-    final records = _filterToken == null
-        ? _visible
-        : _visible.where((r) => r.uploaderToken == _filterToken).toList();
+    final records = _shown;
     final index = records.indexWhere((r) => r.id == record.id);
     if (index < 0) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(
@@ -409,6 +444,75 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 
   Future<bool> _deleteFromViewer(MediaRecord record) => _deletePhoto(record);
+
+  bool _isMine(MediaRecord r) {
+    final me = widget.album.memberToken;
+    return me != null && r.uploaderToken == me;
+  }
+
+  List<MediaRecord> get _shown => _filterToken == null
+      ? _visible
+      : _visible.where((r) => r.uploaderToken == _filterToken).toList();
+
+  // Photos hidden by a filter or a delete never count
+  (List<MediaRecord>, List<MediaRecord>) _picked(List<MediaRecord> shown) {
+    final picked = [
+      for (final r in shown)
+        if (_selection.contains(r.id)) r
+    ];
+    return (picked, picked.where(_isMine).toList());
+  }
+
+  void _startSelect() {
+    if (_shown.isNotEmpty) _selection.start();
+  }
+
+  // Others' photos in the selection are skipped, never sent to the server
+  Future<void> _deleteSelected(List<MediaRecord> mine, int count) async {
+    final ok = await confirmSheet(
+      context,
+      key: 'select-delete',
+      title: AlbumCopy.deleteManyTitle(count, mine.length),
+      body: AlbumCopy.deleteManyBody(count, mine.length),
+      confirm: AlbumCopy.deleteForEveryone,
+      cancel: AlbumCopy.deleteCancel,
+    );
+    if (!ok || !mounted) return;
+    _selection.end();
+    final app = context.read<AppState>();
+    final messenger = ScaffoldMessenger.of(context);
+    MediaCacheManager? cache;
+    try {
+      cache = context.read<MediaCacheManager>();
+    } catch (_) {}
+    for (final r in mine) {
+      app.hideMedia(widget.album.id, r.id);
+    }
+    messenger.showSnackBar(
+        _note(AlbumCopy.deletingPhotos(mine.length), brief: true));
+    // A few requests at a time, so a large selection doesn't flood the server
+    var next = 0;
+    var failed = 0;
+    Future<void> worker() async {
+      while (next < mine.length) {
+        final done = await deletePhoto(
+          app: app,
+          media: _media,
+          cache: cache,
+          albumId: widget.album.id,
+          record: mine[next++],
+        );
+        if (!done) failed++;
+      }
+    }
+
+    await Future.wait(
+        [for (var i = 0; i < 4 && i < mine.length; i++) worker()]);
+    if (failed > 0) {
+      messenger.showSnackBar(_note(AlbumCopy.deleteManyFailed(failed)));
+    }
+    if (mounted) unawaited(_loadMedia());
+  }
 
   Future<void> _deleteMedia(MediaRecord record) async {
     final navigator = Navigator.of(context);
@@ -654,7 +758,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     if (!mounted) return;
 
     Future<void>? verifying;
-    var remove = false;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Warm.ground,
@@ -667,7 +770,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         state: state,
         subtitle: _appState?.albumDisplayName(widget.album.id),
         face: _face(m.memberToken, _resolvedNames()[m.memberToken], 46),
-        onRemove: _viewerIsAdmin ? () => remove = true : null,
         // Bind verification to the displayed key even if the roster changes
         onVerify: () {
           verifying = () async {
@@ -686,7 +788,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     );
     // The sheet closes before its verification writes finish
     await verifying?.catchError((_) {});
-    if (remove && mounted) await _removeMember(m, invited: false);
   }
 
   Future<void> _retryKeySync() async {
@@ -1031,6 +1132,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     _uploads?.removeListener(_onUploadChange);
     _uploads?.stopObserving(widget.album.id);
     _scroll.dispose();
+    _selection.dispose();
     super.dispose();
   }
 
@@ -1071,103 +1173,126 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             ? avatars.length - invited
             : widget.album.activeMemberCount);
 
-    return Scaffold(
+    final page = Scaffold(
       backgroundColor: Warm.ground,
       body: Stack(
         children: [
-          CustomScrollView(
-            controller: _scroll,
-            slivers: [
-              SliverToBoxAdapter(
-                child: SafeArea(
-                  bottom: false,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _AlbumTopRow(
-                        onBack: () => Navigator.of(context).maybePop(),
-                        onMore: _openMenu,
-                      ),
-                      AlbumHeader(
-                        albumId: widget.album.id,
-                        title: title,
-                        summary: stats.summary(invited: invited),
-                        members: avatars,
-                        filterToken: _filterToken,
-                        filterName: _filterToken == null
-                            ? null
-                            : memberDisplayNames[_filterToken],
-                        filterCount: shown.length,
-                        onTapMember: _toggleFilter,
-                        onClearFilter: () =>
-                            setState(() => _filterToken = null),
-                        onAdd: _viewerIsAdmin ? _openAddMember : null,
-                        onPeople: _openPeople,
-                        folded: _collapsed,
-                      ),
-                    ],
+          PhotoDragSelect(
+            selection: _selection,
+            scroll: _scroll,
+            order: () => [for (final r in _shown) r.id],
+            bottomEdge:
+                AlbumFoot.clearance + MediaQuery.paddingOf(context).bottom,
+            child: CustomScrollView(
+              controller: _scroll,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: SafeArea(
+                    bottom: false,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _AlbumTopRow(
+                          onBack: () => Navigator.of(context).maybePop(),
+                          onMore: _openMenu,
+                        ),
+                        AlbumHeader(
+                          albumId: widget.album.id,
+                          title: title,
+                          summary: stats.summary(invited: invited),
+                          members: avatars,
+                          filterToken: _filterToken,
+                          filterName: _filterToken == null
+                              ? null
+                              : memberDisplayNames[_filterToken],
+                          filterCount: shown.length,
+                          onTapMember: _toggleFilter,
+                          onClearFilter: () =>
+                              setState(() => _filterToken = null),
+                          onAdd: _viewerIsAdmin ? _openAddMember : null,
+                          onPeople: _openPeople,
+                          onRename: _viewerIsAdmin ? _rename : null,
+                          folded: _collapsed,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              if (keyBlock != null)
-                SliverToBoxAdapter(
-                  child: KeyBlockBanner(
-                    block: keyBlock,
-                    onVerify: () => _verifyBlockingSigner(keyBlock),
-                    onRetry: _retryKeySync,
+                if (keyBlock != null)
+                  SliverToBoxAdapter(
+                    child: KeyBlockBanner(
+                      block: keyBlock,
+                      onVerify: () => _verifyBlockingSigner(keyBlock),
+                      onRetry: _retryKeySync,
+                    ),
                   ),
-                ),
-              if (rotation != null && keyBlock == null)
-                SliverToBoxAdapter(
-                  child:
-                      RotationBanner(status: rotation, onRetry: _retryRotation),
-                ),
-              if (_changedKeyMembers.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: KeyChangeBanner(
-                    members: _changedKeyMembers,
-                    nameOf: _memberName,
-                    onTap: _openSafetyNumber,
+                if (rotation != null && keyBlock == null)
+                  SliverToBoxAdapter(
+                    child:
+                        RotationBanner(status: rotation, onRetry: _retryRotation),
                   ),
+                if (_changedKeyMembers.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: KeyChangeBanner(
+                      members: _changedKeyMembers,
+                      nameOf: _memberName,
+                      onTap: _openSafetyNumber,
+                    ),
+                  ),
+                if (syncing && _items.isNotEmpty)
+                  const SliverToBoxAdapter(child: AlbumSyncingBanner()),
+                if (_feed == AlbumFeedState.staleOffline && _items.isNotEmpty)
+                  SliverToBoxAdapter(
+                      child: AlbumStaleBanner(onRetry: () => _loadMedia())),
+                Selector<UploadQueueModel, List<PendingOverlay>>(
+                  selector: (_, queue) => [
+                    for (final o in queue.overlaysFor(widget.album.id))
+                      (id: o.id, mediaId: o.mediaId.value),
+                  ],
+                  shouldRebuild: (a, b) => !listEquals(a, b),
+                  builder: (context, overlays, _) {
+                    if (syncing && _items.isEmpty && overlays.isEmpty) {
+                      return const SliverFillRemaining(
+                          hasScrollBody: false, child: _SyncingPlaceholder());
+                    }
+                    return AlbumMediaGrid(
+                      items: shown,
+                      overlays: _filterToken == null ? overlays : const [],
+                      state: _feed,
+                      onRetry: _loadMedia,
+                      traceId: _openTraceId,
+                      onFirstThumbnailPaint: _onFirstThumbnailPaint,
+                      onPeek: _openPeek,
+                      onOpen: _openViewer,
+                      selection: _selection,
+                    );
+                  },
                 ),
-              if (syncing && _items.isNotEmpty)
-                const SliverToBoxAdapter(child: AlbumSyncingBanner()),
-              if (_feed == AlbumFeedState.staleOffline && _items.isNotEmpty)
-                SliverToBoxAdapter(
-                    child: AlbumStaleBanner(onRetry: () => _loadMedia())),
-              Selector<UploadQueueModel, List<PendingOverlay>>(
-                selector: (_, queue) => [
-                  for (final o in queue.overlaysFor(widget.album.id))
-                    (id: o.id, mediaId: o.mediaId.value),
-                ],
-                shouldRebuild: (a, b) => !listEquals(a, b),
-                builder: (context, overlays, _) {
-                  if (syncing && _items.isEmpty && overlays.isEmpty) {
-                    return const SliverFillRemaining(
-                        hasScrollBody: false, child: _SyncingPlaceholder());
-                  }
-                  return AlbumMediaGrid(
-                    items: shown,
-                    overlays: _filterToken == null ? overlays : const [],
-                    state: _feed,
-                    onRetry: _loadMedia,
-                    traceId: _openTraceId,
-                    onFirstThumbnailPaint: _onFirstThumbnailPaint,
-                    onPeek: _openPeek,
-                    onOpen: _openViewer,
-                  );
-                },
-              ),
-              // Keep the final row above the foot bar
-              const SliverToBoxAdapter(
-                  child: SizedBox(height: AlbumFoot.clearance)),
-            ],
+                // Keep the final row above the foot bar
+                const SliverToBoxAdapter(
+                    child: SizedBox(height: AlbumFoot.clearance)),
+              ],
+            ),
           ),
-          AlbumFoot(
-            onSelect: _notYet,
-            onAdd: (syncing || keyBlock != null) ? null : _pickAndUpload,
-            onDownload: _notYet,
-            pill: const UploadPill(),
+          ListenableBuilder(
+            listenable: _selection,
+            builder: (context, _) {
+              if (!_selection.active) {
+                return AlbumFoot(
+                  onSelect: shown.isEmpty ? null : _selection.start,
+                  onAdd: (syncing || keyBlock != null) ? null : _pickAndUpload,
+                  onDownload: _notYet,
+                  pill: const UploadPill(),
+                );
+              }
+              final (picked, mine) = _picked(shown);
+              return SelectFoot(
+                count: picked.length,
+                mine: mine.length,
+                onDelete: () => _deleteSelected(mine, picked.length),
+                onDownload: _notYet,
+              );
+            },
           ),
           AlbumTopBar(
             title: title,
@@ -1175,8 +1300,36 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             onBack: () => Navigator.of(context).maybePop(),
             onMore: _openMenu,
           ),
+          ListenableBuilder(
+            listenable: _selection,
+            builder: (context, _) {
+              final (picked, mine) = _picked(shown);
+              final all = shown.isNotEmpty && picked.length == shown.length;
+              return SelectTopBar(
+                visible: _selection.active,
+                count: picked.length,
+                mine: mine.length,
+                allSelected: all,
+                onClose: _selection.end,
+                onSelectAll: () => _selection
+                    .replace(all ? const {} : {for (final r in shown) r.id}),
+              );
+            },
+          ),
         ],
       ),
+    );
+    // Back leaves select mode before it leaves the album
+    return ListenableBuilder(
+      listenable: _selection,
+      builder: (context, page) => PopScope(
+        canPop: !_selection.active,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _selection.end();
+        },
+        child: page!,
+      ),
+      child: page,
     );
   }
 }

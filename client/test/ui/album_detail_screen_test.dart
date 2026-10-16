@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +10,7 @@ import 'package:miuchio/data/api/media_api.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/data/models/member_model.dart';
+import 'package:miuchio/data/storage/name_cache.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
@@ -65,8 +69,10 @@ AlbumMember _fakeMember(String token, String role) => AlbumMember(
       profile: MemberProfile(),
     );
 
-Widget _wrap(Widget child, AlbumKeyStore aks) => MultiProvider(
+Widget _wrap(Widget child, AlbumKeyStore aks, {NameCache? names}) =>
+    MultiProvider(
       providers: [
+        if (names != null) Provider<NameCache>.value(value: names),
         ChangeNotifierProvider(create: (_) => AppState()),
         Provider<AlbumKeyStore>.value(value: aks),
         ChangeNotifierProvider<UploadQueueModel>.value(
@@ -284,5 +290,85 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(seen.lastSeen(album.id), 5);
+  });
+
+  Future<NameCache> names(WidgetTester tester) async =>
+      (await tester.runAsync(() async {
+        final dir = await Directory.systemTemp.createTemp('miuchio_names');
+        addTearDown(() => dir.delete(recursive: true));
+        return NameCache.open(
+            file: File('${dir.path}/n.kec'), cacheRootKey: Uint8List(32));
+      }))!;
+
+  // A joined member: a published name, even one this phone can't open yet
+  AlbumMember joined(String token, String role) => AlbumMember(
+        memberToken: token,
+        role: role,
+        revoked: false,
+        joinedAt: DateTime(2024),
+        profile: MemberProfile(nameCt: 'sealed'),
+      );
+
+  for (final (me, admin) in [('alicetoken123', true), ('bobtoken456', false)]) {
+    testWidgets('a person sheet offers removal only to the creator ($me)',
+        (tester) async {
+      final aks = await _emptyAks();
+      await tester.pumpWidget(_wrap(
+        AlbumDetailScreen(
+          album: _fakeAlbum(me: me),
+          albumService: _MockAlbumService([
+            joined('alicetoken123', 'admin'),
+            joined('bobtoken456', 'member'),
+            joined('caroltoken789', 'member'),
+          ]),
+          mediaApi: _StubMediaApi(const []),
+        ),
+        aks,
+        names: await names(tester),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip(AlbumCopy.more).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AlbumCopy.people));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('person-caroltoken789')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('person-photos')), findsOneWidget);
+      expect(find.byKey(const Key('person-safety')), findsOneWidget);
+      expect(find.byKey(const Key('person-remove')),
+          admin ? findsOneWidget : findsNothing);
+    });
+  }
+
+  testWidgets("their photos goes back to the album filtered to them",
+      (tester) async {
+    final aks = await _emptyAks();
+    await tester.pumpWidget(_wrap(
+      AlbumDetailScreen(
+        album: _fakeAlbum(me: 'alicetoken123'),
+        albumService: _MockAlbumService([
+          joined('alicetoken123', 'admin'),
+          joined('bobtoken456', 'member'),
+        ]),
+        mediaApi: _StubMediaApi(const []),
+      ),
+      aks,
+      names: await names(tester),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip(AlbumCopy.more).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AlbumCopy.people));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('person-bobtoken456')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('person-photos')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PeopleScreen), findsNothing);
+    expect(find.text(AlbumCopy.filteredBy(null, 0)), findsOneWidget);
   });
 }
