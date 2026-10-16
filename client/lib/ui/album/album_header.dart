@@ -17,6 +17,8 @@ class AlbumHeader extends StatelessWidget {
   final VoidCallback onClearFilter;
   final VoidCallback? onAdd;
   final VoidCallback? onPeople;
+  // Only the name itself is the target, never the row around it
+  final VoidCallback? onRename;
   // True once the header has scrolled away, which folds the people row
   final bool folded;
 
@@ -33,6 +35,7 @@ class AlbumHeader extends StatelessWidget {
     this.filterCount = 0,
     this.onAdd,
     this.onPeople,
+    this.onRename,
     this.folded = false,
   });
 
@@ -43,7 +46,18 @@ class AlbumHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: titleStyle),
+          if (onRename == null)
+            Text(title, style: titleStyle)
+          else
+            GestureDetector(
+              key: const Key('album-title'),
+              onTap: onRename,
+              child: Semantics(
+                button: true,
+                hint: AlbumCopy.renameAlbum,
+                child: Text(title, style: titleStyle),
+              ),
+            ),
           const SizedBox(height: 7),
           _Summary(text: summary, onPeople: onPeople),
           if (members.isNotEmpty || onAdd != null) ...[
@@ -216,6 +230,82 @@ class AlbumTopBar extends StatelessWidget {
                 icon: Icons.more_horiz_rounded,
                 tooltip: AlbumCopy.more,
                 onTap: onMore,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Covers the album's own top row while photos are being picked. Solid, so
+// the count and its actions never sit on fading content
+class SelectTopBar extends StatelessWidget {
+  final bool visible;
+  final int count;
+  final int mine;
+  final bool allSelected;
+  final VoidCallback onClose;
+  final VoidCallback onSelectAll;
+
+  const SelectTopBar({
+    super.key,
+    required this.visible,
+    required this.count,
+    required this.mine,
+    required this.allSelected,
+    required this.onClose,
+    required this.onSelectAll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedSlide(
+        offset: visible ? Offset.zero : const Offset(0, -1),
+        duration: Warm.quick,
+        curve: Warm.easeOut,
+        child: Container(
+          height: AlbumTopBar.barHeight + topInset,
+          padding: EdgeInsets.only(left: 12, right: 8, top: topInset),
+          decoration: const BoxDecoration(
+            color: Warm.paper,
+            border: Border(bottom: BorderSide(color: Warm.inkGhost)),
+          ),
+          child: Row(
+            children: [
+              AlbumIconButton(
+                key: const Key('select-close'),
+                icon: Icons.close_rounded,
+                tooltip: AlbumCopy.selectClose,
+                onTap: onClose,
+              ),
+              Expanded(
+                child: Text(
+                  AlbumCopy.selectedCount(count, mine),
+                  key: const Key('select-count'),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Warm.ink),
+                ),
+              ),
+              PressableScale(
+                key: const Key('select-all'),
+                onTap: onSelectAll,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  child: Text(
+                    allSelected ? AlbumCopy.selectNone : AlbumCopy.selectAll,
+                    style: Warm.acBtnQuiet.copyWith(color: Warm.cta),
+                  ),
+                ),
               ),
             ],
           ),

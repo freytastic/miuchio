@@ -255,6 +255,12 @@ class _ShelfCardState extends State<_ShelfCard> {
         final people =
             context.findAncestorWidgetOfExactType<ShelfScreen>()?.onOpenPeople;
         await people?.call(widget.album);
+      case ShelfPeekAction.rename:
+        final messenger = ScaffoldMessenger.of(context);
+        if (await renameAlbum(context, albumId: widget.album.id) == false) {
+          messenger.showSnackBar(
+              const SnackBar(content: Text(AlbumCopy.renameFailed)));
+        }
       case null:
         break;
     }

@@ -18,8 +18,6 @@ class SafetyNumberSheet extends StatefulWidget {
   // Fired only after the user confirms every digit. There is no way to accept
   // without comparing because verification also grants signer authority
   final VoidCallback onVerify;
-  // Album owners only
-  final VoidCallback? onRemove;
 
   const SafetyNumberSheet({
     super.key,
@@ -29,7 +27,6 @@ class SafetyNumberSheet extends StatefulWidget {
     required this.onVerify,
     this.subtitle,
     this.face,
-    this.onRemove,
   });
 
   @override
@@ -226,19 +223,6 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
                 child: WarmTextButton(
                   label: _why ? 'Hide' : 'Why compare?',
                   onTap: () => setState(() => _why = !_why),
-                ),
-              ),
-            ],
-            if (widget.onRemove != null) ...[
-              SizedBox(height: verified ? 22 : 4),
-              Center(
-                child: WarmTextButton(
-                  label: 'Remove from album',
-                  color: Warm.warn,
-                  onTap: () {
-                    Navigator.of(context).maybePop();
-                    widget.onRemove!();
-                  },
                 ),
               ),
             ],

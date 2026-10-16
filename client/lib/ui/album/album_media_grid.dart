@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/ui/album/photo_hold.dart';
+import 'package:miuchio/ui/album/photo_select.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/widgets/upload_tile.dart';
 import 'package:miuchio/e2ee/media_record.dart';
@@ -32,6 +33,7 @@ class AlbumMediaGrid extends StatelessWidget {
   final void Function(MediaRecord record, DecryptedImagePreview preview,
       ImageProvider onScreen) onPeek;
   final void Function(MediaRecord record) onOpen;
+  final PhotoSelection selection;
 
   const AlbumMediaGrid({
     super.key,
@@ -43,6 +45,7 @@ class AlbumMediaGrid extends StatelessWidget {
     required this.onFirstThumbnailPaint,
     required this.onPeek,
     required this.onOpen,
+    required this.selection,
   });
 
   @override
@@ -103,6 +106,7 @@ class AlbumMediaGrid extends StatelessWidget {
             onFirstThumbnailPaint: onFirstThumbnailPaint,
             onPeek: onPeek,
             onOpen: onOpen,
+            selection: selection,
           );
         },
         childCount: pending.length + items.length,
@@ -121,6 +125,7 @@ class _MediaTile extends StatefulWidget {
   final void Function(MediaRecord record, DecryptedImagePreview preview,
       ImageProvider onScreen) onPeek;
   final void Function(MediaRecord record) onOpen;
+  final PhotoSelection selection;
 
   const _MediaTile({
     super.key,
@@ -130,6 +135,7 @@ class _MediaTile extends StatefulWidget {
     required this.onFirstThumbnailPaint,
     required this.onPeek,
     required this.onOpen,
+    required this.selection,
   });
 
   @override
@@ -161,21 +167,56 @@ class _MediaTileState extends State<_MediaTile> {
     );
   }
 
+  void _tap() {
+    final selection = widget.selection;
+    if (selection.active) {
+      selection.toggle(widget.record.id);
+    } else {
+      widget.onOpen(widget.record);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     PerfProbe.count('tile');
-    return PhotoHold(
-      onStart: _openPeek,
-      child: GestureDetector(
-        onTap: () => widget.onOpen(widget.record),
-        child: ColoredBox(
-          color: Warm.wellEmpty,
-          child: EncryptedThumbnail(
-            record: widget.record,
-            cache: widget.cache,
-            traceId: widget.traceId,
-            onFirstFrame: widget.onFirstThumbnailPaint,
-            onReady: _rememberPreview,
+    final selection = widget.selection;
+    final id = widget.record.id;
+    return MetaData(
+      metaData: PhotoMark(id),
+      behavior: HitTestBehavior.translucent,
+      child: PhotoHold(
+        onStart: _openPeek,
+        child: GestureDetector(
+          onTap: _tap,
+          // Only the mark and scale follow the selection, never the thumbnail
+          child: ListenableBuilder(
+            listenable: selection,
+            builder: (context, thumb) {
+              final on = selection.active && selection.contains(id);
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  AnimatedScale(
+                    scale: on ? 0.88 : 1,
+                    duration: Warm.quick,
+                    curve: Warm.easeOut,
+                    child: thumb,
+                  ),
+                  if (selection.active)
+                    Positioned(top: 6, right: 6, child: SelectMark(on: on)),
+                ],
+              );
+            },
+            child: ColoredBox(
+              color: Warm.wellEmpty,
+              child: EncryptedThumbnail(
+                record: widget.record,
+                cache: widget.cache,
+                traceId: widget.traceId,
+                onFirstFrame: widget.onFirstThumbnailPaint,
+                onReady: _rememberPreview,
+              ),
+            ),
           ),
         ),
       ),

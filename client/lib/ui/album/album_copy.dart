@@ -7,6 +7,47 @@ abstract final class AlbumCopy {
   static const addPhotos = 'Add photos';
 
   static const selectPhotos = 'Select photos';
+  static const selectAll = 'Select all';
+  static const selectNone = 'Clear';
+  static const selectClose = 'Stop selecting';
+
+  static String selectedCount(int count, int mine) {
+    if (count == 0) return selectPhotos;
+    if (mine == count) return '$count selected';
+    if (mine == 0) return '$count selected · none yours';
+    return '$count selected · $mine yours';
+  }
+
+  static String deleteSelected(int count, int mine) {
+    if (mine == 0) return 'Delete';
+    if (mine == count) return 'Delete $mine';
+    return 'Delete $mine of $count';
+  }
+
+  static String deleteManyTitle(int count, int mine) {
+    if (mine == count) {
+      return mine == 1 ? deleteTitle : 'Delete these $mine photos?';
+    }
+    return mine == 1 ? 'Delete your 1 photo?' : 'Delete your $mine photos?';
+  }
+
+  static String deleteManyBody(int count, int mine) {
+    final gone = mine == 1
+        ? "It's deleted for everyone."
+        : "They're deleted for everyone.";
+    final others = count - mine;
+    final kept = others == 0
+        ? ''
+        : others == 1
+            ? " The other one isn't yours, so it stays."
+            : " The other $others aren't yours, so they stay.";
+    return "$gone$kept This can't be undone.";
+  }
+
+  static String deletingPhotos(int n) =>
+      n == 1 ? deletingPhoto : 'Deleting $n photos for everyone';
+  static String deleteManyFailed(int n) =>
+      n == 1 ? deleteFailed : "Couldn't delete $n photos.";
   static const downloadAlbum = 'Download album';
   static const people = 'People';
   static const albumInfo = 'Album info';
@@ -106,6 +147,14 @@ abstract final class AlbumCopy {
   static const privateNote = 'Only people in this album can see it. Location '
       'and camera details were removed.';
 
+  static const renameAlbum = 'Rename album';
+  static const renameSave = 'Save';
+  static const renameCancel = 'Cancel';
+  static const renameHint = 'Album name';
+  static const renameFailed = "Couldn't rename the album. Try again.";
+  // Matches the limit when an album is made
+  static const nameMax = 38;
+
   static const leaveAlbum = 'Leave album';
   static const leaveTitle = 'Leave this album?';
   static const leaveBody = 'It disappears from this phone and you need a new '
@@ -121,6 +170,8 @@ abstract final class AlbumCopy {
   static const deletingAlbum = 'Deleting the album for everyone';
 
   static const removeFromAlbum = 'Remove from album';
+  static const safetyNumber = 'Safety number';
+  static const madeThisAlbum = 'Made this album';
   static String removeTitle(String name) => 'Remove $name?';
   static const removeBody = 'The album disappears from their phone and they '
       "can't see anything added after now. The photos they added stay.";

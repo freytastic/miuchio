@@ -13,6 +13,7 @@ class AlbumMenu extends StatelessWidget {
   final VoidCallback? onPeople;
   // Null unless the viewer may invite
   final VoidCallback? onAddSomeone;
+  final VoidCallback? onRename;
   // Owners delete, everyone else leaves, so at most one is set
   final VoidCallback? onLeave;
   final VoidCallback? onDeleteAlbum;
@@ -24,6 +25,7 @@ class AlbumMenu extends StatelessWidget {
     required this.onAlbumInfo,
     this.onPeople,
     this.onAddSomeone,
+    this.onRename,
     this.onLeave,
     this.onDeleteAlbum,
   });
@@ -35,6 +37,7 @@ class AlbumMenu extends StatelessWidget {
     required VoidCallback onAlbumInfo,
     VoidCallback? onPeople,
     VoidCallback? onAddSomeone,
+    VoidCallback? onRename,
     VoidCallback? onLeave,
     VoidCallback? onDeleteAlbum,
   }) =>
@@ -49,6 +52,7 @@ class AlbumMenu extends StatelessWidget {
           onAlbumInfo: onAlbumInfo,
           onPeople: onPeople,
           onAddSomeone: onAddSomeone,
+          onRename: onRename,
           onLeave: onLeave,
           onDeleteAlbum: onDeleteAlbum,
         ),
@@ -111,6 +115,11 @@ class AlbumMenu extends StatelessWidget {
                     onPeople == null ? null : () => _pick(context, onPeople!),
               ),
               const MenuSeparator(),
+              if (onRename != null)
+                MenuItem(
+                  label: AlbumCopy.renameAlbum,
+                  onTap: () => _pick(context, onRename!),
+                ),
               MenuItem(
                 label: AlbumCopy.albumInfo,
                 onTap: () => _pick(context, onAlbumInfo),

@@ -15,7 +15,7 @@ typedef PeekPrint = Widget Function({required bool fanned});
 
 const double _degrees = math.pi / 180;
 
-enum ShelfPeekAction { open, people }
+enum ShelfPeekAction { open, people, rename }
 
 class ShelfPeek extends StatefulWidget {
   final AlbumModel album;
@@ -195,6 +195,12 @@ class _ShelfPeekState extends State<ShelfPeek> {
             onTap: () => _leave(ShelfPeekAction.people),
           ),
           const MenuSeparator(),
+          if (widget.album.myRole == 'admin')
+            MenuItem(
+              label: AlbumCopy.renameAlbum,
+              // Stays on the shelf, so the print flies back instead of tucking
+              onTap: () => Navigator.of(context).pop(ShelfPeekAction.rename),
+            ),
           MenuItem(
             label: AlbumCopy.albumInfo,
             icon: Icons.info_outline_rounded,

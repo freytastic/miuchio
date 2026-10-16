@@ -3,6 +3,7 @@ import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
+import 'package:miuchio/ui/widgets/warm_field.dart';
 
 import 'album_copy.dart';
 import 'album_stats.dart';
@@ -97,6 +98,33 @@ Future<bool> confirmSheet(
       ),
     ) ??
     false;
+
+enum PersonAction { photos, safetyNumber, remove }
+
+// Null when dismissed. Remove is left out for anyone who can't use it, while
+// a safety number not yet available stays visible but greyed
+Future<PersonAction?> showPersonSheet(
+  BuildContext context, {
+  required Widget face,
+  required String? name,
+  required bool owner,
+  required bool canVerify,
+  required bool canRemove,
+}) =>
+    _paperSheet<PersonAction>(
+      context,
+      (_) => _PersonSheet(
+        face: face,
+        name: name,
+        owner: owner,
+        canVerify: canVerify,
+        canRemove: canRemove,
+      ),
+    );
+
+// Trimmed new name, or null when dismissed or unchanged
+Future<String?> askAlbumName(BuildContext context, String current) =>
+    _paperSheet<String>(context, (_) => _RenameSheet(current: current));
 
 Future<void> showPhotoDetails(
   BuildContext context, {
@@ -202,6 +230,209 @@ class _ConfirmSheet extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PersonSheet extends StatelessWidget {
+  final Widget face;
+  final String? name;
+  final bool owner;
+  final bool canVerify;
+  final bool canRemove;
+
+  const _PersonSheet({
+    required this.face,
+    required this.name,
+    required this.owner,
+    required this.canVerify,
+    required this.canRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    void pick(PersonAction a) => Navigator.of(context).pop(a);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _Grab(),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                face,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name ?? AlbumCopy.unknownMember,
+                          style: Warm.cardTitle,
+                          overflow: TextOverflow.ellipsis),
+                      if (owner) ...[
+                        const SizedBox(height: 2),
+                        Text(AlbumCopy.madeThisAlbum, style: Warm.meta),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const _Rule(),
+            _PersonRow(
+              key: const Key('person-photos'),
+              label: AlbumCopy.onlyTheirPhotos(name),
+              onTap: () => pick(PersonAction.photos),
+            ),
+            _PersonRow(
+              key: const Key('person-safety'),
+              label: AlbumCopy.safetyNumber,
+              onTap: canVerify ? () => pick(PersonAction.safetyNumber) : null,
+            ),
+            if (canRemove) ...[
+              const _Rule(),
+              _PersonRow(
+                key: const Key('person-remove'),
+                label: AlbumCopy.removeFromAlbum,
+                danger: true,
+                onTap: () => pick(PersonAction.remove),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Rule extends StatelessWidget {
+  const _Rule();
+
+  @override
+  Widget build(BuildContext context) =>
+      Container(height: 1, color: Warm.inkGhost);
+}
+
+class _PersonRow extends StatelessWidget {
+  final String label;
+  final VoidCallback? onTap;
+  final bool danger;
+
+  const _PersonRow({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onTap == null
+        ? Warm.inkFaint
+        : danger
+            ? Warm.warn
+            : Warm.ink;
+    return PressableScale(
+      onTap: onTap,
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(label,
+                  style: Warm.rowTitle.copyWith(color: color),
+                  overflow: TextOverflow.ellipsis),
+            ),
+            if (!danger)
+              Icon(Icons.chevron_right_rounded, size: 20, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RenameSheet extends StatefulWidget {
+  final String current;
+
+  const _RenameSheet({required this.current});
+
+  @override
+  State<_RenameSheet> createState() => _RenameSheetState();
+}
+
+class _RenameSheetState extends State<_RenameSheet> {
+  late final TextEditingController _name = TextEditingController(
+      text: widget.current)
+    ..selection =
+        TextSelection(baseOffset: 0, extentOffset: widget.current.length);
+
+  String get _next => _name.text.trim();
+  bool get _changed => _next.isNotEmpty && _next != widget.current.trim();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (_changed) Navigator.of(context).pop(_next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _Grab(),
+              const SizedBox(height: 20),
+              Text(AlbumCopy.renameAlbum, style: Warm.cardTitle),
+              const SizedBox(height: 16),
+              WarmField(
+                key: const Key('rename-field'),
+                controller: _name,
+                label: AlbumCopy.renameHint,
+                maxLength: AlbumCopy.nameMax,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _save(),
+              ),
+              const SizedBox(height: 18),
+              WarmButton(
+                key: const Key('rename-save'),
+                label: AlbumCopy.renameSave,
+                onTap: _changed ? _save : null,
+              ),
+              const SizedBox(height: 6),
+              PressableScale(
+                onTap: () => Navigator.of(context).pop(),
+                child: SizedBox(
+                  height: 46,
+                  child: Center(
+                    child: Text(AlbumCopy.renameCancel,
+                        style: Warm.acBtnQuiet.copyWith(fontSize: 15)),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
