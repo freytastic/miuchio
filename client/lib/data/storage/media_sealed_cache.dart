@@ -46,6 +46,23 @@ const String _createCovers = '''
   )
 ''';
 
+// Server confirmed deletions. Unlike invalidate, which only frees space, no
+// later write can restore these, even after a restart. Media IDs are never
+// reused, so a mark cannot hide a real photo
+const String _createDeletedMedia = '''
+  CREATE TABLE deleted_media (
+    media_id   TEXT PRIMARY KEY,
+    album_id   TEXT NOT NULL,
+    deleted_at INTEGER NOT NULL
+  )
+''';
+
+// Any listing or download that could carry a deleted photo is long finished
+const Duration _deletedMarkLifetime = Duration(days: 30);
+
+const String _notDeleted =
+    'NOT EXISTS (SELECT 1 FROM deleted_media WHERE media_id = ?)';
+
 class MediaSealedCache
     implements MediaCatalog, AlbumCatalog, AlbumCleanupStore {
   // Full photos are disposable while the database and thumbnails are durable
@@ -66,6 +83,8 @@ class MediaSealedCache
     required Uint8List cacheRootKey,
     int budgetBytes = 1024 * 1024 * 1024,
     int durableBudgetBytes = 512 * 1024 * 1024,
+    // Tests move the clock to expire deletion marks
+    DateTime Function() now = DateTime.now,
   }) async {
     // getApplicationCacheDirectory : Android app cache dir (covered by
     // allowBackup="false" in the manifest) / iOS Library/Caches (excluded from
@@ -83,7 +102,7 @@ class MediaSealedCache
     if (!durable.existsSync()) durable.createSync(recursive: true);
     final db = await openDatabase(
       p.join(durable.path, 'records.db'),
-      version: 6,
+      version: 7,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE media_records (
@@ -103,6 +122,7 @@ class MediaSealedCache
         await db.execute(_createCovers);
         await db.execute(_createAlbums);
         await db.execute(_createAlbumCleanup);
+        await db.execute(_createDeletedMedia);
       },
       onUpgrade: (db, from, to) async {
         if (from < 2) await db.execute(_createCovers);
@@ -117,11 +137,13 @@ class MediaSealedCache
           await db.execute('ALTER TABLE album_cleanup '
               'ADD COLUMN version INTEGER NOT NULL DEFAULT 0');
         }
+        if (from < 7) await db.execute(_createDeletedMedia);
       },
     );
     final cache = MediaSealedCache._(
         root, durable, db, cacheRootKey, budgetBytes, durableBudgetBytes);
     await cache._migrateIfNeeded();
+    await cache._sweepDeleted(now());
     return cache;
   }
 
@@ -280,8 +302,8 @@ class MediaSealedCache
         await txn.rawInsert(
           'INSERT OR IGNORE INTO media_records '
           '(media_id, album_id, record_json, last_access, sort_index) '
-          'VALUES (?, ?, ?, ?, ?)',
-          [r.id, albumId, json, now, i],
+          'SELECT ?, ?, ?, ?, ? WHERE $_notDeleted',
+          [r.id, albumId, json, now, i, r.id],
         );
         // A listing is not a view, so it must not refresh the LRU timestamp
         await txn.rawUpdate(
@@ -307,10 +329,10 @@ class MediaSealedCache
       await txn.rawInsert(
         'INSERT OR IGNORE INTO media_records '
         '(media_id, album_id, record_json, last_access, sort_index) '
-        'VALUES (?, ?, ?, ?, '
+        'SELECT ?, ?, ?, ?, '
         'COALESCE((SELECT MIN(sort_index) - 1 FROM media_records '
-        'WHERE album_id = ?), -1))',
-        [r.id, r.albumId, json, now, r.albumId],
+        'WHERE album_id = ?), -1) WHERE $_notDeleted',
+        [r.id, r.albumId, json, now, r.albumId, r.id],
       );
       await txn.rawUpdate(
         'UPDATE media_records SET album_id = ?, record_json = ?, '
@@ -329,10 +351,10 @@ class MediaSealedCache
       await txn.rawInsert(
         'INSERT OR IGNORE INTO media_records '
         '(media_id, album_id, record_json, last_access, sort_index) '
-        'VALUES (?, ?, ?, ?, '
+        'SELECT ?, ?, ?, ?, '
         'COALESCE((SELECT MIN(sort_index) - 1 FROM media_records '
-        'WHERE album_id = ?), -1))',
-        [r.id, r.albumId, json, now, r.albumId],
+        'WHERE album_id = ?), -1) WHERE $_notDeleted',
+        [r.id, r.albumId, json, now, r.albumId, r.id],
       );
       await txn.rawUpdate(
         "UPDATE media_records SET record_json = ?, last_access = ?, "
@@ -382,7 +404,10 @@ class MediaSealedCache
     final col = k.asset == CacheAsset.thumb ? 'thumb_bytes' : 'blob_bytes';
     final now = DateTime.now().millisecondsSinceEpoch;
     // Atomically create the row and update its asset size
-    await _db.transaction((txn) async {
+    final deleted = await _db.transaction((txn) async {
+      final gone = await txn.rawQuery(
+          'SELECT 1 FROM deleted_media WHERE media_id = ?', [k.mediaId]);
+      if (gone.isNotEmpty) return true;
       await txn.rawInsert(
         'INSERT OR IGNORE INTO media_records '
         "(media_id, album_id, record_json, last_access) VALUES (?, ?, '{}', ?)",
@@ -392,7 +417,14 @@ class MediaSealedCache
         'UPDATE media_records SET $col = ?, last_access = ? WHERE media_id = ?',
         [sealed.length, now, k.mediaId],
       );
+      return false;
     });
+    // A download that lands after the delete removes its own file. The mark
+    // commits before markDeleted removes files, so one of the two catches it
+    if (deleted) {
+      if (f.existsSync()) f.deleteSync();
+      return;
+    }
     await _evictIfOverBudget();
   }
 
@@ -464,14 +496,11 @@ class MediaSealedCache
       await txn
           .delete('album_covers', where: 'album_id = ?', whereArgs: [albumId]);
       for (var i = 0; i < mediaIds.length && i < 3; i++) {
-        await txn.insert(
-            'album_covers',
-            {
-              'album_id': albumId,
-              'media_id': mediaIds[i],
-              'slot': i,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.rawInsert(
+          'INSERT OR REPLACE INTO album_covers (album_id, media_id, slot) '
+          'SELECT ?, ?, ? WHERE $_notDeleted',
+          [albumId, mediaIds[i], i, mediaIds[i]],
+        );
       }
     });
   }
@@ -488,16 +517,70 @@ class MediaSealedCache
   // Files go first: a failed delete then leaves the record behind, which keeps
   // the blob findable for the next attempt
   Future<void> invalidate(String mediaId) async {
+    _deleteFiles(mediaId);
+    await _db
+        .delete('media_records', where: 'media_id = ?', whereArgs: [mediaId]);
+    await _db
+        .delete('album_covers', where: 'media_id = ?', whereArgs: [mediaId]);
+  }
+
+  // Throws only when the mark did not save. A file that fails to delete here
+  // is left to the sweep on the next open
+  Future<void> markDeleted(String albumId, String mediaId) async {
+    await _db.transaction((txn) async {
+      await txn.rawInsert(
+        'INSERT OR IGNORE INTO deleted_media (media_id, album_id, deleted_at) '
+        'VALUES (?, ?, ?)',
+        [mediaId, albumId, DateTime.now().millisecondsSinceEpoch],
+      );
+      await txn
+          .delete('media_records', where: 'media_id = ?', whereArgs: [mediaId]);
+      await txn
+          .delete('album_covers', where: 'media_id = ?', whereArgs: [mediaId]);
+    });
+    try {
+      _deleteFiles(mediaId);
+    } catch (_) {}
+  }
+
+  // Includes the temp file an interrupted writeBlob leaves behind
+  void _deleteFiles(String mediaId) {
     for (final asset in CacheAsset.values) {
       final name =
           asset == CacheAsset.thumb ? '$mediaId.thumb.kec' : '$mediaId.kec';
       final f = File(p.join(_rootFor(asset).path, name));
       if (f.existsSync()) f.deleteSync();
+      final tmp = File('${f.path}.tmp');
+      if (tmp.existsSync()) tmp.deleteSync();
     }
-    await _db
-        .delete('media_records', where: 'media_id = ?', whereArgs: [mediaId]);
-    await _db
-        .delete('album_covers', where: 'media_id = ?', whereArgs: [mediaId]);
+  }
+
+  // Finishes interrupted file deletes. A mark expires only after its files
+  // are gone, however long the app stayed closed
+  Future<void> _sweepDeleted(DateTime now) async {
+    final cutoff = now.subtract(_deletedMarkLifetime).millisecondsSinceEpoch;
+    try {
+      final rows =
+          await _db.query('deleted_media', columns: ['media_id', 'deleted_at']);
+      final expired = <String>[];
+      for (final r in rows) {
+        final id = r['media_id'] as String;
+        try {
+          _deleteFiles(id);
+        } catch (_) {
+          continue;
+        }
+        if ((r['deleted_at'] as int) < cutoff) expired.add(id);
+      }
+      if (expired.isEmpty) return;
+      final batch = _db.batch();
+      for (final id in expired) {
+        batch.delete('deleted_media', where: 'media_id = ?', whereArgs: [id]);
+      }
+      await batch.commit(noResult: true);
+    } catch (_) {
+      // The next open tries again
+    }
   }
 
   Future<void> clearAlbum(String albumId) async {
@@ -513,6 +596,7 @@ class MediaSealedCache
   Future<void> clearAll() async {
     await _db.delete('media_records');
     await _db.delete('album_covers');
+    await _db.delete('deleted_media');
     // Clear both roots so durable thumbnails cannot survive deletion
     for (final dir in {_root.path, _durableRoot.path}) {
       final d = Directory(dir);

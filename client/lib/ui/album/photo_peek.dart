@@ -101,7 +101,7 @@ class _PhotoPeekState extends State<PhotoPeek> with TickerProviderStateMixin {
   )..animateWith(SpringSimulation(_photoSpring, 0, 1, 0));
   late final AnimationController _sharpen = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 850),
+    duration: const Duration(milliseconds: 650),
   )..forward();
   late final Animation<double> _sharp = CurvedAnimation(
     parent: _sharpen,

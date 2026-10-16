@@ -149,7 +149,7 @@ class _ShelfScreenState extends State<ShelfScreen>
     _watch<SeenStore>(context);
     _watch<ShelfViewPreference>(context);
     final view = _viewPref?.view ?? _localView;
-    final albums = state.albums;
+    final albums = state.albums.where((a) => !state.isDeleting(a.id)).toList();
 
     final entries = <ShelfEntry>[];
     for (final a in albums) {

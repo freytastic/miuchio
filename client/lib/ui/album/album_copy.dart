@@ -84,6 +84,7 @@ abstract final class AlbumCopy {
   static const deleteConfirm = 'Delete';
   static const deleteCancel = 'Keep';
   static const deleteFailed = "Couldn't delete that photo.";
+  static const deletingPhoto = 'Deleting the photo for everyone';
   static const unknownMember = 'Someone';
 
   static const saveToPhone = 'Save to phone';
@@ -117,6 +118,7 @@ abstract final class AlbumCopy {
   static const deleteAlbumBody =
       "Every photo in it is deleted for everyone. This can't be undone.";
   static const deleteAlbumFailed = "Couldn't delete the album.";
+  static const deletingAlbum = 'Deleting the album for everyone';
 
   static const removeFromAlbum = 'Remove from album';
   static String removeTitle(String name) => 'Remove $name?';

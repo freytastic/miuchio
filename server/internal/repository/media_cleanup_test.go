@@ -76,10 +76,11 @@ func TestQueuePendingCleanup_RequiresUploaderAndPersistsKeys(t *testing.T) {
 	if len(keys) != 2 {
 		t.Fatalf("queued keys = %v, want two", keys)
 	}
-	for _, key := range keys {
-		if err := env.media.DeleteObjectCleanupKey(ctx, key); err != nil {
-			t.Fatalf("DeleteObjectCleanupKey: %v", err)
-		}
+	if err := env.media.DeleteObjectCleanupKeys(ctx, keys); err != nil {
+		t.Fatalf("DeleteObjectCleanupKeys: %v", err)
+	}
+	if left, _ := env.media.ListObjectCleanupKeys(ctx, 10); len(left) != 0 {
+		t.Fatalf("acknowledged keys still queued: %v", left)
 	}
 }
 

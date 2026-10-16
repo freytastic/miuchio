@@ -121,9 +121,9 @@ void main() {
     if (dir.existsSync()) dir.deleteSync(recursive: true);
   });
 
-  Widget wrap(MediaApi api) => MultiProvider(
+  Widget wrap(MediaApi api, {AppState? app}) => MultiProvider(
         providers: [
-          ChangeNotifierProvider(create: (_) => AppState()),
+          ChangeNotifierProvider.value(value: app ?? AppState()),
           Provider<AlbumKeyStore>.value(value: aks),
           ChangeNotifierProvider<UploadQueueModel>.value(
               value: idleUploadQueue()),
@@ -210,5 +210,57 @@ void main() {
 
     final saved = await catalog.listRecordsForAlbum('album-1');
     expect([for (final r in saved) r.id], ['x', 'y']);
+  });
+
+  Finder tile(String id) => find.byKey(ValueKey('m:$id'));
+
+  testWidgets('a confirmed delete stays hidden from a listing that raced it',
+      (tester) async {
+    final app = AppState()
+      ..hideMedia('album-1', 'b')
+      ..confirmMediaDeleted('album-1', 'b');
+    // Another screen's listing, sent before the delete, still has the photo
+    final api = _StubMediaApi(items: [_rec('a'), _rec('b'), _rec('c')]);
+
+    await tester.pumpWidget(wrap(api, app: app));
+    await settle(tester);
+
+    expect(tile('a'), findsOneWidget);
+    expect(tile('b'), findsNothing);
+  });
+
+  testWidgets('refused deletes come back in album order', (tester) async {
+    final app = AppState();
+    final api = _StubMediaApi(items: [_rec('a'), _rec('b'), _rec('c')]);
+    await tester.pumpWidget(wrap(api, app: app));
+    await settle(tester);
+
+    app
+      ..hideMedia('album-1', 'a')
+      ..hideMedia('album-1', 'b');
+    await settle(tester);
+    expect(tile('a'), findsNothing);
+    expect(tile('b'), findsNothing);
+
+    app
+      ..unhideMedia('album-1', 'a')
+      ..unhideMedia('album-1', 'b');
+    await settle(tester);
+    final x = [
+      for (final id in ['a', 'b', 'c']) tester.getTopLeft(tile(id)).dx
+    ];
+    expect(x[0] < x[1] && x[1] < x[2], isTrue, reason: 'order was $x');
+  });
+
+  testWidgets('a pending delete keeps the saved copy until the server answers',
+      (tester) async {
+    final app = AppState()..hideMedia('album-1', 'b');
+    final api = _StubMediaApi(items: [_rec('a'), _rec('b')]);
+    await tester.pumpWidget(wrap(api, app: app));
+    await settle(tester);
+
+    expect(tile('b'), findsNothing);
+    expect([for (final r in catalog.rows['album-1']!) r.id], ['a', 'b'],
+        reason: 'a refused delete must still open offline');
   });
 }

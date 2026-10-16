@@ -79,6 +79,9 @@ class AppState extends ChangeNotifier {
     _lastMediaRemovedAlbumId = null;
     _mediaRemovedTick = 0;
     _deletedAlbums.clear();
+    _deleting.clear();
+    _pendingDeletes.clear();
+    _confirmedDeletes.clear();
     // Must not bleed into the next account's session
     _userId = null;
     _email = null;
@@ -400,6 +403,44 @@ class AppState extends ChangeNotifier {
   final Set<String> _deletedAlbums = {};
   bool wasDeleted(String albumId) => _deletedAlbums.contains(albumId);
   void markAlbumDeleted(String albumId) => _deletedAlbums.add(albumId);
+
+  // Off the shelf while our own delete is in flight, back if the server refuses
+  final Set<String> _deleting = {};
+  bool isDeleting(String albumId) => _deleting.contains(albumId);
+  void setDeleting(String albumId, bool deleting) {
+    if (deleting ? _deleting.add(albumId) : _deleting.remove(albumId)) {
+      notifyListeners();
+    }
+  }
+
+  // Pending deletes return if the server refuses. Confirmed ones stay hidden
+  // for the session so a listing that raced the delete cannot show them
+  final Map<String, Set<String>> _pendingDeletes = {};
+  final Map<String, Set<String>> _confirmedDeletes = {};
+  int _hiddenMediaVersion = 0;
+  int get hiddenMediaVersion => _hiddenMediaVersion;
+  bool hidesMedia(String albumId, String mediaId) =>
+      (_pendingDeletes[albumId]?.contains(mediaId) ?? false) ||
+      (_confirmedDeletes[albumId]?.contains(mediaId) ?? false);
+
+  void hideMedia(String albumId, String mediaId) {
+    if ((_pendingDeletes[albumId] ??= {}).add(mediaId)) _hiddenChanged();
+  }
+
+  // A refused delete shows the photo again where the album order puts it
+  void unhideMedia(String albumId, String mediaId) {
+    if (_pendingDeletes[albumId]?.remove(mediaId) ?? false) _hiddenChanged();
+  }
+
+  void confirmMediaDeleted(String albumId, String mediaId) {
+    _pendingDeletes[albumId]?.remove(mediaId);
+    if ((_confirmedDeletes[albumId] ??= {}).add(mediaId)) _hiddenChanged();
+  }
+
+  void _hiddenChanged() {
+    _hiddenMediaVersion++;
+    notifyListeners();
+  }
 
   // Kept outside album listings because epoch 0 may arrive before a refresh
   final Map<String, String> _selfTokens = {};

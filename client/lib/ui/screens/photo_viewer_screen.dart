@@ -17,7 +17,7 @@ class PhotoViewerScreen extends StatefulWidget {
   final String? Function(String token) nameOf;
   final Widget Function(String token, double size) faceOf;
   final bool Function(MediaRecord record) isOwner;
-  // Return true only after deletion succeeds
+  // The page goes at once, false brings it back
   final Future<bool> Function(MediaRecord record) onDelete;
   final Widget Function(MediaRecord record, int cacheWidth)? imageBuilder;
 
@@ -47,7 +47,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   late int _index = widget.initialIndex;
   bool _chrome = false;
   bool _zoomed = false;
-  bool _deleting = false;
+  String? _lastDeleted;
   double _dragY = 0;
   String? _note;
   Timer? _noteTimer;
@@ -92,22 +92,39 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   }
 
   Future<void> _delete() async {
-    if (_deleting || !await confirmPhotoDelete(context)) return;
+    // Chosen before the sheet opens, a restore underneath can move _current
     final record = _current;
-    setState(() => _deleting = true);
-    final gone = await widget.onDelete(record);
-    if (!mounted) return;
+    if (!await confirmPhotoDelete(context) || !mounted) return;
+    _lastDeleted = record.id;
+    final gone = widget.onDelete(record);
     setState(() {
-      _deleting = false;
-      if (!gone) return;
       _records.removeWhere((r) => r.id == record.id);
       if (_index > _records.length - 1) _index = _records.length - 1;
     });
-    if (!gone) return;
     if (_records.isEmpty) {
       Navigator.of(context).maybePop();
       return;
     }
+    if (_pages.hasClients) _pages.jumpToPage(_index);
+    // A closing viewer leaves the restore to the grid
+    if (await gone || !mounted || _records.isEmpty) return;
+    _restore(record);
+  }
+
+  // Back in album order, which survives other deletes in between. The latest
+  // delete shows again if the user is still on the page that replaced it
+  void _restore(MediaRecord record) {
+    final order = {
+      for (var i = 0; i < widget.records.length; i++) widget.records[i].id: i
+    };
+    final rank = order[record.id] ?? widget.records.length;
+    var at = _records.indexWhere((r) => (order[r.id] ?? 0) > rank);
+    if (at < 0) at = _records.length;
+    final show = at == _index && _lastDeleted == record.id;
+    setState(() {
+      _records.insert(at, record);
+      if (at < _index || (at == _index && !show)) _index++;
+    });
     if (_pages.hasClients) _pages.jumpToPage(_index);
   }
 

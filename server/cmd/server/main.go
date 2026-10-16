@@ -326,6 +326,6 @@ func (a *s3Adapter) GetPresignedDownloadURL(ctx context.Context, key string, exp
 	return a.c.GetPresignedDownloadURL(ctx, key, expires)
 }
 
-func (a *s3Adapter) DeleteObject(ctx context.Context, key string) error {
-	return a.c.DeleteObject(ctx, key)
+func (a *s3Adapter) DeleteObjects(ctx context.Context, keys []string) ([]string, error) {
+	return a.c.DeleteObjects(ctx, keys)
 }

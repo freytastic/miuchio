@@ -107,7 +107,8 @@ class RealtimeRouter {
     if (albumStr == null || ids is! List) return;
     unawaited(() async {
       for (final id in ids.whereType<String>()) {
-        await mediaCache.invalidate(id);
+        appState.confirmMediaDeleted(albumStr, id);
+        await mediaCache.markDeleted(albumStr, id);
       }
       appState.notifyMediaRemoved(albumStr);
     }());

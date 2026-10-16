@@ -138,8 +138,10 @@ func (f *fakeMediaRepo) ListObjectCleanupKeys(_ context.Context, limit int) ([]s
 	return keys, nil
 }
 
-func (f *fakeMediaRepo) DeleteObjectCleanupKey(_ context.Context, key string) error {
-	delete(f.cleanupQueue, key)
+func (f *fakeMediaRepo) DeleteObjectCleanupKeys(_ context.Context, keys []string) error {
+	for _, key := range keys {
+		delete(f.cleanupQueue, key)
+	}
 	return nil
 }
 
@@ -495,7 +497,7 @@ type fakeS3 struct {
 	downloadKeys  []string
 	deleteCalls   int
 	deleteKeys    []string
-	deleteErr     error    // when set, DeleteObject records the key then fails
+	deleteErr     error    // when set, DeleteObjects records the keys then fails
 	presignKeys   []string //  track call order so tests can assert dual presign
 	//per-key HEAD overrides for dual-confirm tests. Empty map → fall
 	// back to headSize/headSHA256B64/headErr (default behavior, same as before)
@@ -534,23 +536,29 @@ func (f *fakeS3) HeadObject(_ context.Context, key string) (int64, string, error
 	return f.headSize, f.headSHA256B64, f.headErr
 }
 
-func (f *fakeS3) DeleteObject(_ context.Context, key string) error {
+func (f *fakeS3) DeleteObjects(_ context.Context, keys []string) ([]string, error) {
 	f.deleteCalls++
-	f.deleteKeys = append(f.deleteKeys, key)
-	return f.deleteErr
+	f.deleteKeys = append(f.deleteKeys, keys...)
+	return nil, f.deleteErr
 }
 
 func newSvc(epochs *fakeEpochs) (*MediaService, *fakeMediaRepo, *fakeS3) {
 	r := newFakeMediaRepo()
 	s := &fakeS3{}
-	return NewMediaService(r, epochs, s, nil, nil), r, s
+	return inline(NewMediaService(r, epochs, s, nil, nil)), r, s
 }
 
 // newSvcWithFanout injects a capturing notifier and member lookup
 func newSvcWithFanout(epochs *fakeEpochs, n Notifier, l MemberLookup) (*MediaService, *fakeMediaRepo, *fakeS3) {
 	r := newFakeMediaRepo()
 	s := &fakeS3{}
-	return NewMediaService(r, epochs, s, n, l), r, s
+	return inline(NewMediaService(r, epochs, s, n, l)), r, s
+}
+
+// inline runs detached cleanup on the caller so tests can assert on it
+func inline(svc *MediaService) *MediaService {
+	svc.spawn = func(f func()) { f() }
+	return svc
 }
 
 func TestRequestUploadURL_RejectsBadInputs(t *testing.T) {
@@ -1282,7 +1290,7 @@ func TestConfirmUpload_RejectsAnotherUploader(t *testing.T) {
 	repo := newFakeMediaRepo()
 	epochs := &fakeEpochs{cur: 3, exists: true}
 	s3 := &fakeS3{headByKey: map[string]headResult{}}
-	svc := NewMediaService(repo, epochs, s3, nil, nil)
+	svc := inline(NewMediaService(repo, epochs, s3, nil, nil))
 	ctx := context.Background()
 	albumID := uuid.New()
 
@@ -1309,7 +1317,7 @@ func TestConfirmUpload_ForeignMemberCannotDropThePendingRow(t *testing.T) {
 	repo := newFakeMediaRepo()
 	epochs := &fakeEpochs{cur: 3, exists: true}
 	s3 := &fakeS3{headByKey: map[string]headResult{}}
-	svc := NewMediaService(repo, epochs, s3, nil, nil)
+	svc := inline(NewMediaService(repo, epochs, s3, nil, nil))
 	ctx := context.Background()
 	albumID := uuid.New()
 
@@ -1335,7 +1343,7 @@ func TestConfirmUpload_ForeignMemberCannotDropThePendingRow(t *testing.T) {
 func TestDeleteMedia_RejectsAnotherUploader(t *testing.T) {
 	repo := newFakeMediaRepo()
 	s3 := &fakeS3{headByKey: map[string]headResult{}}
-	svc := NewMediaService(repo, &fakeEpochs{cur: 3, exists: true}, s3, nil, nil)
+	svc := inline(NewMediaService(repo, &fakeEpochs{cur: 3, exists: true}, s3, nil, nil))
 	ctx := context.Background()
 	albumID := uuid.New()
 	mediaID := uuid.New()

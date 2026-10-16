@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -39,7 +40,10 @@ void main() {
   final three = [_shot('m1'), _shot('m2'), _shot('m3')];
 
   Future<void> open(WidgetTester tester,
-      {bool owner = false, int at = 0, List<MediaRecord>? records}) async {
+      {bool owner = false,
+      int at = 0,
+      List<MediaRecord>? records,
+      Future<bool> Function(MediaRecord)? onDelete}) async {
     await tester.pumpWidget(MaterialApp(
       home: Builder(
         builder: (context) => Scaffold(
@@ -52,11 +56,12 @@ void main() {
                 nameOf: (_) => 'Ana',
                 faceOf: (_, size) => SizedBox(width: size, height: size),
                 isOwner: (_) => owner,
-                onDelete: (r) async {
-                  if (!deleteWorks) return false;
-                  deleted.add(r.id);
-                  return true;
-                },
+                onDelete: onDelete ??
+                    (r) async {
+                      if (!deleteWorks) return false;
+                      deleted.add(r.id);
+                      return true;
+                    },
                 imageBuilder: (r, _) =>
                     ColoredBox(key: Key('photo-${r.id}'), color: Colors.grey),
               ),
@@ -197,6 +202,61 @@ void main() {
     await tester.tap(find.byKey(const Key('photo-delete-confirm')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('photo-m1')), findsOneWidget);
+  });
+
+  testWidgets('a refused delete comes back in album order', (tester) async {
+    final first = Completer<bool>();
+    await open(tester,
+        owner: true,
+        onDelete: (r) => r.id == 'm1' ? first.future : Future.value(true));
+    await tapPhoto(tester);
+
+    Future<void> delete() async {
+      await tester.tap(find.byKey(const Key('photo-peek-delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('photo-delete-confirm')));
+      await tester.pumpAndSettle();
+    }
+
+    await delete();
+    expect(find.byKey(const Key('photo-m2')), findsOneWidget,
+        reason: 'the page goes before the server answers');
+    await delete();
+    expect(find.byKey(const Key('photo-m3')), findsOneWidget);
+
+    first.complete(false);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('photo-m3')), findsOneWidget,
+        reason: 'a restore does not move the photo on screen');
+    await tester.fling(pages(), const Offset(400, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('photo-m1')), findsOneWidget);
+  });
+
+  testWidgets('confirming deletes the photo the sheet opened for',
+      (tester) async {
+    final first = Completer<bool>();
+    final asked = <String>[];
+    await open(tester, owner: true, onDelete: (r) {
+      asked.add(r.id);
+      return r.id == 'm1' ? first.future : Future.value(true);
+    });
+    await tapPhoto(tester);
+
+    await tester.tap(find.byKey(const Key('photo-peek-delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('photo-delete-confirm')));
+    await tester.pumpAndSettle();
+
+    // m1 comes back underneath while the sheet for m2 is open
+    await tester.tap(find.byKey(const Key('photo-peek-delete')));
+    await tester.pumpAndSettle();
+    first.complete(false);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('photo-delete-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(asked, ['m1', 'm2']);
   });
 
   testWidgets('heart and save say they are not here yet', (tester) async {

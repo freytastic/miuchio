@@ -36,6 +36,7 @@ class ShelfCoversImpl extends ChangeNotifier implements ShelfCovers {
   bool _suspended = false;
   bool _closed = false;
   late final StreamSubscription<String> _keySub;
+  late final StreamSubscription<String> _deletedSub;
 
   ShelfCoversImpl({
     required MediaSealedCache sealedCache,
@@ -43,6 +44,13 @@ class ShelfCoversImpl extends ChangeNotifier implements ShelfCovers {
   })  : _l2 = sealedCache,
         _cache = cache {
     _keySub = cache.keysInstalled.listen(_retryAfterKeys);
+    _deletedSub = cache.mediaDeleted.listen(_dropDeleted);
+  }
+
+  // A confirmed delete takes its cover off the shelf at once. Late loads are
+  // refused by the manager, so nothing puts it back
+  void _dropDeleted(String mediaId) {
+    if (_bytes.remove(mediaId) != null) notifyListeners();
   }
 
   // Covers that failed on a missing key retry when their album's keys land
@@ -243,6 +251,7 @@ class ShelfCoversImpl extends ChangeNotifier implements ShelfCovers {
   Future<void> shutdown({Duration wait = const Duration(seconds: 20)}) async {
     _closed = true;
     unawaited(_keySub.cancel());
+    unawaited(_deletedSub.cancel());
     _queue.clear();
     try {
       final albums = {..._preview.keys, ..._owned.keys, ..._active.keys};

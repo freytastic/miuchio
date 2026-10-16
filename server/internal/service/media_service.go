@@ -35,7 +35,7 @@ type MediaStore interface {
 	QueuePendingCleanup(ctx context.Context, mediaID, albumID uuid.UUID, uploaderToken []byte, reservationID uuid.UUID) (repository.PendingCleanupBatch, error)
 	QueueStalePendingCleanup(ctx context.Context, before time.Time, limit int) (repository.PendingCleanupBatch, error)
 	ListObjectCleanupKeys(ctx context.Context, limit int) ([]string, error)
-	DeleteObjectCleanupKey(ctx context.Context, key string) error
+	DeleteObjectCleanupKeys(ctx context.Context, keys []string) error
 	RescheduleObjectCleanupKey(ctx context.Context, key string) (int, error)
 	GetByID(ctx context.Context, mediaID, albumID uuid.UUID) (*model.Media, error)
 	ListConfirmed(ctx context.Context, albumID uuid.UUID) ([]model.Media, error)
@@ -46,7 +46,8 @@ type ObjectStore interface {
 	GetPresignedUploadURLWithChecksum(ctx context.Context, key, contentType string, contentLength int64, sha256B64 string, expires time.Duration) (*PresignedUpload, error)
 	GetPresignedDownloadURL(ctx context.Context, key string, expires time.Duration) (string, error)
 	HeadObject(ctx context.Context, key string) (size int64, sha256B64 string, err error)
-	DeleteObject(ctx context.Context, key string) error
+	// Returns the keys storage refused, err fails the whole request
+	DeleteObjects(ctx context.Context, keys []string) (failed []string, err error)
 }
 
 // Delivers confirmed media to active album members
@@ -69,10 +70,13 @@ type MediaService struct {
 	s3       ObjectStore
 	notifier Notifier
 	lookup   MemberLookup
+	// Runs queued object deletes off the request, tests run them inline
+	spawn func(func())
 }
 
 func NewMediaService(repo MediaStore, epochs EpochLookup, s3 ObjectStore, notifier Notifier, lookup MemberLookup) *MediaService {
-	return &MediaService{repo: repo, epochs: epochs, s3: s3, notifier: notifier, lookup: lookup}
+	return &MediaService{repo: repo, epochs: epochs, s3: s3, notifier: notifier, lookup: lookup,
+		spawn: func(f func()) { go f() }}
 }
 
 // Wrap sizes for the VER=0x01 wrap. Keep in step with the client constants
@@ -486,6 +490,10 @@ const (
 	PendingCleanupBatchSize = 100
 	// Attempts after which a key is treated as stuck
 	ObjectCleanupAlertAttempts = 10
+	// The S3 limit for one DeleteObjects request
+	objectDeleteBatch = 1000
+	// Bounds a detached cleanup, the sweep picks up whatever it leaves
+	detachedCleanupTimeout = 2 * time.Minute
 )
 
 type PendingCleanupStats struct {
@@ -547,10 +555,18 @@ func (s *MediaService) RunPendingUploadCleanup(ctx context.Context) {
 	}
 }
 
-// CleanupObjectKeys deletes already queued objects now instead of waiting for
-// the periodic sweep
+// CleanupObjectKeys deletes queued objects off the request instead of waiting
+// for the periodic sweep. Anything a crash interrupts stays queued
 func (s *MediaService) CleanupObjectKeys(ctx context.Context, keys []string) {
-	s.cleanupObjectKeys(ctx, keys)
+	if len(keys) == 0 {
+		return
+	}
+	bg := context.WithoutCancel(ctx)
+	s.spawn(func() {
+		ctx, cancel := context.WithTimeout(bg, detachedCleanupTimeout)
+		defer cancel()
+		s.cleanupObjectKeys(ctx, keys)
+	})
 }
 
 func (s *MediaService) dropOrphan(ctx context.Context, row *model.Media) error {
@@ -567,10 +583,34 @@ func (s *MediaService) retirePending(ctx context.Context, row *model.Media) erro
 }
 
 func (s *MediaService) cleanupObjectKeys(ctx context.Context, keys []string) (deleted, failed, stuck int) {
-	for _, key := range keys {
-		if err := s.s3.DeleteObject(ctx, key); err != nil {
-			failed++
+	for start := 0; start < len(keys); start += objectDeleteBatch {
+		chunk := keys[start:min(start+objectDeleteBatch, len(keys))]
+		refused, err := s.s3.DeleteObjects(ctx, chunk)
+		if err != nil {
 			slog.WarnContext(ctx, "pending media object delete failed", "err", err)
+			refused = chunk
+		}
+		bad := make(map[string]bool, len(refused))
+		for _, key := range refused {
+			bad[key] = true
+		}
+		done := make([]string, 0, len(chunk))
+		for _, key := range chunk {
+			if !bad[key] {
+				done = append(done, key)
+			}
+		}
+		if len(done) > 0 {
+			if err := s.repo.DeleteObjectCleanupKeys(ctx, done); err != nil {
+				// Keep the keys queued, repeating object deletion is safe
+				failed += len(done)
+				slog.WarnContext(ctx, "pending media cleanup acknowledgement failed", "err", err)
+			} else {
+				deleted += len(done)
+			}
+		}
+		for key := range bad {
+			failed++
 			// Back off failed keys so fresh work can proceed
 			attempts, rerr := s.repo.RescheduleObjectCleanupKey(ctx, key)
 			if rerr != nil {
@@ -580,17 +620,9 @@ func (s *MediaService) cleanupObjectKeys(ctx context.Context, keys []string) (de
 			if attempts >= ObjectCleanupAlertAttempts {
 				stuck++
 				slog.ErrorContext(ctx, "pending media object will not delete",
-					"attempts", attempts, "err", err)
+					"attempts", attempts)
 			}
-			continue
 		}
-		if err := s.repo.DeleteObjectCleanupKey(ctx, key); err != nil {
-			// Keep the key queued; repeating object deletion is safe
-			failed++
-			slog.WarnContext(ctx, "pending media cleanup acknowledgement failed", "err", err)
-			continue
-		}
-		deleted++
 	}
 	return deleted, failed, stuck
 }

@@ -366,9 +366,9 @@ func (r *MediaRepository) ListObjectCleanupKeys(ctx context.Context, limit int) 
 	return keys, rows.Err()
 }
 
-func (r *MediaRepository) DeleteObjectCleanupKey(ctx context.Context, key string) error {
+func (r *MediaRepository) DeleteObjectCleanupKeys(ctx context.Context, keys []string) error {
 	_, err := r.DB.Exec(ctx,
-		`DELETE FROM media_object_cleanup WHERE storage_key = $1`, key)
+		`DELETE FROM media_object_cleanup WHERE storage_key = ANY($1)`, keys)
 	return err
 }
 
@@ -389,15 +389,14 @@ func (r *MediaRepository) RescheduleObjectCleanupKey(ctx context.Context, key st
 }
 
 func enqueueObjectCleanup(ctx context.Context, tx pgx.Tx, keys []string) error {
-	for _, key := range keys {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO media_object_cleanup (storage_key)
-			VALUES ($1)
-			ON CONFLICT (storage_key) DO NOTHING`, key); err != nil {
-			return err
-		}
+	if len(keys) == 0 {
+		return nil
 	}
-	return nil
+	_, err := tx.Exec(ctx, `
+		INSERT INTO media_object_cleanup (storage_key)
+		SELECT unnest($1::text[])
+		ON CONFLICT (storage_key) DO NOTHING`, keys)
+	return err
 }
 
 func cleanupKeys(storageKey string, thumbKey *string) []string {
