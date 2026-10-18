@@ -209,12 +209,16 @@ void main() {
 
       await faces(tester, const [AvatarMember(token: 'a')],
           onAdd: () => added++);
-      // Adding lives in the open row, after everyone who is there
+      // Adding ends the resting stack, so no need to open the row first
+      await tester.tap(find.byKey(const ValueKey('add-someone')));
+      await settle(tester);
+      expect(added, 1);
+
       await tester.tap(find.byKey(const ValueKey('people-stack')));
       await settle(tester);
       await tester.tap(find.byKey(const ValueKey('add-someone')));
       await settle(tester);
-      expect(added, 1);
+      expect(added, 2);
     });
   });
 }

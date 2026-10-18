@@ -506,13 +506,10 @@ class _Faces extends StatelessWidget {
                       child: const Icon(Icons.check_rounded,
                           size: 16, color: Warm.ctaInk),
                     ))
-                  : _ring(
-                      const DashedCircle(
-                        key: ValueKey('face-slot'),
-                        size: _size,
-                        child: Icon(Icons.add_rounded,
-                            size: 15, color: Warm.inkFaint),
-                      ),
+                  : const AddSlot(
+                      key: ValueKey('face-slot'),
+                      size: _size,
+                      ring: _ringWidth,
                     ),
             ),
           ),

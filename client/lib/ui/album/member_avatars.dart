@@ -132,11 +132,16 @@ class _MemberAvatarsState extends State<MemberAvatars> {
     final rowWidth = slots == 0
         ? 0.0
         : slots * MemberAvatars._slot + (slots - 1) * MemberAvatars._gap;
+    final stacked = math.min(people.length, MemberAvatars._stacked);
     final stackWidth = people.isEmpty
         ? 0.0
-        : (math.min(people.length, MemberAvatars._stacked) - 1) *
-                MemberAvatars._stackStep +
-            MemberAvatars.stackSize;
+        : (stacked - 1) * MemberAvatars._stackStep + MemberAvatars.stackSize;
+    // At rest the add place takes the next stack slot, or follows the count
+    final addRest =
+        rest > 0 ? stackWidth + 40 : stacked * MemberAvatars._stackStep;
+    final restWidth = widget.onAdd == null
+        ? stackWidth + 40
+        : addRest + MemberAvatars.stackSize;
 
     // Later children paint on top: the chosen face must not be cut by a neighbour
     final faces = [
@@ -165,7 +170,7 @@ class _MemberAvatarsState extends State<MemberAvatars> {
                 : const NeverScrollableScrollPhysics(),
             clipBehavior: Clip.none,
             child: SizedBox(
-              width: math.max(rowWidth, stackWidth + 40),
+              width: math.max(rowWidth, restWidth),
               height: MemberAvatars._rowHeight,
               child: Stack(
                 clipBehavior: Clip.none,
@@ -190,16 +195,6 @@ class _MemberAvatarsState extends State<MemberAvatars> {
                       label: AlbumCopy.invitedShort,
                       semantics: AlbumCopy.invitedPending,
                       child: const DashedCircle(size: MemberAvatars.rowSize),
-                    ),
-                  if (widget.onAdd != null)
-                    _Extra(
-                      open: _open,
-                      left: (people.length + pending.length) *
-                          (MemberAvatars._slot + MemberAvatars._gap),
-                      label: AlbumCopy.addShort,
-                      semantics: AlbumCopy.addSomeone,
-                      onTap: widget.onAdd,
-                      child: const _AddFace(key: ValueKey('add-someone')),
                     ),
                   if (rest > 0)
                     Positioned(
@@ -233,6 +228,16 @@ class _MemberAvatarsState extends State<MemberAvatars> {
                           onTap: () => _setOpen(true),
                         ),
                       ),
+                    ),
+                  // After the stack target so its overlap with the last face
+                  // still adds instead of opening the row
+                  if (widget.onAdd != null)
+                    _Add(
+                      open: _open,
+                      rowLeft: (people.length + pending.length) *
+                          (MemberAvatars._slot + MemberAvatars._gap),
+                      restLeft: addRest,
+                      onTap: widget.onAdd!,
                     ),
                 ],
               ),
@@ -395,13 +400,12 @@ class _Label extends StatelessWidget {
   }
 }
 
-// Invited and add only exist in the open row, after everyone who is there
+// Invited only exists in the open row, after everyone who is there
 class _Extra extends StatelessWidget {
   final bool open;
   final double left;
   final String label;
   final String semantics;
-  final VoidCallback? onTap;
   final Widget child;
 
   const _Extra({
@@ -410,7 +414,6 @@ class _Extra extends StatelessWidget {
     required this.label,
     required this.semantics,
     required this.child,
-    this.onTap,
   });
 
   @override
@@ -428,19 +431,15 @@ class _Extra extends StatelessWidget {
             duration: open ? Warm.springSnappy : Warm.quick,
             curve: Warm.easeOut,
             child: Semantics(
-              button: onTap != null,
               label: semantics,
               excludeSemantics: true,
-              child: PressableScale(
-                onTap: onTap,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    child,
-                    const SizedBox(height: MemberAvatars._nameGap),
-                    _Label(label),
-                  ],
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  child,
+                  const SizedBox(height: MemberAvatars._nameGap),
+                  _Label(label),
+                ],
               ),
             ),
           ),
@@ -450,29 +449,82 @@ class _Extra extends StatelessWidget {
   }
 }
 
-class _AddFace extends StatelessWidget {
-  const _AddFace({super.key});
+// Shown at rest too, ending the stack the way the add sheet's faces end
+class _Add extends StatelessWidget {
+  final bool open;
+  final double rowLeft;
+  final double restLeft;
+  final VoidCallback onTap;
+
+  const _Add({
+    required this.open,
+    required this.rowLeft,
+    required this.restLeft,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: MemberAvatars.rowSize,
-      height: MemberAvatars.rowSize,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: Warm.stoneFill,
-        boxShadow: [
-          BoxShadow(
-              color: Warm.shadow(0.08),
-              blurRadius: 2,
-              offset: const Offset(0, 1)),
-          BoxShadow(
-              color: Warm.shadow(0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 3)),
-        ],
+    const ring = MemberAvatars._stackRing;
+    final size = open ? MemberAvatars.rowSize : MemberAvatars.stackSize;
+    return AnimatedPositioned(
+      duration: Warm.springSnappy,
+      curve: Warm.easeOut,
+      left: (open ? rowLeft : restLeft) - ring,
+      top: -ring,
+      width: (open ? MemberAvatars._slot : size) + ring * 2,
+      child: Semantics(
+        button: true,
+        label: AlbumCopy.addSomeone,
+        excludeSemantics: true,
+        child: PressableScale(
+          onTap: onTap,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TweenAnimationBuilder<double>(
+                tween: Tween(end: size),
+                duration: Warm.springSnappy,
+                curve: Warm.easeOut,
+                builder: (_, s, __) => AddSlot(
+                    key: const ValueKey('add-someone'), size: s, ring: ring),
+              ),
+              if (open)
+                const Padding(
+                  padding: EdgeInsets.only(top: MemberAvatars._nameGap - ring),
+                  child: _Label(AlbumCopy.addShort),
+                ),
+            ],
+          ),
+        ),
       ),
-      child: const Icon(Icons.add_rounded, size: 17, color: Warm.inkSoft),
+    );
+  }
+}
+
+// The dashed place a new person takes. The ground fill and ring let it sit
+// over the face before it, like the next face in a stack
+class AddSlot extends StatelessWidget {
+  final double size;
+  final double ring;
+
+  const AddSlot({super.key, required this.size, this.ring = 0});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Warm.ground,
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(ring),
+        child: DashedCircle(
+          size: size,
+          child: Icon(Icons.add_rounded,
+              size: size * 0.44, color: Warm.inkFaint),
+        ),
+      ),
     );
   }
 }
