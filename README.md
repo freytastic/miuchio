@@ -181,7 +181,7 @@ If you find a serious security or protocol bug, reach out to me first. [SECURITY
 
 ## Get in touch
 
-- **Signal:** `freya.47`, where I am most active
+- **Signal:** `freytastic.47`, where I am most active
 - **Discord:** `freytastic`
 - **Email:** [uExistentialist@proton.me](mailto:uExistentialist@proton.me)
 

@@ -2,7 +2,7 @@
 
 If you find a serious security or protocol bug, reach out to me first:
 
-- **Signal:** `freya.47`
+- **Signal:** `freytastic.47`
 - **Discord:** `freytastic`
 - **Email:** [uExistentialist@proton.me](mailto:uExistentialist@proton.me)
 - [GitHub private vulnerability reporting](https://github.com/freytastic/miuchio/security/advisories/new)
