@@ -12,7 +12,7 @@ Start with the [website](https://www.miuchio.com) for the design and reasoning b
 - **Anything bigger:** open an issue first so we can agree on the approach before you spend time on code. This includes new features, new dependencies and changes to how an existing screen behaves.
 - **Protocol and cryptography changes:** always open an issue first. Anything that changes key handling, signatures, wire formats, what the server stores or what it checks needs the design agreed before any code. The [protocol pages](https://www.miuchio.com/protocol/overview) describe the current design.
 - **Serious security or protocol bugs:** reach out to me first. [SECURITY.md](SECURITY.md) lists how.
-- **Questions:** Signal (`freya.47`) or Discord (`freytastic`) are the fastest ways to reach me. Email ([uExistentialist@proton.me](mailto:uExistentialist@proton.me)) can take a while.
+- **Questions:** Signal (`freytastic.47`) or Discord (`freytastic`) are the fastest ways to reach me. Email ([uExistentialist@proton.me](mailto:uExistentialist@proton.me)) can take a while.
 
 ## Setting up
 
