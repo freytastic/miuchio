@@ -10,6 +10,9 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
     static let WRAP_TAG = "com.freytastic.miuchio.wrap"
     static let ENVELOPE_TAG = "com.freytastic.miuchio.envelope"
     static let HKDF_INFO = "miuchio.envelope.v1"
+    // App Group items keep their access group when an App Store transfer changes
+    // the Team ID, so every query and add must name it
+    static let ACCESS_GROUP = "group.com.freytastic.miuchio"
 
     static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: CHANNEL, binaryMessenger: registrar.messenger())
@@ -93,6 +96,7 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
         let q: [String: Any] = [
             kSecClass as String:              kSecClassKey,
             kSecAttrApplicationTag as String: Self.WRAP_TAG.data(using: .utf8)!,
+            kSecAttrAccessGroup as String:    Self.ACCESS_GROUP,
             kSecAttrKeyType as String:        kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeyClass as String:       kSecAttrKeyClassPrivate,
             kSecReturnRef as String:          true
@@ -107,7 +111,8 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
         var error: Unmanaged<CFError>?
         var privateAttrs: [String: Any] = [
             kSecAttrIsPermanent as String:     true,
-            kSecAttrApplicationTag as String:  Self.WRAP_TAG.data(using: .utf8)!
+            kSecAttrApplicationTag as String:  Self.WRAP_TAG.data(using: .utf8)!,
+            kSecAttrAccessGroup as String:     Self.ACCESS_GROUP
         ]
         var attrs: [String: Any] = [
             kSecAttrKeyType as String:        kSecAttrKeyTypeECSECPrimeRandom,
@@ -145,6 +150,7 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
         let q: [String: Any] = [
             kSecClass as String:           kSecClassGenericPassword,
             kSecAttrAccount as String:     Self.ENVELOPE_TAG,
+            kSecAttrAccessGroup as String: Self.ACCESS_GROUP,
             kSecReturnData as String:      true,
             kSecMatchLimit as String:      kSecMatchLimitOne
         ]
@@ -196,12 +202,14 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
         blob.append(sealed.tag)
 
         SecItemDelete([
-            kSecClass as String:       kSecClassGenericPassword,
-            kSecAttrAccount as String: Self.ENVELOPE_TAG
+            kSecClass as String:           kSecClassGenericPassword,
+            kSecAttrAccount as String:     Self.ENVELOPE_TAG,
+            kSecAttrAccessGroup as String: Self.ACCESS_GROUP
         ] as CFDictionary)
         let addAttrs: [String: Any] = [
             kSecClass as String:           kSecClassGenericPassword,
             kSecAttrAccount as String:     Self.ENVELOPE_TAG,
+            kSecAttrAccessGroup as String: Self.ACCESS_GROUP,
             kSecValueData as String:       blob,
             // Available after first unlock and cannot migrate to another device
             kSecAttrAccessible as String:  kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -282,20 +290,23 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
     // Account deletion trusts this, so a delete that did not happen must throw
     private func wipeAll() throws {
         let envelope = SecItemDelete([
-            kSecClass as String:       kSecClassGenericPassword,
-            kSecAttrAccount as String: Self.ENVELOPE_TAG
+            kSecClass as String:           kSecClassGenericPassword,
+            kSecAttrAccount as String:     Self.ENVELOPE_TAG,
+            kSecAttrAccessGroup as String: Self.ACCESS_GROUP
         ] as CFDictionary)
         let wrap = SecItemDelete([
             kSecClass as String:              kSecClassKey,
-            kSecAttrApplicationTag as String: Self.WRAP_TAG.data(using: .utf8)!
+            kSecAttrApplicationTag as String: Self.WRAP_TAG.data(using: .utf8)!,
+            kSecAttrAccessGroup as String:    Self.ACCESS_GROUP
         ] as CFDictionary)
         for (what, status) in [("envelope", envelope), ("wrap key", wrap)]
         where status != errSecSuccess && status != errSecItemNotFound {
             throw Err.native("SecItemDelete \(what): \(status)")
         }
         let left = SecItemCopyMatching([
-            kSecClass as String:       kSecClassGenericPassword,
-            kSecAttrAccount as String: Self.ENVELOPE_TAG
+            kSecClass as String:           kSecClassGenericPassword,
+            kSecAttrAccount as String:     Self.ENVELOPE_TAG,
+            kSecAttrAccessGroup as String: Self.ACCESS_GROUP
         ] as CFDictionary, nil)
         if left != errSecItemNotFound { throw Err.native("envelope survived deletion: \(left)") }
         if (try? loadWrapKey()) != nil { throw Err.native("wrap key survived deletion") }
