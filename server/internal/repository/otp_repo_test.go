@@ -24,7 +24,7 @@ func testOTPRepo(t *testing.T) (*OTPRepository, string) {
 	}
 	key := "test-" + uuid.NewString()
 	t.Cleanup(func() {
-		rdb.Del(context.Background(), "otp:"+key, "otp-attempts:"+key, "ratelimit:"+key)
+		rdb.Del(context.Background(), "otp:"+key, "otp-attempts:"+key, "ratelimit:"+key, "failures:"+key)
 		rdb.Close()
 	})
 	return NewOTPRepository(rdb), key
@@ -112,5 +112,43 @@ func TestOTP_RateLimitIsExactUnderConcurrency(t *testing.T) {
 	ttl := r.Redis.PTTL(ctx, "ratelimit:"+key).Val()
 	if ttl <= 0 || ttl > time.Minute {
 		t.Fatalf("counter TTL = %v, want within the window", ttl)
+	}
+}
+
+// Parallel wrong attempts must not overrun the budget
+func TestFailureBudget_ParallelAttemptsStopAtMax(t *testing.T) {
+	r, key := testOTPRepo(t)
+	ctx := context.Background()
+	var allowed atomic.Int32
+	var wg sync.WaitGroup
+	for range 50 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, err := r.SpendFailureBudget(ctx, key, false, 10, time.Minute)
+			if err != nil {
+				t.Error(err)
+			}
+			if ok {
+				allowed.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := allowed.Load(); n != 10 {
+		t.Fatalf("%d wrong attempts were evaluated, want 10", n)
+	}
+	if ok, _ := r.SpendFailureBudget(ctx, key, true, 10, time.Minute); ok {
+		t.Fatal("a correct attempt passed after the budget was spent")
+	}
+}
+
+func TestFailureBudget_CorrectAttemptsAreFree(t *testing.T) {
+	r, key := testOTPRepo(t)
+	ctx := context.Background()
+	for i := range 20 {
+		if ok, err := r.SpendFailureBudget(ctx, key, true, 3, time.Minute); err != nil || !ok {
+			t.Fatalf("correct attempt %d = %v, %v", i, ok, err)
+		}
 	}
 }

@@ -53,6 +53,8 @@ func (h *AuthHandler) RequestOTP(w http.ResponseWriter, r *http.Request) {
 type VerifyOTPPayload struct {
 	Email string `json:"email"`
 	OTP   string `json:"otp"`
+	// Sent only for the review email
+	InstallID string `json:"install_id"`
 }
 
 func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +70,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	verified, err := h.AuthService.VerifyOTP(r.Context(), payload.Email, payload.OTP)
+	verified, err := h.AuthService.VerifyOTP(r.Context(), payload.Email, payload.OTP, payload.InstallID)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidOTP) {
 			apierr.Write(w, r, apierr.Auth("invalid or expired OTP"))
@@ -76,6 +78,10 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, service.ErrAccountDeleting) {
 			apierr.Write(w, r, apierr.AccountDeleting("this account is being deleted"))
+			return
+		}
+		if errors.Is(err, service.ErrTooManyRequests) {
+			apierr.Write(w, r, apierr.RateLimited(err.Error()))
 			return
 		}
 		apierr.Write(w, r, apierr.Internal("failed to verify OTP").WithCause(err))

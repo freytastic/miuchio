@@ -38,6 +38,9 @@ func (stubOTP) CheckOTP(context.Context, string, string, int) (bool, error) { re
 func (stubOTP) CheckRateLimit(context.Context, string, int, time.Duration) (bool, error) {
 	return true, nil
 }
+func (stubOTP) SpendFailureBudget(context.Context, string, bool, int, time.Duration) (bool, error) {
+	return true, nil
+}
 
 type stubUsers struct{}
 
