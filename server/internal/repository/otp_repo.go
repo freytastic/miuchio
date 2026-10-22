@@ -56,6 +56,29 @@ if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
 return n
 `)
 
+// One script so parallel attempts cannot all see the budget before any
+// failure lands. Correct attempts are never counted
+var failureBudgetScript = redis.NewScript(`
+local n = tonumber(redis.call('GET', KEYS[1]) or '0')
+if n >= tonumber(ARGV[2]) then return 0 end
+if ARGV[1] == '0' then
+  if redis.call('INCR', KEYS[1]) == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[3]) end
+end
+return 1
+`)
+
+// SpendFailureBudget reports false once max failures fell within window,
+// whether or not this attempt was correct. A wrong attempt spends one failure
+func (r *OTPRepository) SpendFailureBudget(ctx context.Context, key string, correct bool, max int, window time.Duration) (bool, error) {
+	flag := "0"
+	if correct {
+		flag = "1"
+	}
+	n, err := failureBudgetScript.Run(ctx, r.Redis,
+		[]string{"failures:" + key}, flag, max, window.Milliseconds()).Int()
+	return n == 1, err
+}
+
 // CheckRateLimit allows max requests per window
 func (r *OTPRepository) CheckRateLimit(ctx context.Context, key string, max int, window time.Duration) (bool, error) {
 	n, err := rateLimitScript.Run(ctx, r.Redis,

@@ -15,9 +15,10 @@ import (
 )
 
 type MockOTPStore struct {
-	SetOTPFunc         func(ctx context.Context, key, codeMAC string, ttl time.Duration) error
-	CheckOTPFunc       func(ctx context.Context, key, codeMAC string, maxAttempts int) (bool, error)
-	CheckRateLimitFunc func(ctx context.Context, key string, max int, window time.Duration) (bool, error)
+	SetOTPFunc             func(ctx context.Context, key, codeMAC string, ttl time.Duration) error
+	CheckOTPFunc           func(ctx context.Context, key, codeMAC string, maxAttempts int) (bool, error)
+	CheckRateLimitFunc     func(ctx context.Context, key string, max int, window time.Duration) (bool, error)
+	SpendFailureBudgetFunc func(ctx context.Context, key string, correct bool, max int, window time.Duration) (bool, error)
 }
 
 func (m *MockOTPStore) SetOTP(ctx context.Context, k, c string, t time.Duration) error {
@@ -28,6 +29,9 @@ func (m *MockOTPStore) CheckOTP(ctx context.Context, k, c string, n int) (bool, 
 }
 func (m *MockOTPStore) CheckRateLimit(ctx context.Context, k string, n int, w time.Duration) (bool, error) {
 	return m.CheckRateLimitFunc(ctx, k, n, w)
+}
+func (m *MockOTPStore) SpendFailureBudget(ctx context.Context, k string, c bool, n int, w time.Duration) (bool, error) {
+	return m.SpendFailureBudgetFunc(ctx, k, c, n, w)
 }
 
 // otpMatches accepts only the MAC the service derives for code
@@ -184,7 +188,7 @@ func TestAuthService_VerifyOTP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewAuthService(tt.mockOTP(), tt.mockUser(), tt.mockSession(), &MockEmailService{}, testHMACKey)
 
-			got, err := s.VerifyOTP(context.Background(), email, tt.otp)
+			got, err := s.VerifyOTP(context.Background(), email, tt.otp, "")
 
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
@@ -231,7 +235,7 @@ func TestAuthService_VerifyOTP_MiuchioIDCollisionRetry(t *testing.T) {
 	}
 
 	s := NewAuthService(otpStore, userStore, sessStore, &MockEmailService{}, testHMACKey)
-	got, err := s.VerifyOTP(context.Background(), "new@example.com", correctOTP)
+	got, err := s.VerifyOTP(context.Background(), "new@example.com", correctOTP, "")
 	if err != nil {
 		t.Fatalf("VerifyOTP unexpected err: %v", err)
 	}
@@ -268,7 +272,7 @@ func TestAuthService_VerifyOTP_ReturnsUserIDAndSessionExpiry(t *testing.T) {
 	}
 
 	s := NewAuthService(otpStore, userStore, sessStore, &MockEmailService{}, testHMACKey)
-	got, err := s.VerifyOTP(context.Background(), "test@example.com", correctOTP)
+	got, err := s.VerifyOTP(context.Background(), "test@example.com", correctOTP, "")
 	if err != nil {
 		t.Fatalf("VerifyOTP unexpected error: %v", err)
 	}
@@ -482,7 +486,7 @@ func TestAuthService_VerifyOTP_PassesAttemptLimit(t *testing.T) {
 		},
 	}
 	s := NewAuthService(otpStore, &MockUserStore{}, &MockSessionStore{}, &MockEmailService{}, testHMACKey)
-	if _, err := s.VerifyOTP(context.Background(), "a@b.c", "000000"); !errors.Is(err, ErrInvalidOTP) {
+	if _, err := s.VerifyOTP(context.Background(), "a@b.c", "000000", ""); !errors.Is(err, ErrInvalidOTP) {
 		t.Fatalf("err = %v, want ErrInvalidOTP", err)
 	}
 	if got != maxOTPAttempts {
@@ -497,8 +501,148 @@ func TestAuthService_VerifyOTP_StoreFailureIsNotInvalidOTP(t *testing.T) {
 		CheckOTPFunc: func(context.Context, string, string, int) (bool, error) { return false, down },
 	}
 	s := NewAuthService(otpStore, &MockUserStore{}, &MockSessionStore{}, &MockEmailService{}, testHMACKey)
-	_, err := s.VerifyOTP(context.Background(), "a@b.c", "000000")
+	_, err := s.VerifyOTP(context.Background(), "a@b.c", "000000", "")
 	if !errors.Is(err, down) {
 		t.Fatalf("err = %v, want the store error", err)
+	}
+}
+
+const (
+	reviewEmail = "review-k3j9x2m8q4w7p1z5@miuchio.com"
+	reviewCode  = "424242"
+	installA    = "0123456789abcdef0123456789abcdef"
+	installB    = "fedcba9876543210fedcba9876543210"
+)
+
+// reviewHarness keeps failure counts and accounts like Redis and Postgres would
+type reviewHarness struct {
+	failures int
+	accounts map[string]uuid.UUID
+	svc      *AuthService
+}
+
+func newReviewHarness() *reviewHarness {
+	h := &reviewHarness{accounts: map[string]uuid.UUID{}}
+	otpStore := &MockOTPStore{
+		SpendFailureBudgetFunc: func(_ context.Context, _ string, correct bool, max int, _ time.Duration) (bool, error) {
+			if h.failures >= max {
+				return false, nil
+			}
+			if !correct {
+				h.failures++
+			}
+			return true, nil
+		},
+		CheckRateLimitFunc: func(context.Context, string, int, time.Duration) (bool, error) {
+			return false, errors.New("review login must not use the request limit")
+		},
+		CheckOTPFunc: func(context.Context, string, string, int) (bool, error) {
+			return false, errors.New("review login must not read stored codes")
+		},
+		SetOTPFunc: func(context.Context, string, string, time.Duration) error {
+			return errors.New("review login must not store codes")
+		},
+	}
+	users := &MockUserStore{
+		GetByEmailHMACFunc: func(_ context.Context, hm []byte) (*model.User, error) {
+			if id, ok := h.accounts[string(hm)]; ok {
+				return &model.User{ID: id, EmailHMAC: hm}, nil
+			}
+			return nil, repository.ErrUserNotFound
+		},
+		CreateFunc: func(_ context.Context, u *model.User) error {
+			u.ID = uuid.New()
+			h.accounts[string(u.EmailHMAC)] = u.ID
+			return nil
+		},
+	}
+	sessions := &MockSessionStore{CreateFunc: func(context.Context, *model.Session) error { return nil }}
+	mail := &MockEmailService{SendOTPFunc: func(string, string) error {
+		return errors.New("review login must not send email")
+	}}
+	h.svc = NewAuthService(otpStore, users, sessions, mail, testHMACKey)
+	h.svc.EnableReviewLogin(reviewEmail, reviewCode)
+	return h
+}
+
+func (h *reviewHarness) signIn(t *testing.T, code, install string) (uuid.UUID, error) {
+	t.Helper()
+	got, err := h.svc.VerifyOTP(context.Background(), reviewEmail, code, install)
+	return got.UserID, err
+}
+
+func TestAuthService_ReviewLogin_RequestSendsNothing(t *testing.T) {
+	h := newReviewHarness()
+	if err := h.svc.RequestOTP(context.Background(), " Review-K3J9X2M8Q4W7P1Z5@Miuchio.com "); err != nil {
+		t.Fatalf("RequestOTP: %v", err)
+	}
+}
+
+// Each installation keeps one account of its own, never a real user's
+func TestAuthService_ReviewLogin_AccountPerInstallation(t *testing.T) {
+	h := newReviewHarness()
+	first, err := h.signIn(t, reviewCode, installA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, _ := h.signIn(t, reviewCode, installA)
+	other, _ := h.signIn(t, reviewCode, installB)
+	if again != first {
+		t.Error("signing in again on the same installation changed the account")
+	}
+	if other == first {
+		t.Error("two installations share an account")
+	}
+	if _, ok := h.accounts[string(h.svc.HashEmail(reviewEmail))]; ok {
+		t.Error("a review account sits on the plain review address")
+	}
+}
+
+// Reviewers signing in repeatedly must never lock each other out
+func TestAuthService_ReviewLogin_SuccessesDoNotCount(t *testing.T) {
+	h := newReviewHarness()
+	for i := range maxReviewFailures * 3 {
+		if _, err := h.signIn(t, reviewCode, installA); err != nil {
+			t.Fatalf("sign in %d: %v", i, err)
+		}
+	}
+	if h.failures != 0 {
+		t.Errorf("failures = %d after only correct codes", h.failures)
+	}
+}
+
+func TestAuthService_ReviewLogin_WrongCodesLockEvenTheRightOne(t *testing.T) {
+	h := newReviewHarness()
+	for range maxReviewFailures {
+		if _, err := h.signIn(t, "000000", installA); !errors.Is(err, ErrInvalidOTP) {
+			t.Fatalf("err = %v, want ErrInvalidOTP", err)
+		}
+	}
+	if _, err := h.signIn(t, reviewCode, installB); !errors.Is(err, ErrTooManyRequests) {
+		t.Fatalf("err = %v, want ErrTooManyRequests once the limit is reached", err)
+	}
+	if len(h.accounts) != 0 {
+		t.Error("a blocked sign in created an account")
+	}
+}
+
+func TestAuthService_ReviewLogin_RejectsBadInstallID(t *testing.T) {
+	for _, id := range []string{"", "not-hex", strings.ToUpper(installA)} {
+		h := newReviewHarness()
+		if _, err := h.signIn(t, reviewCode, id); !errors.Is(err, ErrInvalidOTP) {
+			t.Errorf("install id %q: err = %v, want ErrInvalidOTP", id, err)
+		}
+		if len(h.accounts) != 0 {
+			t.Errorf("install id %q created an account", id)
+		}
+	}
+}
+
+// Without EnableReviewLogin the review address is an ordinary email
+func TestAuthService_ReviewLogin_OffByDefault(t *testing.T) {
+	otpStore := &MockOTPStore{CheckOTPFunc: otpMatches("111111")}
+	s := NewAuthService(otpStore, &MockUserStore{}, &MockSessionStore{}, &MockEmailService{}, testHMACKey)
+	if _, err := s.VerifyOTP(context.Background(), reviewEmail, reviewCode, installA); !errors.Is(err, ErrInvalidOTP) {
+		t.Fatalf("err = %v, want ErrInvalidOTP", err)
 	}
 }

@@ -251,6 +251,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _otpCtrl.clear();
       setState(() => _busy = false);
       _showError('This account is still being deleted. Try again later.');
+    } on TooManyAttemptsException {
+      if (!mounted) return;
+      _otpCtrl.clear();
+      setState(() => _busy = false);
+      _showError('Too many tries. Wait a few minutes and try again.');
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);

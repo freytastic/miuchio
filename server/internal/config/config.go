@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"log"
 	"os"
+	"regexp"
+	"strings"
 )
 
 type Config struct {
@@ -24,6 +26,11 @@ type Config struct {
 	// the user_id_enc AEAD subkey. Rotating it bricks every membership row
 	UserLinkKey []byte
 
+	// App store review login, off unless both are set. Both are secrets
+	// bcs together they sign in without email
+	ReviewEmail string
+	ReviewCode  string
+
 	S3Endpoint       string
 	S3PublicEndpoint string // optional: used for presigning if S3Endpoint is internal (e.g. http://minio:9000)
 	S3AccessKey      string
@@ -35,6 +42,7 @@ type Config struct {
 
 func Load() *Config {
 	devMode := getEnv("APP_ENV", "") == "dev"
+	reviewEmail, reviewCode := loadReviewLogin()
 	return &Config{
 		DatabaseURL:      getEnv("DATABASE_URL", "postgres://postgres:password@localhost:5432/miuchio?sslmode=disable"),
 		RedisURL:         getEnv("REDIS_URL", "localhost:6379"),
@@ -44,6 +52,8 @@ func Load() *Config {
 		DevMode:          devMode,
 		EmailHMACKey:     loadEmailHMACKey(devMode),
 		UserLinkKey:      loadKeyOrDevPlaceholder("MIUCHIO_USER_LINK_KEY", "miuchio-dev-userlink-placeholder-do-not-deploy", devMode),
+		ReviewEmail:      reviewEmail,
+		ReviewCode:       reviewCode,
 		S3Endpoint:       getEnv("S3_ENDPOINT", "http://localhost:9000"),
 		S3PublicEndpoint: getEnv("S3_PUBLIC_ENDPOINT", ""),
 		S3AccessKey:      getEnv("S3_ACCESS_KEY", "minioadmin"),
@@ -98,6 +108,23 @@ func requireOutsideDev(key string, devMode bool) string {
 	}
 	return value
 }
+
+func loadReviewLogin() (string, string) {
+	email := strings.ToLower(strings.TrimSpace(getEnv("REVIEW_EMAIL", "")))
+	code := getEnv("REVIEW_CODE", "")
+	if email == "" && code == "" {
+		return "", ""
+	}
+	if !reviewEmailPattern.MatchString(email) || !reviewCodePattern.MatchString(code) {
+		log.Fatalf("REVIEW_EMAIL must look like review-<16+ random letters or digits>@miuchio.com and REVIEW_CODE must be 6 digits, both set together")
+	}
+	return email, code
+}
+
+var (
+	reviewEmailPattern = regexp.MustCompile(`^review-[a-z0-9]{16,}@miuchio\.com$`)
+	reviewCodePattern  = regexp.MustCompile(`^[0-9]{6}$`)
+)
 
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {

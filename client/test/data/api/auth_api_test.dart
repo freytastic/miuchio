@@ -63,4 +63,41 @@ void main() {
     );
     expect(await auth.verifyOtp('a@example.com', '000000'), isNull);
   });
+
+  Future<Map<String, dynamic>> sentBody(String email) async {
+    late Map<String, dynamic> body;
+    final auth = AuthService(
+      client: MockClient((req) async {
+        body = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response('{}', 401);
+      }),
+      installId: () async => '0123456789abcdef0123456789abcdef',
+    );
+    await auth.verifyOtp(email, '123456');
+    return body;
+  }
+
+  test('verifyOtp sends the install id only for a review address', () async {
+    expect(
+        (await sentBody(' Review-K3J9X2M8Q4W7P1Z5@Miuchio.com '))['install_id'],
+        '0123456789abcdef0123456789abcdef');
+    for (final email in [
+      'a@example.com',
+      'review@miuchio.com',
+      'review-short@miuchio.com'
+    ]) {
+      expect((await sentBody(email)).containsKey('install_id'), isFalse,
+          reason: email);
+    }
+  });
+
+  test('verifyOtp reports a rate limit instead of a wrong code', () async {
+    final auth = AuthService(
+      client: MockClient((_) async => http.Response(
+          jsonEncode({'code': 'E_RATE_LIMITED', 'message': 'too many'}), 429)),
+      installId: () async => '0123456789abcdef0123456789abcdef',
+    );
+    expect(() => auth.verifyOtp('a@example.com', '000000'),
+        throwsA(isA<TooManyAttemptsException>()));
+  });
 }

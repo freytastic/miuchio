@@ -97,6 +97,10 @@ func main() {
 		emailService = service.ConsoleEmailService{} // config.Load only allows an empty key in dev mode
 	}
 	authService := service.NewAuthService(otpRepo, userRepo, sessionRepo, emailService, cfg.EmailHMACKey)
+	if cfg.ReviewEmail != "" {
+		authService.EnableReviewLogin(cfg.ReviewEmail, cfg.ReviewCode)
+		log.Printf("review login enabled")
+	}
 	userService := service.NewUserService(userRepo)
 	albumService := service.NewAlbumService(albumRepo)
 

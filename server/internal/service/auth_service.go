@@ -5,11 +5,13 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"log"
 	"math/big"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,6 +32,15 @@ const (
 	otpRequestWindow = 5 * time.Minute
 )
 
+// Wrong review codes allowed per window. Only failures count, so reviewers
+// signing in again never use it up
+const (
+	maxReviewFailures   = 10
+	reviewFailureWindow = 15 * time.Minute
+)
+
+var installIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 // Successful refreshes extend this sliding lifetime
 const sessionTTL = 30 * 24 * time.Hour
 
@@ -46,6 +57,7 @@ type OTPStore interface {
 	SetOTP(ctx context.Context, key, codeMAC string, ttl time.Duration) error
 	CheckOTP(ctx context.Context, key, codeMAC string, maxAttempts int) (bool, error)
 	CheckRateLimit(ctx context.Context, key string, max int, window time.Duration) (bool, error)
+	SpendFailureBudget(ctx context.Context, key string, correct bool, max int, window time.Duration) (bool, error)
 }
 
 type AuthUserStore interface {
@@ -67,6 +79,18 @@ type AuthService struct {
 	EmailService EmailService
 	emailHMACKey []byte
 	otpKey       []byte
+	reviewEmail  string
+	reviewCode   string
+}
+
+// Lets app reviewers sign in with a fixed code
+func (s *AuthService) EnableReviewLogin(email, code string) {
+	s.reviewEmail = strings.ToLower(strings.TrimSpace(email))
+	s.reviewCode = code
+}
+
+func (s *AuthService) isReviewEmail(email string) bool {
+	return s.reviewEmail != "" && strings.ToLower(strings.TrimSpace(email)) == s.reviewEmail
 }
 
 func NewAuthService(otpRepo OTPStore, userRepo AuthUserStore, sessionRepo SessionStore, emailService EmailService, emailHMACKey []byte) *AuthService {
@@ -110,6 +134,9 @@ func (s *AuthService) HashEmail(email string) []byte {
 func (s *AuthService) RequestOTP(ctx context.Context, email string) error {
 	// Logs never carry the email or code: the server is the one place they could
 	// be joined to a real identity
+	if s.isReviewEmail(email) {
+		return nil
+	}
 	emailHMAC := s.HashEmail(email)
 	key := hex.EncodeToString(emailHMAC)
 	allowed, err := s.OTPRepo.CheckRateLimit(ctx, key, maxOTPRequests, otpRequestWindow)
@@ -147,16 +174,25 @@ type VerifiedSession struct {
 	ExpiresAt time.Time
 }
 
-func (s *AuthService) VerifyOTP(ctx context.Context, email, otp string) (VerifiedSession, error) {
-	emailHMAC := s.HashEmail(email)
-	ok, err := s.OTPRepo.CheckOTP(ctx, hex.EncodeToString(emailHMAC), s.otpMAC(emailHMAC, otp), maxOTPAttempts)
-	if err != nil {
-		// Intentionally no email/otp in the log line
-		log.Printf("VerifyOTP: check failed: %v", err)
-		return VerifiedSession{}, err
-	}
-	if !ok {
-		return VerifiedSession{}, ErrInvalidOTP
+// installID is only read for the review email
+func (s *AuthService) VerifyOTP(ctx context.Context, email, otp, installID string) (VerifiedSession, error) {
+	var emailHMAC []byte
+	if s.isReviewEmail(email) {
+		var err error
+		if emailHMAC, err = s.checkReviewCode(ctx, otp, installID); err != nil {
+			return VerifiedSession{}, err
+		}
+	} else {
+		emailHMAC = s.HashEmail(email)
+		ok, err := s.OTPRepo.CheckOTP(ctx, hex.EncodeToString(emailHMAC), s.otpMAC(emailHMAC, otp), maxOTPAttempts)
+		if err != nil {
+			// Intentionally no email/otp in the log line
+			log.Printf("VerifyOTP: check failed: %v", err)
+			return VerifiedSession{}, err
+		}
+		if !ok {
+			return VerifiedSession{}, ErrInvalidOTP
+		}
 	}
 
 	user, err := s.UserRepo.GetByEmailHMAC(ctx, emailHMAC)
@@ -197,6 +233,28 @@ func (s *AuthService) VerifyOTP(ctx context.Context, email, otp string) (Verifie
 		Token:     token,
 		ExpiresAt: session.ExpiresAt,
 	}, nil
+}
+
+// Returns the per installation account key. The install ID is folded into the
+// hashed address, so a review account can never match a real user
+func (s *AuthService) checkReviewCode(ctx context.Context, otp, installID string) ([]byte, error) {
+	if !installIDPattern.MatchString(installID) {
+		return nil, ErrInvalidOTP
+	}
+	correct := subtle.ConstantTimeCompare([]byte(otp), []byte(s.reviewCode)) == 1
+	key := hex.EncodeToString(s.HashEmail(s.reviewEmail)) + ":review"
+	allowed, err := s.OTPRepo.SpendFailureBudget(ctx, key, correct, maxReviewFailures, reviewFailureWindow)
+	if err != nil {
+		log.Printf("VerifyOTP: review failure budget failed: %v", err)
+		return nil, err
+	}
+	if !allowed {
+		return nil, ErrTooManyRequests
+	}
+	if !correct {
+		return nil, ErrInvalidOTP
+	}
+	return s.HashEmail(s.reviewEmail + "#install:" + installID), nil
 }
 
 // createWithMiuchioID assigns a fresh random miuchio_id and inserts, retrying on
