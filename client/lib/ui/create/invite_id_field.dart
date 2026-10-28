@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:miuchio/e2ee/handle.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
@@ -223,6 +224,7 @@ class _IdEntryRow extends StatelessWidget {
             enabled: enabled,
             textCapitalization: TextCapitalization.characters,
             autocorrect: false,
+            inputFormatters: [_IdDashFormatter()],
             style: const TextStyle(
                 fontSize: 15, letterSpacing: 1.2, color: Warm.glassInk),
             decoration: InputDecoration(
@@ -256,6 +258,27 @@ class _IdEntryRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// Keeps the dash after the fourth character while typing, pasting or editing
+class _IdDashFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final raw = newValue.text.replaceAll('-', '');
+    final end = newValue.selection.baseOffset;
+    final caret = end < 0
+        ? raw.length
+        : newValue.text.substring(0, end).replaceAll('-', '').length;
+    if (raw.length <= 4) {
+      return TextEditingValue(
+          text: raw, selection: TextSelection.collapsed(offset: caret));
+    }
+    return TextEditingValue(
+      text: '${raw.substring(0, 4)}-${raw.substring(4)}',
+      selection: TextSelection.collapsed(offset: caret > 4 ? caret + 1 : caret),
     );
   }
 }
