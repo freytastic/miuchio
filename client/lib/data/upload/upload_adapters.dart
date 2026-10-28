@@ -281,6 +281,12 @@ UploadStageException classifyUploadError(Object error) {
       case 'E_EPOCH_PENDING_ROTATION':
         return const UploadStageException(
             UploadFailureKind.rotationPending, 'rotation_pending');
+      case 'E_QUOTA_EXCEEDED':
+        return const UploadStageException(
+            UploadFailureKind.quotaFull, 'quota_exceeded');
+      case 'E_STORAGE_FULL':
+        return const UploadStageException(
+            UploadFailureKind.serverFull, 'storage_full');
     }
     final status = error.httpStatus;
     if (status == 408 || status == 429 || status >= 500) {

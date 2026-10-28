@@ -130,6 +130,7 @@ class _UploadSheetState extends State<UploadSheet> {
 
     final unprocessable = batch.unprocessableCount;
     final retryable = batch.retryableCount;
+    final full = batch.storageFullCount;
     // Nothing to act on, so the check is the confirmation and the sheet
     // leaves by itself
     final allAdded = batch.settled &&
@@ -192,11 +193,24 @@ class _UploadSheetState extends State<UploadSheet> {
                 },
               ),
             ],
-            if (retryable > 0) ...[
+            if (full > 0) ...[
               const SizedBox(height: 12),
               _Notice(
-                headline: failureHeadline(retryable),
-                body: failureBody(retryable),
+                headline: storageFullHeadline(server: batch.serverFull),
+                body: storageFullBody(full, server: batch.serverFull),
+                actionLabel: 'Try again',
+                onAction: _busy ? null : () => model.retryFailed(batchId),
+                secondaryLabel: 'Remove them',
+                onSecondary: _busy
+                    ? null
+                    : () => _guarded(() => model.removeFailed(batchId)),
+              ),
+            ],
+            if (retryable > full) ...[
+              const SizedBox(height: 12),
+              _Notice(
+                headline: failureHeadline(retryable - full),
+                body: failureBody(retryable - full),
                 actionLabel: 'Try again',
                 onAction: _busy ? null : () => model.retryFailed(batchId),
                 // Removing the final item closes through the build guard

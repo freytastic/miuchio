@@ -628,6 +628,7 @@ class UploadCoordinator {
     }
 
     log(DebugEvent.uploadFailed);
+    if (stopsQueue(failure.kind)) _failQueued(failure);
     if (isTerminal(failure.kind)) {
       if (!item.sourceDiscarded) await _discard(item.sourcePath);
       await _guard(() => _preparer.discardSealed(itemId));
@@ -643,6 +644,15 @@ class UploadCoordinator {
     }
     _set(itemId, phase: UploadPhase.failed, failure: failure);
     _emitNow();
+  }
+
+  // Fails waiting photos locally instead of asking the server once per photo
+  void _failQueued(UploadFailure failure) {
+    for (final item in [..._items]) {
+      if (item.phase == UploadPhase.queued) {
+        _set(item.id, phase: UploadPhase.failed, failure: failure);
+      }
+    }
   }
 
   // Prevents a retry from racing its own reservation cleanup
