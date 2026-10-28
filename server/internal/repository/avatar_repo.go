@@ -19,11 +19,12 @@ var (
 )
 
 type AvatarRepository struct {
-	DB *pgxpool.Pool
+	DB    *pgxpool.Pool
+	quota StorageQuota
 }
 
-func NewAvatarRepository(db *pgxpool.Pool) *AvatarRepository {
-	return &AvatarRepository{DB: db}
+func NewAvatarRepository(db *pgxpool.Pool, quota StorageQuota) *AvatarRepository {
+	return &AvatarRepository{DB: db, quota: quota}
 }
 
 // Reserve replaces the member's pending upload. Takes the album lock so a
@@ -74,6 +75,9 @@ func (r *AvatarRepository) Reserve(ctx context.Context, a *model.MemberAvatar) e
 		return err
 	}
 	if err := unqueueObjectCleanup(ctx, tx, stale, a.StorageKey); err != nil {
+		return err
+	}
+	if err := r.quota.admit(ctx, tx, a.MemberToken, a.BlobSize); err != nil {
 		return err
 	}
 

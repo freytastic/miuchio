@@ -62,3 +62,21 @@ func (h *UserHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) 
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// quota_bytes is 0 when the server sets no per account limit
+func (h *UserHandler) GetStorage(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.MustGetUserID(w, r)
+	if !ok {
+		return
+	}
+	u, err := h.userService.StorageUsage(r.Context(), userID)
+	if err != nil {
+		apierr.Write(w, r, apierr.Internal("failed to read storage usage").WithCause(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"used_bytes":  u.UsedBytes,
+		"quota_bytes": u.QuotaBytes,
+	})
+}

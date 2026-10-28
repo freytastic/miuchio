@@ -201,6 +201,10 @@ func (s *MediaService) RequestUploadURL(ctx context.Context, albumID uuid.UUID, 
 			return nil, apierr.Validation("media_id is already confirmed")
 		case errors.Is(err, repository.ErrMediaNotOwned):
 			return nil, apierr.Forbidden("media_id is reserved by another uploader")
+		case errors.Is(err, repository.ErrQuotaExceeded):
+			return nil, apierr.QuotaExceeded("account storage is full")
+		case errors.Is(err, repository.ErrStorageFull):
+			return nil, apierr.StorageFull("server storage is full")
 		default:
 			return nil, apierr.Internal("failed to write pending media").WithCause(err)
 		}
