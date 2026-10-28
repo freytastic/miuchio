@@ -105,7 +105,7 @@ func (e *rotationEnv) summaryFlag(t *testing.T) bool {
 
 func (e *rotationEnv) revokeMember(t *testing.T) {
 	t.Helper()
-	if _, _, err := e.repo.RevokeMemberTx(context.Background(), e.album, e.admin, e.member); err != nil {
+	if _, err := e.repo.RevokeMemberTx(context.Background(), e.album, e.admin, e.member, repository.KeepMedia); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 }

@@ -15,4 +15,14 @@ class UserService {
       return null;
     }
   }
+
+  Future<bool> setDeleteMediaOnLeave(bool on) async {
+    try {
+      final response = await _client.put('/users/me/preferences',
+          body: {'delete_media_on_leave': on});
+      return response.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
+  }
 }

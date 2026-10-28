@@ -425,22 +425,38 @@ func (r *AlbumRepository) UpdateMemberNameCT(ctx context.Context, albumID uuid.U
 	return err
 }
 
+// What revocation does with the departing member's photos
+type DepartingMedia int
+
+const (
+	KeepMedia DepartingMedia = iota
+	DeleteMedia
+	// Follows the member's own setting, for removals they didn't start
+	PreferredMedia
+)
+
+type Revocation struct {
+	Role           string
+	AlreadyRevoked bool
+	Media          MediaRemoval
+}
+
 // Serializes revocation with rotation and upload reservation on the album lock
 // Caller state and the last admin guard are rechecked inside the transaction
-func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (string, bool, error) {
+func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte, media DepartingMedia) (Revocation, error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
-		return "", false, err
+		return Revocation{}, err
 	}
 	defer tx.Rollback(ctx)
 
 	var locked uuid.UUID
 	err = tx.QueryRow(ctx, `SELECT id FROM albums WHERE id = $1 FOR UPDATE`, albumID).Scan(&locked)
 	if err == pgx.ErrNoRows {
-		return "", false, ErrAlbumNotFound
+		return Revocation{}, ErrAlbumNotFound
 	}
 	if err != nil {
-		return "", false, err
+		return Revocation{}, err
 	}
 
 	// Caller must still be an active member at commit time
@@ -451,13 +467,13 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 		albumID, callerToken,
 	).Scan(&callerRevoked)
 	if err == pgx.ErrNoRows {
-		return "", false, ErrCallerRevoked
+		return Revocation{}, ErrCallerRevoked
 	}
 	if err != nil {
-		return "", false, err
+		return Revocation{}, err
 	}
 	if callerRevoked {
-		return "", false, ErrCallerRevoked
+		return Revocation{}, ErrCallerRevoked
 	}
 
 	var role string
@@ -468,17 +484,17 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 		albumID, targetToken,
 	).Scan(&role, &revoked)
 	if err == pgx.ErrNoRows {
-		return "", false, ErrMemberNotFound
+		return Revocation{}, ErrMemberNotFound
 	}
 	if err != nil {
-		return "", false, err
+		return Revocation{}, err
 	}
 	if revoked {
 		// Already revoked, commit to release the lock
 		if err := tx.Commit(ctx); err != nil {
-			return "", false, err
+			return Revocation{}, err
 		}
-		return role, true, nil
+		return Revocation{Role: role, AlreadyRevoked: true}, nil
 	}
 
 	if role == "admin" {
@@ -488,10 +504,10 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 			 WHERE album_id = $1 AND role = 'admin' AND revoked_at IS NULL`,
 			albumID,
 		).Scan(&n); err != nil {
-			return "", false, err
+			return Revocation{}, err
 		}
 		if n <= 1 {
-			return role, false, ErrLastAdmin
+			return Revocation{}, ErrLastAdmin
 		}
 	}
 
@@ -500,25 +516,72 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 		 WHERE album_id = $1 AND member_token = $2 AND revoked_at IS NULL`,
 		albumID, targetToken,
 	); err != nil {
-		return "", false, err
+		return Revocation{}, err
 	}
 	// The departed member still holds the current key until the next epoch
 	if _, err := tx.Exec(ctx,
 		`UPDATE albums SET rotation_required = TRUE WHERE id = $1`, albumID,
 	); err != nil {
-		return "", false, err
+		return Revocation{}, err
 	}
 	// The periodic sweep deletes the queued object
 	if _, err := removeAvatars(ctx, tx,
 		`DELETE FROM member_avatars WHERE album_id = $1 AND member_token = $2
 		 RETURNING storage_key`, albumID, targetToken,
 	); err != nil {
-		return "", false, err
+		return Revocation{}, err
+	}
+	out := Revocation{Role: role}
+	if media == PreferredMedia {
+		if media, err = r.preferredMedia(ctx, tx, targetToken); err != nil {
+			return Revocation{}, err
+		}
+	}
+	if media == DeleteMedia {
+		if out.Media, err = removeMedia(ctx, tx,
+			`DELETE FROM media WHERE album_id = $1 AND uploader_token = $2
+			 RETURNING id, storage_key, thumb_key`, albumID, targetToken,
+		); err != nil {
+			return Revocation{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return "", false, err
+		return Revocation{}, err
 	}
-	return role, false, nil
+	return out, nil
+}
+
+// An unreadable link or a deleted account keeps the photos
+func (r *AlbumRepository) preferredMedia(ctx context.Context, tx pgx.Tx, memberToken []byte) (DepartingMedia, error) {
+	var sealed []byte
+	err := tx.QueryRow(ctx,
+		`SELECT user_id_enc FROM album_member_identities WHERE member_token = $1`,
+		memberToken,
+	).Scan(&sealed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return KeepMedia, nil
+	}
+	if err != nil {
+		return KeepMedia, err
+	}
+	userID, err := r.linker.Open(sealed, memberToken)
+	if err != nil {
+		return KeepMedia, nil
+	}
+	var del bool
+	err = tx.QueryRow(ctx,
+		`SELECT delete_media_on_leave FROM users WHERE id = $1`, userID,
+	).Scan(&del)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return KeepMedia, nil
+	}
+	if err != nil {
+		return KeepMedia, err
+	}
+	if del {
+		return DeleteMedia, nil
+	}
+	return KeepMedia, nil
 }
 
 func (r *AlbumRepository) UpdateName(ctx context.Context, albumID uuid.UUID, nameCT []byte) error {

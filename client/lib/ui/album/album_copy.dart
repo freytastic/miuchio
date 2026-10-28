@@ -158,7 +158,13 @@ abstract final class AlbumCopy {
   static const leaveAlbum = 'Leave album';
   static const leaveTitle = 'Leave this album?';
   static const leaveBody = 'It disappears from this phone and you need a new '
-      'invite to come back. The photos you added stay for everyone else.';
+      'invite to come back.';
+  static const leavePhotos = 'The photos you added';
+  static const keepPhotos = 'Keep my photos';
+  static const keepPhotosNote = 'Everyone in the album can still see them.';
+  static const deletePhotos = 'Delete my photos';
+  static const deletePhotosNote = "They're deleted for everyone. Copies people "
+      'saved stay on their phones.';
   static const leaveCancel = 'Stay';
   static const leaveFailed = "Couldn't leave the album.";
 
@@ -174,7 +180,8 @@ abstract final class AlbumCopy {
   static const madeThisAlbum = 'Made this album';
   static String removeTitle(String name) => 'Remove $name?';
   static const removeBody = 'The album disappears from their phone and they '
-      "can't see anything added after now. The photos they added stay.";
+      "can't see anything added after now. The photos they added stay, unless "
+      'their settings say to delete them.';
   static const remove = 'Remove';
   static const removeFailed = "Couldn't remove them.";
   static const cancelInviteTitle = 'Cancel this invite?';

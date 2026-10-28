@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/freytastic/miuchio/internal/e2ee/epoch"
+	"github.com/freytastic/miuchio/internal/repository"
 )
 
 // A second admin row only exists in legacy data, but it is the one way a
@@ -29,7 +30,7 @@ func (e *rotationEnv) signedBy(n int, signer []byte, recipients ...[]byte) epoch
 func TestInsertEpoch_RefusesARemovedSigner(t *testing.T) {
 	e := newRotationEnv(t)
 	signer := e.secondSigner(t, "admin")
-	if _, _, err := e.repo.RevokeMemberTx(context.Background(), e.album, e.admin, signer); err != nil {
+	if _, err := e.repo.RevokeMemberTx(context.Background(), e.album, e.admin, signer, repository.KeepMedia); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 
@@ -72,7 +73,7 @@ func TestInsertEpoch_RaceWithRemovalNeverKeysTheRemovedSigner(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, _, revokeErr = e.repo.RevokeMemberTx(ctx, e.album, e.admin, signer)
+			_, revokeErr = e.repo.RevokeMemberTx(ctx, e.album, e.admin, signer, repository.KeepMedia)
 		}()
 		close(start)
 		wg.Wait()

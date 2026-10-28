@@ -29,11 +29,11 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 // The HMAC is computed in the auth service : the repo never sees the plaintext
 func (r *UserRepository) GetByEmailHMAC(ctx context.Context, hmac []byte) (*model.User, error) {
 	var user model.User
-	query := `SELECT id, email_hmac, miuchio_id, created_at, updated_at, ik_pub, lk_pub, spk_pub, spk_sig, spk_ts, deleting_at FROM users WHERE email_hmac = $1`
+	query := `SELECT id, email_hmac, miuchio_id, created_at, updated_at, ik_pub, lk_pub, spk_pub, spk_sig, spk_ts, deleting_at, delete_media_on_leave FROM users WHERE email_hmac = $1`
 	err := r.DB.QueryRow(ctx, query, hmac).Scan(
 		&user.ID, &user.EmailHMAC, &user.MiuchioID, &user.CreatedAt, &user.UpdatedAt,
 		&user.IKPub, &user.LKPub, &user.SPKPub, &user.SPKSig, &user.SPKTs,
-		&user.DeletingAt,
+		&user.DeletingAt, &user.DeleteMediaOnLeave,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, ErrUserNotFound
@@ -46,11 +46,11 @@ func (r *UserRepository) GetByEmailHMAC(ctx context.Context, hmac []byte) (*mode
 
 func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	var user model.User
-	query := `SELECT id, email_hmac, miuchio_id, created_at, updated_at, ik_pub, lk_pub, spk_pub, spk_sig, spk_ts, deleting_at FROM users WHERE id = $1`
+	query := `SELECT id, email_hmac, miuchio_id, created_at, updated_at, ik_pub, lk_pub, spk_pub, spk_sig, spk_ts, deleting_at, delete_media_on_leave FROM users WHERE id = $1`
 	err := r.DB.QueryRow(ctx, query, id).Scan(
 		&user.ID, &user.EmailHMAC, &user.MiuchioID, &user.CreatedAt, &user.UpdatedAt,
 		&user.IKPub, &user.LKPub, &user.SPKPub, &user.SPKSig, &user.SPKTs,
-		&user.DeletingAt,
+		&user.DeletingAt, &user.DeleteMediaOnLeave,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, ErrUserNotFound
@@ -92,4 +92,16 @@ func (r *UserRepository) FindUserIDByMiuchioID(ctx context.Context, miuchioID st
 		return uuid.Nil, err
 	}
 	return id, nil
+}
+
+func (r *UserRepository) SetDeleteMediaOnLeave(ctx context.Context, id uuid.UUID, on bool) error {
+	tag, err := r.DB.Exec(ctx,
+		`UPDATE users SET delete_media_on_leave = $2 WHERE id = $1`, id, on)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
 }

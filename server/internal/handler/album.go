@@ -357,7 +357,8 @@ func (h *AlbumHandler) RemoveAlbumMember(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	res, err := h.albumService.RemoveMember(r.Context(), albumID, userID, targetToken)
+	deleteMedia := r.URL.Query().Get("delete_media") == "true"
+	res, err := h.albumService.RemoveMember(r.Context(), albumID, userID, targetToken, deleteMedia)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrLastAdmin):
@@ -375,13 +376,13 @@ func (h *AlbumHandler) RemoveAlbumMember(w http.ResponseWriter, r *http.Request)
 	}
 
 	if !res.AlreadyRevoked {
-		h.notifyRevoked(r.Context(), albumID, targetToken)
+		h.notifyRevoked(r.Context(), albumID, targetToken, res.DeletedMediaIDs)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // Notification failures cannot roll back the committed revocation
-func (h *AlbumHandler) notifyRevoked(ctx context.Context, albumID uuid.UUID, removedToken []byte) {
+func (h *AlbumHandler) notifyRevoked(ctx context.Context, albumID uuid.UUID, removedToken []byte, mediaIDs []uuid.UUID) {
 	if h.notifier == nil || h.resolver == nil {
 		return
 	}
@@ -400,5 +401,16 @@ func (h *AlbumHandler) notifyRevoked(ctx context.Context, albumID uuid.UUID, rem
 	_ = h.notifier.EmitToUsers(ctx, users, ws.EventMemberRevoked, map[string]any{
 		"album_id":     albumID.String(),
 		"member_token": base64.StdEncoding.EncodeToString(removedToken),
+	})
+	if len(mediaIDs) == 0 {
+		return
+	}
+	ids := make([]string, len(mediaIDs))
+	for i, id := range mediaIDs {
+		ids[i] = id.String()
+	}
+	_ = h.notifier.EmitToUsers(ctx, users, ws.EventMediaDeleted, map[string]any{
+		"album_id":  albumID.String(),
+		"media_ids": ids,
 	})
 }

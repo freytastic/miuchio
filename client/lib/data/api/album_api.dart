@@ -118,12 +118,14 @@ class AlbumService {
   }
 
   // memberToken is std base64, the path needs unpadded base64url
-  Future<bool> removeMember(String albumId, String memberToken) async {
+  Future<bool> removeMember(String albumId, String memberToken,
+      {bool deleteMedia = false}) async {
     try {
       final raw = base64.decode(base64.normalize(memberToken));
       final tokenPath = base64Url.encode(raw).replaceAll('=', '');
+      final query = deleteMedia ? '?delete_media=true' : '';
       final response =
-          await _client.delete('/albums/$albumId/members/$tokenPath');
+          await _client.delete('/albums/$albumId/members/$tokenPath$query');
       return response.statusCode == 204;
     } catch (_) {
       return false;

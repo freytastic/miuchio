@@ -9,6 +9,7 @@ import (
 
 type UserStore interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.User, error)
+	SetDeleteMediaOnLeave(ctx context.Context, id uuid.UUID, on bool) error
 }
 
 type UserService struct {
@@ -21,4 +22,8 @@ func NewUserService(userRepo UserStore) *UserService {
 
 func (s *UserService) GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	return s.userRepo.GetByID(ctx, id)
+}
+
+func (s *UserService) SetDeleteMediaOnLeave(ctx context.Context, id uuid.UUID, on bool) error {
+	return s.userRepo.SetDeleteMediaOnLeave(ctx, id, on)
 }
