@@ -162,6 +162,7 @@ func main() {
 
 	authed.HandleFunc("/ws-ticket", wsHandler.IssueTicket).Methods(http.MethodPost)
 	authed.HandleFunc("/users/me", userHandler.GetMe).Methods(http.MethodGet)
+	authed.HandleFunc("/users/me/preferences", userHandler.UpdatePreferences).Methods(http.MethodPut)
 	authed.HandleFunc("/users/me/deletion", accountHandler.DeletionPreflight).Methods(http.MethodGet)
 	authed.HandleFunc("/users/me/deletion", accountHandler.RequestDeletion).Methods(http.MethodPost)
 	authed.HandleFunc("/users/me/keys", prekeyHandler.UpsertIdentity).Methods(http.MethodPut)

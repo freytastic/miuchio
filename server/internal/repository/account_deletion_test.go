@@ -62,6 +62,7 @@ type deletionEnv struct {
 	departed uuid.UUID // the user left it earlier, their photos remain
 
 	userKeys  []string
+	keptKeys  []string // the user's photos in departed, chosen to stay
 	otherKeys []string
 }
 
@@ -116,11 +117,11 @@ func newDeletionEnv(t *testing.T) *deletionEnv {
 	e.userKeys = append(e.userKeys, e.photo(t, e.shared, userShared)...)
 	e.userKeys = append(e.userKeys, e.photo(t, e.joined, userJoined)...)
 	e.userKeys = append(e.userKeys, e.photo(t, e.solo, userSolo)...)
-	e.userKeys = append(e.userKeys, e.photo(t, e.departed, userDeparted)...)
+	e.keptKeys = append(e.keptKeys, e.photo(t, e.departed, userDeparted)...)
 	e.otherKeys = append(e.otherKeys, e.photo(t, e.joined, otherJoined)...)
 	e.otherKeys = append(e.otherKeys, e.photo(t, e.departed, otherDeparted)...)
 
-	if _, _, err := env.repo.RevokeMemberTx(ctx, e.departed, userDeparted, userDeparted); err != nil {
+	if _, err := env.repo.RevokeMemberTx(ctx, e.departed, userDeparted, userDeparted, repository.KeepMedia); err != nil {
 		t.Fatalf("leave departed album: %v", err)
 	}
 	if _, err := env.pool.Exec(ctx,
@@ -132,7 +133,7 @@ func newDeletionEnv(t *testing.T) *deletionEnv {
 	t.Cleanup(func() {
 		_, _ = env.pool.Exec(context.Background(),
 			`DELETE FROM media_object_cleanup WHERE storage_key = ANY($1)`,
-			append(append([]string{}, e.userKeys...), e.otherKeys...))
+			append(append(append([]string{}, e.userKeys...), e.keptKeys...), e.otherKeys...))
 	})
 	return e
 }
@@ -220,6 +221,12 @@ func (e *deletionEnv) assertGone(t *testing.T) {
 	}
 	if n := e.queued(t, e.otherKeys); n != 0 {
 		t.Fatal("another member's objects were queued for deletion")
+	}
+	if n := e.count(t, `SELECT count(*) FROM media WHERE storage_key = ANY($1)`, e.keptKeys); n != 1 {
+		t.Fatalf("photos kept in an album the user left: %d rows, want 1", n)
+	}
+	if n := e.queued(t, e.keptKeys); n != 0 {
+		t.Fatal("photos kept in an album the user left were queued for deletion")
 	}
 	if n := e.count(t, `SELECT count(*) FROM album_member_identities WHERE user_handle = $1`,
 		e.linker.Hash(e.user)); n != 0 {
@@ -317,8 +324,8 @@ func TestAccountDeletion_JobSettlesEveryAlbum(t *testing.T) {
 	if got := notifier.of("e2ee.media_deleted", e.joined); len(got) != 1 {
 		t.Errorf("the admin must drop the user's photos, got %+v", got)
 	}
-	if got := notifier.of("e2ee.media_deleted", e.departed); len(got) != 1 {
-		t.Errorf("an album the user left must drop their photos too, got %+v", got)
+	if got := notifier.of("e2ee.media_deleted", e.departed); len(got) != 0 {
+		t.Errorf("an album the user left keeps their photos, got %+v", got)
 	}
 }
 

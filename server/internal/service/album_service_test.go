@@ -17,6 +17,7 @@ type removeMemberStore struct {
 	revokeTxFn func(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (role string, alreadyRevoked bool, err error)
 
 	revokedToken []byte // captures the target token passed to RevokeMemberTx
+	revokedMedia repository.DepartingMedia
 	revokeCalls  int
 	deleteCalls  int
 	deleteErr    error
@@ -26,10 +27,12 @@ type removeMemberStore struct {
 func (m *removeMemberStore) LookupMember(ctx context.Context, userID, albumID uuid.UUID) ([]byte, string, error) {
 	return m.lookupFn(ctx, userID, albumID)
 }
-func (m *removeMemberStore) RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (string, bool, error) {
+func (m *removeMemberStore) RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte, media repository.DepartingMedia) (repository.Revocation, error) {
 	m.revokeCalls++
 	m.revokedToken = targetToken
-	return m.revokeTxFn(ctx, albumID, callerToken, targetToken)
+	m.revokedMedia = media
+	role, already, err := m.revokeTxFn(ctx, albumID, callerToken, targetToken)
+	return repository.Revocation{Role: role, AlreadyRevoked: already}, err
 }
 
 // unused AlbumStore methods
@@ -79,7 +82,7 @@ func TestRemoveMember_AdminKicksMember(t *testing.T) {
 	}
 	svc := NewAlbumService(store)
 
-	res, err := svc.RemoveMember(context.Background(), albumID, uuid.New(), target)
+	res, err := svc.RemoveMember(context.Background(), albumID, uuid.New(), target, false)
 	if err != nil {
 		t.Fatalf("RemoveMember: unexpected error %v", err)
 	}
@@ -107,7 +110,7 @@ func TestRemoveMember_PlainMemberCannotKickOther(t *testing.T) {
 	}
 	svc := NewAlbumService(store)
 
-	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), target)
+	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), target, false)
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("err = %v, want ErrUnauthorized", err)
 	}
@@ -130,7 +133,7 @@ func TestCoAdmin_HasNoAdminAuthority(t *testing.T) {
 	svc := NewAlbumService(store)
 
 	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(),
-		[]byte("targettargettargettargettarget32"))
+		[]byte("targettargettargettargettarget32"), false)
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("remove: err = %v, want ErrUnauthorized", err)
 	}
@@ -154,7 +157,7 @@ func TestRemoveMember_PlainMemberCannotRemoveAlreadyRevoked(t *testing.T) {
 	svc := NewAlbumService(store)
 
 	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(),
-		[]byte("targettargettargettargettarget32"))
+		[]byte("targettargettargettargettarget32"), false)
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("err = %v, want ErrUnauthorized (authz before no-op)", err)
 	}
@@ -170,12 +173,47 @@ func TestRemoveMember_MemberCanLeave(t *testing.T) {
 	}
 	svc := NewAlbumService(store)
 
-	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), self)
+	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), self, false)
 	if err != nil {
 		t.Fatalf("self-leave: unexpected error %v", err)
 	}
 	if store.revokeCalls != 1 {
 		t.Errorf("RevokeMemberTx calls = %d, want 1", store.revokeCalls)
+	}
+}
+
+// Only the leaver picks, an admin's flag must never override the target's setting
+func TestRemoveMember_MediaPolicy(t *testing.T) {
+	self := []byte("selfselfselfselfselfselfselfsel1")
+	other := []byte("targettargettargettargettarget32")
+	cases := []struct {
+		name        string
+		role        string
+		target      []byte
+		deleteMedia bool
+		want        repository.DepartingMedia
+	}{
+		{"leave keeps", "member", self, false, repository.KeepMedia},
+		{"leave deletes", "member", self, true, repository.DeleteMedia},
+		{"kick follows setting", "admin", other, false, repository.PreferredMedia},
+		{"kick ignores flag", "admin", other, true, repository.PreferredMedia},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &removeMemberStore{
+				lookupFn: func(context.Context, uuid.UUID, uuid.UUID) ([]byte, string, error) {
+					return self, tc.role, nil
+				},
+				revokeTxFn: okRevoke("member"),
+			}
+			svc := NewAlbumService(store)
+			if _, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), tc.target, tc.deleteMedia); err != nil {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if store.revokedMedia != tc.want {
+				t.Errorf("media = %v, want %v", store.revokedMedia, tc.want)
+			}
+		})
 	}
 }
 
@@ -191,7 +229,7 @@ func TestRemoveMember_LastAdminRejectedByTx(t *testing.T) {
 	}
 	svc := NewAlbumService(store)
 
-	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), self)
+	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), self, false)
 	if !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("err = %v, want ErrLastAdmin", err)
 	}
@@ -209,7 +247,7 @@ func TestRemoveMember_TargetNotFound(t *testing.T) {
 	svc := NewAlbumService(store)
 
 	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(),
-		[]byte("ghostghostghostghostghostghost32"))
+		[]byte("ghostghostghostghostghostghost32"), false)
 	if !errors.Is(err, ErrMemberNotFound) {
 		t.Fatalf("err = %v, want ErrMemberNotFound", err)
 	}
@@ -227,7 +265,7 @@ func TestRemoveMember_AlreadyRevokedIsNoOp(t *testing.T) {
 	}
 	svc := NewAlbumService(store)
 
-	res, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), target)
+	res, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(), target, false)
 	if err != nil {
 		t.Fatalf("already-revoked: unexpected error %v", err)
 	}
@@ -304,7 +342,7 @@ func TestRemoveMember_CallerRevokedMidFlight(t *testing.T) {
 	svc := NewAlbumService(store)
 
 	_, err := svc.RemoveMember(context.Background(), uuid.New(), uuid.New(),
-		[]byte("targettargettargettargettarget32"))
+		[]byte("targettargettargettargettarget32"), false)
 	if !errors.Is(err, ErrCallerRevoked) {
 		t.Fatalf("err = %v, want ErrCallerRevoked", err)
 	}

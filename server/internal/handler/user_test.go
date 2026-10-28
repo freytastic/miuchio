@@ -21,6 +21,10 @@ func (s *stubUserStore) GetByID(ctx context.Context, id uuid.UUID) (*model.User,
 	return s.getByIDFn(ctx, id)
 }
 
+func (s *stubUserStore) SetDeleteMediaOnLeave(context.Context, uuid.UUID, bool) error {
+	return nil
+}
+
 // TestGetMe_IncludesMiuchioID keeps the shareable handle in /me, the profile
 // screen reads it from there
 func TestGetMe_IncludesMiuchioID(t *testing.T) {
