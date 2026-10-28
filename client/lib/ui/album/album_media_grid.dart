@@ -265,7 +265,7 @@ class _MediaEmpty extends StatelessWidget {
                   fontSize: 16,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
-          const Text('Tap + to add photos',
+          const Text('Tap + to add up to 30 photos at a time',
               style: TextStyle(color: Warm.inkFaint, fontSize: 13)),
         ],
       ),
