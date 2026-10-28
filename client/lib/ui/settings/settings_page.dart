@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:miuchio/data/api/user_api.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
+import 'package:miuchio/ui/album/leave_photos_choice.dart';
+import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/upload_copy.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
@@ -178,6 +181,51 @@ class BackupPage extends StatelessWidget {
           SettingsSoft('Backup is coming soon.'),
         ],
       );
+}
+
+class LeavingPage extends StatefulWidget {
+  const LeavingPage({super.key});
+
+  @override
+  State<LeavingPage> createState() => _LeavingPageState();
+}
+
+class _LeavingPageState extends State<LeavingPage> {
+  bool _saving = false;
+
+  Future<void> _set(bool delete) async {
+    final state = context.read<AppState>();
+    final messenger = ScaffoldMessenger.of(context);
+    final was = state.deleteMediaOnLeave;
+    setState(() => _saving = true);
+    state.setDeleteMediaOnLeave(delete);
+    final saved = await UserService().setDeleteMediaOnLeave(delete);
+    if (!saved) {
+      state.setDeleteMediaOnLeave(was);
+      messenger.showSnackBar(const SnackBar(
+        content: Text("Couldn't save that. Try again."),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+    if (mounted) setState(() => _saving = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final delete = context.select<AppState, bool>((s) => s.deleteMediaOnLeave);
+    return SettingsPage(
+      title: 'When you leave',
+      glyph: Icons.logout_rounded,
+      children: [
+        const SettingsLead('What happens to the photos you added when you '
+            'leave an album or someone removes you.'),
+        const SizedBox(height: 18),
+        LeavePhotosChoice(delete: delete, onChanged: _saving ? null : _set),
+        const SettingsSoft('You can still choose each time you leave. Deleting '
+            "your account deletes your photos in albums you're still in."),
+      ],
+    );
+  }
 }
 
 class StoragePage extends StatefulWidget {

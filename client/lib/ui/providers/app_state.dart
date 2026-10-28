@@ -86,6 +86,7 @@ class AppState extends ChangeNotifier {
     _userId = null;
     _email = null;
     _miuchioId = null;
+    _deleteMediaOnLeave = false;
     _profileName = 'User';
     notifyListeners();
   }
@@ -573,18 +574,21 @@ class AppState extends ChangeNotifier {
   String? _userId;
   String? _email;
   String? _miuchioId;
+  bool _deleteMediaOnLeave = false;
   String _profileName = 'User';
 
   String? get userId => _userId;
   String? get email => _email;
 
   String? get miuchioId => _miuchioId;
+  bool get deleteMediaOnLeave => _deleteMediaOnLeave;
   String get profileName => _profileName;
 
   void setUserData(Map<String, dynamic> data) {
     // The server response intentionally omits email, name and avatar plaintext
     _userId = data['id'];
     _miuchioId = data['miuchio_id'] as String?;
+    _deleteMediaOnLeave = data['delete_media_on_leave'] == true;
 
     notifyListeners();
     final id = _userId;
@@ -602,6 +606,11 @@ class AppState extends ChangeNotifier {
   void Function(String userId)? _onUserKnown;
   void attachUserKnown(void Function(String userId) hook) =>
       _onUserKnown = hook;
+
+  void setDeleteMediaOnLeave(bool on) {
+    _deleteMediaOnLeave = on;
+    notifyListeners();
+  }
 
   void setEmail(String? email) {
     _email = email;

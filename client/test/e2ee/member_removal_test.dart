@@ -36,7 +36,7 @@ class _Ports {
       Uint8List.fromList(List<int>.filled(32, token[0] | 0x80));
 
   MemberRemovalCoordinator build() => MemberRemovalCoordinator(
-        revoke: (album, token) async {
+        revoke: (album, token, {deleteMedia = false}) async {
           calls.add('revoke');
           revokedToken = token;
           if (revokeResult) pending = true;

@@ -100,6 +100,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           ),
           (Icons.logout_rounded, 'You leave every album someone else made.'),
           (
+            Icons.photo_outlined,
+            'The photos you added there are deleted. Albums you already left '
+                'keep the ones you chose to keep.'
+          ),
+          (
             Icons.smartphone_outlined,
             'Photos people already saved stay on their phones.'
           ),
