@@ -79,6 +79,19 @@ AppErrorUx mapApiError(ApiError err) {
         action: ErrorRecovery.none,
         isTransient: false,
       );
+    case 'E_QUOTA_EXCEEDED':
+      return const AppErrorUx(
+        userMessage: 'Your storage is full. Delete some photos to make room.',
+        action: ErrorRecovery.none,
+        isTransient: false,
+      );
+    case 'E_STORAGE_FULL':
+      return const AppErrorUx(
+        userMessage:
+            'Miuchio can’t take new photos right now. Try again later.',
+        action: ErrorRecovery.none,
+        isTransient: false,
+      );
     case 'E_OPK_EXHAUSTED':
       return const AppErrorUx(
         userMessage:

@@ -34,7 +34,7 @@ func TestGetMe_IncludesMiuchioID(t *testing.T) {
 			return &model.User{ID: id, MiuchioID: "K7F29QXM"}, nil
 		},
 	}
-	h := NewUserHandler(service.NewUserService(store))
+	h := NewUserHandler(service.NewUserService(store, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
 	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, id))

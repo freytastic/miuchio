@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -38,30 +39,49 @@ type Config struct {
 	S3Bucket         string
 	S3Region         string
 	UsePathStyle     bool
+
+	// Upload limits in bytes, zero turns one off. The total is the backstop
+	// against many accounts each filling their own quota
+	UserStorageQuota  int64
+	TotalStorageLimit int64
 }
 
 func Load() *Config {
 	devMode := getEnv("APP_ENV", "") == "dev"
 	reviewEmail, reviewCode := loadReviewLogin()
 	return &Config{
-		DatabaseURL:      getEnv("DATABASE_URL", "postgres://postgres:password@localhost:5432/miuchio?sslmode=disable"),
-		RedisURL:         getEnv("REDIS_URL", "localhost:6379"),
-		Port:             getEnv("PORT", "8080"),
-		ResendAPIKey:     requireOutsideDev("RESEND_API_KEY", devMode),
-		EmailFrom:        loadEmailFrom(devMode),
-		DevMode:          devMode,
-		EmailHMACKey:     loadEmailHMACKey(devMode),
-		UserLinkKey:      loadKeyOrDevPlaceholder("MIUCHIO_USER_LINK_KEY", "miuchio-dev-userlink-placeholder-do-not-deploy", devMode),
-		ReviewEmail:      reviewEmail,
-		ReviewCode:       reviewCode,
-		S3Endpoint:       getEnv("S3_ENDPOINT", "http://localhost:9000"),
-		S3PublicEndpoint: getEnv("S3_PUBLIC_ENDPOINT", ""),
-		S3AccessKey:      getEnv("S3_ACCESS_KEY", "minioadmin"),
-		S3SecretKey:      getEnv("S3_SECRET_KEY", "minioadmin"),
-		S3Bucket:         getEnv("S3_BUCKET", "miuchio"),
-		S3Region:         getEnv("S3_REGION", "auto"),
-		UsePathStyle:     getEnv("USE_PATH_STYLE", "true") == "true",
+		DatabaseURL:       getEnv("DATABASE_URL", "postgres://postgres:password@localhost:5432/miuchio?sslmode=disable"),
+		RedisURL:          getEnv("REDIS_URL", "localhost:6379"),
+		Port:              getEnv("PORT", "8080"),
+		ResendAPIKey:      requireOutsideDev("RESEND_API_KEY", devMode),
+		EmailFrom:         loadEmailFrom(devMode),
+		DevMode:           devMode,
+		EmailHMACKey:      loadEmailHMACKey(devMode),
+		UserLinkKey:       loadKeyOrDevPlaceholder("MIUCHIO_USER_LINK_KEY", "miuchio-dev-userlink-placeholder-do-not-deploy", devMode),
+		ReviewEmail:       reviewEmail,
+		ReviewCode:        reviewCode,
+		S3Endpoint:        getEnv("S3_ENDPOINT", "http://localhost:9000"),
+		S3PublicEndpoint:  getEnv("S3_PUBLIC_ENDPOINT", ""),
+		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),
+		S3SecretKey:       getEnv("S3_SECRET_KEY", "minioadmin"),
+		S3Bucket:          getEnv("S3_BUCKET", "miuchio"),
+		S3Region:          getEnv("S3_REGION", "auto"),
+		UsePathStyle:      getEnv("USE_PATH_STYLE", "true") == "true",
+		UserStorageQuota:  loadSize("USER_STORAGE_QUOTA_MB", 1536, 1<<20),
+		TotalStorageLimit: loadSize("TOTAL_STORAGE_LIMIT_GB", 100, 1<<30),
 	}
+}
+
+func loadSize(key string, fallback, unit int64) int64 {
+	raw := getEnv(key, "")
+	if raw == "" {
+		return fallback * unit
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 {
+		log.Fatalf("%s must be a whole number of at least 0, got %q", key, raw)
+	}
+	return n * unit
 }
 
 func loadEmailHMACKey(devMode bool) []byte {

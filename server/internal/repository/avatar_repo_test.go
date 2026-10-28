@@ -45,7 +45,7 @@ func newAvatarEnv(t *testing.T) *avatarEnv {
 	})
 	return &avatarEnv{
 		summaryEnv: env,
-		avatars:    repository.NewAvatarRepository(env.pool),
+		avatars:    repository.NewAvatarRepository(env.pool, repository.StorageQuota{}),
 		album:      album.ID,
 		owner:      owner,
 		pal:        pal,

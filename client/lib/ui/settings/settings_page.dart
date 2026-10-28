@@ -237,6 +237,8 @@ class StoragePage extends StatefulWidget {
 
 class _StoragePageState extends State<StoragePage> {
   ({int thumbs, int full})? _usage;
+  ({int used, int quota})? _account;
+  bool _accountLoaded = false;
   bool _clearing = false;
 
   MediaCacheManager? get _cache {
@@ -251,6 +253,16 @@ class _StoragePageState extends State<StoragePage> {
   void initState() {
     super.initState();
     _load();
+    _loadAccount();
+  }
+
+  Future<void> _loadAccount() async {
+    final account = await UserService().getStorage();
+    if (!mounted) return;
+    setState(() {
+      _account = account;
+      _accountLoaded = true;
+    });
   }
 
   Future<void> _load() async {
@@ -273,27 +285,46 @@ class _StoragePageState extends State<StoragePage> {
   @override
   Widget build(BuildContext context) {
     final u = _usage;
-    final thumbs = u?.thumbs ?? 0;
     final full = u?.full ?? 0;
-    final total = thumbs + full;
+    final account = _account;
+    // Hidden once loaded without a limit, or when the server can't be reached
+    final showAccount =
+        !_accountLoaded || (account != null && account.quota > 0);
     return SettingsPage(
       title: 'Storage',
       children: [
-        const SettingsLead('Photos saved on this phone'),
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(u == null ? '…' : formatBytes(total),
-              style: Warm.storageTotal),
+        if (showAccount) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 22),
+            child: Text(account == null ? '…' : formatBytes(account.used),
+                style: Warm.storageTotal),
+          ),
+          Text(
+              account == null
+                  ? ''
+                  : 'of ${formatBytes(account.quota)}, your space during the '
+                      'beta',
+              style: Warm.pageLead),
+          const SizedBox(height: 14),
+          _Fill(
+              fraction: account == null || account.quota == 0
+                  ? 0
+                  : account.used / account.quota),
+        ],
+        const SizedBox(height: 34),
+        Row(
+          children: [
+            Expanded(child: Text('Cache on this phone', style: Warm.rowTitle)),
+            Text(u == null ? '…' : formatBytes(u.thumbs + u.full),
+                style: Warm.rowValue),
+          ],
         ),
-        const SizedBox(height: 16),
-        _Meter(thumbs: thumbs, full: full),
-        const SizedBox(height: 14),
-        _Line(label: 'Small previews', bytes: thumbs, dark: true),
-        _Line(label: 'Full photos', bytes: full, dark: false),
-        const SettingsSoft('Previews stay so albums open without internet. '
-            'Full photos download again when you open them. Photos in your '
-            "gallery aren't touched."),
-        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('Previews stay so albums open offline.',
+              style: Warm.pageSoft),
+        ),
+        const SizedBox(height: 6),
         Align(
           alignment: Alignment.centerLeft,
           child: Transform.translate(
@@ -310,66 +341,28 @@ class _StoragePageState extends State<StoragePage> {
   }
 }
 
-class _Meter extends StatelessWidget {
-  final int thumbs;
-  final int full;
+class _Fill extends StatelessWidget {
+  final double fraction;
 
-  const _Meter({required this.thumbs, required this.full});
+  const _Fill({required this.fraction});
 
   @override
   Widget build(BuildContext context) {
-    final total = thumbs + full;
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
       child: SizedBox(
         height: 8,
         child: ColoredBox(
           color: const Color(0x0F1C1917),
-          child: total == 0
-              ? const SizedBox.expand()
-              : Row(
-                  children: [
-                    if (thumbs > 0)
-                      Expanded(
-                          flex: thumbs,
-                          child: const ColoredBox(color: Warm.cocoa)),
-                    if (full > 0)
-                      Expanded(
-                          flex: full,
-                          child: const ColoredBox(color: Warm.cocoaSoft)),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Line extends StatelessWidget {
-  final String label;
-  final int bytes;
-  final bool dark;
-
-  const _Line({required this.label, required this.bytes, required this.dark});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: dark ? Warm.cocoa : Warm.cocoaSoft,
-              borderRadius: BorderRadius.circular(2),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: fraction.clamp(0.0, 1.0),
+              heightFactor: 1,
+              child: const ColoredBox(color: Warm.cocoa),
             ),
           ),
-          const SizedBox(width: 9),
-          Expanded(child: Text(label, style: Warm.pageFact)),
-          Text(formatBytes(bytes), style: Warm.rowValue),
-        ],
+        ),
       ),
     );
   }

@@ -81,6 +81,14 @@ func AlbumFull(message string) *APIError {
 	return &APIError{Code: "E_ALBUM_FULL", HTTPStatus: http.StatusConflict, Message: message}
 }
 
+func QuotaExceeded(message string) *APIError {
+	return &APIError{Code: "E_QUOTA_EXCEEDED", HTTPStatus: http.StatusConflict, Message: message}
+}
+
+func StorageFull(message string) *APIError {
+	return &APIError{Code: "E_STORAGE_FULL", HTTPStatus: http.StatusConflict, Message: message}
+}
+
 func OPKExhausted(message string) *APIError {
 	return &APIError{Code: "E_OPK_EXHAUSTED", HTTPStatus: http.StatusConflict, Message: message}
 }

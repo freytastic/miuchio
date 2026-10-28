@@ -49,8 +49,14 @@ enum UploadFailureKind {
   noAlbumKey,
   unprocessable,
   sourceMissing,
+  quotaFull,
+  serverFull,
   unknown,
 }
+
+// Every waiting photo would be refused the same way
+bool stopsQueue(UploadFailureKind? kind) =>
+    kind == UploadFailureKind.quotaFull || kind == UploadFailureKind.serverFull;
 
 bool pausesAlbum(UploadFailureKind kind) =>
     kind == UploadFailureKind.rotationPending ||

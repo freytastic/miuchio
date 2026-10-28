@@ -82,6 +82,10 @@ func (s *AvatarService) RequestUploadURL(ctx context.Context, albumID uuid.UUID,
 			return nil, apierr.Forbidden("avatar_id is used by another upload")
 		case errors.Is(err, repository.ErrAvatarConfirmed):
 			return nil, apierr.Conflict("avatar is already confirmed")
+		case errors.Is(err, repository.ErrQuotaExceeded):
+			return nil, apierr.QuotaExceeded("account storage is full")
+		case errors.Is(err, repository.ErrStorageFull):
+			return nil, apierr.StorageFull("server storage is full")
 		}
 		return nil, apierr.Internal("failed to reserve avatar").WithCause(err)
 	}

@@ -22,7 +22,8 @@ var (
 )
 
 type MediaRepository struct {
-	DB *pgxpool.Pool
+	DB    *pgxpool.Pool
+	quota StorageQuota
 }
 
 type PendingCleanupBatch struct {
@@ -30,8 +31,8 @@ type PendingCleanupBatch struct {
 	Keys       []string
 }
 
-func NewMediaRepository(db *pgxpool.Pool) *MediaRepository {
-	return &MediaRepository{DB: db}
+func NewMediaRepository(db *pgxpool.Pool, quota StorageQuota) *MediaRepository {
+	return &MediaRepository{DB: db, quota: quota}
 }
 
 // Rechecks epoch and rotation debt under the lock shared with revoke and rotation
@@ -128,6 +129,14 @@ func (r *MediaRepository) ReserveUploadRow(ctx context.Context, m *model.Media, 
 		}
 	case errors.Is(err, pgx.ErrNoRows):
 	default:
+		return err
+	}
+
+	size := m.BlobSize
+	if m.ThumbSize != nil {
+		size += *m.ThumbSize
+	}
+	if err := r.quota.admit(ctx, tx, m.UploaderToken, size); err != nil {
 		return err
 	}
 

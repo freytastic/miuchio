@@ -161,7 +161,8 @@ abstract final class AlbumCopy {
       'invite to come back.';
   static const leavePhotos = 'The photos you added';
   static const keepPhotos = 'Keep my photos';
-  static const keepPhotosNote = 'Everyone in the album can still see them.';
+  static const keepPhotosNote = 'Everyone in the album can still see them. '
+      'They still count toward your storage.';
   static const deletePhotos = 'Delete my photos';
   static const deletePhotosNote = "They're deleted for everyone. Copies people "
       'saved stay on their phones.';
