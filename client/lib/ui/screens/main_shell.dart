@@ -13,6 +13,7 @@ import 'package:miuchio/ui/screens/notifications_screen.dart';
 import 'package:miuchio/ui/shelf/profile_screen.dart';
 import 'package:miuchio/ui/shelf/shelf_screen.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/album_cover.dart';
 import 'package:miuchio/ui/widgets/tab_dock.dart';
 
 class MainShell extends StatefulWidget {
@@ -213,7 +214,7 @@ class _AlbumChooser extends StatelessWidget {
             const SizedBox(height: 18),
             for (final a in albums) ...[
               _Choice(
-                icon: Icons.photo_library_outlined,
+                leading: _Thumb(albumId: a.id),
                 title: state.albumDisplayName(a.id) ?? 'Album',
                 detail: '${a.mediaCount} photo${a.mediaCount == 1 ? '' : 's'}',
                 onTap: () => Navigator.of(context).pop(a),
@@ -228,13 +229,16 @@ class _AlbumChooser extends StatelessWidget {
 }
 
 class _Choice extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  // Takes the icon's place, as an album's photo does
+  final Widget? leading;
   final String title;
   final String detail;
   final VoidCallback onTap;
 
   const _Choice({
-    required this.icon,
+    this.icon,
+    this.leading,
     required this.title,
     required this.detail,
     required this.onTap,
@@ -255,7 +259,7 @@ class _Choice extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           child: Row(
             children: [
-              Icon(icon, size: 24, color: Warm.ink),
+              leading ?? Icon(icon, size: 24, color: Warm.ink),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -274,6 +278,33 @@ class _Choice extends StatelessWidget {
                   size: 22, color: Warm.inkFaint),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// An album's latest photo, so the list reads by picture and not by name alone
+class _Thumb extends StatelessWidget {
+  final String albumId;
+
+  const _Thumb({required this.albumId});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox.square(
+        dimension: 48,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(
+              color: Warm.wellEmpty,
+              child: Icon(Icons.photo_outlined, size: 20, color: Warm.inkGhost),
+            ),
+            AlbumCover(albumId: albumId),
+          ],
         ),
       ),
     );
