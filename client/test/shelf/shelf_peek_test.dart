@@ -6,6 +6,7 @@ import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/shelf/album_print.dart';
+import 'package:miuchio/ui/shelf/album_stack.dart';
 import 'package:miuchio/ui/shelf/print_style.dart';
 import 'package:miuchio/ui/shelf/shelf_peek.dart';
 import 'package:miuchio/ui/widgets/print_card.dart';
@@ -53,7 +54,7 @@ void main() {
   }
 
   Future<void> hold(WidgetTester tester) async {
-    await tester.longPress(find.byType(AlbumPrint).first);
+    await tester.longPress(find.byType(AlbumStack).first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
   }
@@ -61,14 +62,14 @@ void main() {
   double shelfOpacity(WidgetTester tester) => tester
       .widget<Opacity>(find
           .ancestor(
-              of: find.byType(AlbumPrint).first, matching: find.byType(Opacity))
+              of: find.byType(AlbumStack).first, matching: find.byType(Opacity))
           .first)
       .opacity;
 
   testWidgets('a short hold only riffles', (tester) async {
     await pump(tester);
     final gesture = await tester
-        .startGesture(tester.getCenter(find.byType(AlbumPrint).first));
+        .startGesture(tester.getCenter(find.byType(AlbumStack).first));
     await tester.pump(const Duration(milliseconds: 300));
     await gesture.up();
     await tester.pump(const Duration(milliseconds: 600));
@@ -144,11 +145,12 @@ void main() {
     expect(opened, ['a']);
 
     await tester.pump(const Duration(milliseconds: 360));
-    expect(find.byType(AlbumPrint), findsNWidgets(3),
-        reason: 'two on the shelf plus the one tucking away');
+    expect(find.byType(AlbumStack), findsNWidgets(2));
+    expect(find.byType(AlbumPrint), findsOneWidget,
+        reason: 'the lifted print is still tucking away');
 
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(AlbumPrint), findsNWidgets(2));
+    expect(find.byType(AlbumPrint), findsNothing);
     expect(find.text('Open album'), findsNothing);
     expect(shelfOpacity(tester), 1);
   });

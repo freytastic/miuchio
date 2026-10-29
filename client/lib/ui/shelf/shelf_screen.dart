@@ -12,6 +12,7 @@ import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_rename.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/shelf/album_print.dart';
+import 'package:miuchio/ui/shelf/album_stack.dart';
 import 'package:miuchio/ui/shelf/develop_store.dart';
 import 'package:miuchio/ui/shelf/print_style.dart';
 import 'package:miuchio/ui/shelf/shelf_bench.dart';
@@ -188,7 +189,7 @@ class _ShelfScreenState extends State<ShelfScreen>
               entered: _entered,
               onSetView: _setView,
               onOpenProfile: widget.docked ? null : widget.onOpenProfile,
-              showFace: !widget.docked,
+              docked: widget.docked,
               onOpenAlbum: _open,
               onCreateAlbum: widget.onCreateAlbum,
             ),
@@ -240,7 +241,8 @@ class _Scroll extends StatelessWidget {
   final Set<String> entered;
   final ValueChanged<ShelfView> onSetView;
   final VoidCallback? onOpenProfile;
-  final bool showFace;
+  // Under the tab dock the page is titled, like the other tabs
+  final bool docked;
   final void Function(AlbumModel) onOpenAlbum;
   final VoidCallback? onCreateAlbum;
 
@@ -255,13 +257,13 @@ class _Scroll extends StatelessWidget {
     required this.entered,
     required this.onSetView,
     required this.onOpenProfile,
-    required this.showFace,
+    required this.docked,
     required this.onOpenAlbum,
     required this.onCreateAlbum,
   });
 
-  // Header row: 21 above the 48px tap targets
-  static const double _headerHeight = 69;
+  // Header row: its top air above the 48px tap targets
+  double get _headerHeight => _Header.topFor(docked) + 48;
   // The bottom bar is 96 above the inset, plus air so names aren't in the fade
   static const double _barClearance = 104;
 
@@ -282,16 +284,19 @@ class _Scroll extends StatelessWidget {
           textScaler: scaler,
         )..layout(maxWidth: width))
             .height;
-    final say = _Say.top +
-        textHeight(headline.title, Warm.h1) +
-        (headline.sub.isEmpty
-            ? 0
-            : _Say.gap + textHeight(headline.sub, Warm.sub));
-    final small = (width - _Grid.pairGap) / 2 * _Grid.printAspect;
+    final say = docked
+        ? _Say.dockedTop + textHeight(_Say.sentence(headline), Warm.sub)
+        : _Say.top +
+            textHeight(headline.title, Warm.h1) +
+            (headline.sub.isEmpty
+                ? 0
+                : _Say.gap + textHeight(headline.sub, Warm.sub));
+    final small =
+        AlbumStack.heightFor((width - _Grid.pairGap) / 2, small: true);
     return leadScale(
       viewHeight: size.height - pad.bottom - _barClearance,
       above: pad.top + _headerHeight + say + _Grid.topFor(view),
-      leadHeight: width * _Grid.printAspect,
+      leadHeight: AlbumStack.heightFor(width, small: false),
       below: _Grid.rowGapFor(view) + small,
     );
   }
@@ -314,10 +319,10 @@ class _Scroll extends StatelessWidget {
               view: view,
               onSetView: onSetView,
               onOpenProfile: onOpenProfile,
-              showFace: showFace,
+              docked: docked,
             ),
           ),
-          SliverToBoxAdapter(child: _Say(headline: headline)),
+          SliverToBoxAdapter(child: _Say(headline: headline, docked: docked)),
           if (albums.isEmpty)
             SliverToBoxAdapter(child: _Blank(onTap: onCreateAlbum))
           else ...[

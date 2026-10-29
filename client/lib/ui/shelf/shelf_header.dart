@@ -4,13 +4,16 @@ class _Header extends StatelessWidget {
   final ShelfView view;
   final ValueChanged<ShelfView> onSetView;
   final VoidCallback? onOpenProfile;
-  final bool showFace;
+  final bool docked;
 
   const _Header(
       {required this.view,
       required this.onSetView,
       required this.onOpenProfile,
-      required this.showFace});
+      required this.docked});
+
+  // Docked, the title lines up with the other tabs' titles
+  static double topFor(bool docked) => docked ? 37 : 21;
 
   @override
   Widget build(BuildContext context) {
@@ -21,11 +24,14 @@ class _Header extends StatelessWidget {
 
     return Padding(
       // Keep the 48px target centred on the previous 38px header row
-      padding: const EdgeInsets.fromLTRB(Warm.pagePad, 21, Warm.pagePad, 0),
+      padding:
+          EdgeInsets.fromLTRB(Warm.pagePad, topFor(docked), Warm.pagePad, 0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          if (showFace)
+          if (docked)
+            Text('Albums', style: Warm.pageTitle)
+          else
             GestureDetector(
               onTap: onOpenProfile,
               child: FaceCircle(
@@ -34,9 +40,7 @@ class _Header extends StatelessWidget {
                 photo: photo,
                 child: Text(initial, style: Warm.avatarInitial),
               ),
-            )
-          else
-            const SizedBox(height: 48),
+            ),
           _ViewPicker(view: view, onSelect: onSetView),
         ],
       ),
@@ -181,14 +185,42 @@ class _LayoutGlyph extends CustomPainter {
 
 class _Say extends StatelessWidget {
   final Headline headline;
+  final bool docked;
 
-  const _Say({required this.headline});
+  const _Say({required this.headline, this.docked = false});
 
   static const double top = 20;
   static const double gap = 9;
+  static const double dockedTop = 4;
+
+  // Under the Albums title the headline reads as one easy sentence:
+  // "Two new frames in Road trip." rather than a heading and a fragment
+  static String sentence(Headline h) {
+    if (h.sub.isEmpty) return h.title;
+    final first = h.sub[0];
+    final continues = first != first.toUpperCase();
+    return continues
+        ? '${h.title.replaceFirst(RegExp(r'\.$'), '')} ${h.sub}'
+        : '${h.title} ${h.sub}';
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (docked) {
+      return Padding(
+        padding:
+            const EdgeInsets.fromLTRB(Warm.pagePad, dockedTop, Warm.pagePad, 0),
+        child: AnimatedSwitcher(
+          duration: Warm.crossfade,
+          layoutBuilder: (current, previous) => Stack(
+            alignment: Alignment.topLeft,
+            children: [...previous, if (current != null) current],
+          ),
+          child: Text(sentence(headline),
+              key: ValueKey(sentence(headline)), style: Warm.sub),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(Warm.pagePad, top, Warm.pagePad, 0),
       child: AnimatedSwitcher(

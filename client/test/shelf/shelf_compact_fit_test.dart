@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
-import 'package:miuchio/ui/shelf/album_print.dart';
+import 'package:miuchio/ui/shelf/album_stack.dart';
 import 'package:miuchio/ui/shelf/shelf_layout.dart';
 import 'package:miuchio/ui/shelf/shelf_screen.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
@@ -42,10 +42,10 @@ Future<void> _pumpCompact(WidgetTester tester, Size screen) async {
 
 void main() {
   testWidgets('compact shows all three prints above the bar', (tester) async {
-    const screen = Size(411, 891);
+    const screen = Size(411, 845);
     await _pumpCompact(tester, screen);
 
-    final prints = find.byType(AlbumPrint);
+    final prints = find.byType(AlbumStack);
     expect(prints, findsNWidgets(3));
     for (var i = 1; i < 3; i++) {
       expect(tester.getRect(prints.at(i)).bottom,
@@ -62,7 +62,7 @@ void main() {
     await _pumpCompact(tester, screen);
 
     final full = screen.width - Warm.pagePad * 2;
-    expect(tester.getSize(find.byType(AlbumPrint).first).width,
+    expect(tester.getSize(find.byType(AlbumStack).first).width,
         closeTo(full, 1));
   });
 }

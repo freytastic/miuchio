@@ -144,7 +144,7 @@ class _Well extends StatelessWidget {
             ),
           ),
           if (child != null) child!,
-          if (develop != null) _Emulsion(develop: develop!),
+          if (develop != null) Emulsion(develop: develop!),
           const IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -160,11 +160,11 @@ class _Well extends StatelessWidget {
   }
 }
 
-// Matches the camera canvas develop wash
-class _Emulsion extends StatelessWidget {
+// Matches the camera canvas develop wash: milky at zero, clear at one
+class Emulsion extends StatelessWidget {
   final Animation<double> develop;
 
-  const _Emulsion({required this.develop});
+  const Emulsion({super.key, required this.develop});
 
   static const Color _cream = Color(0xFFFDFBF6);
   static const Color _haze = Color(0xFFF0EBE1);
@@ -203,11 +203,11 @@ class _EmulsionPainter extends CustomPainter {
     final rect = Offset.zero & size;
     if (cream > 0) {
       canvas.drawRect(
-          rect, Paint()..color = _Emulsion._cream.withValues(alpha: cream));
+          rect, Paint()..color = Emulsion._cream.withValues(alpha: cream));
     }
     if (haze > 0) {
       canvas.drawRect(
-          rect, Paint()..color = _Emulsion._haze.withValues(alpha: haze));
+          rect, Paint()..color = Emulsion._haze.withValues(alpha: haze));
     }
   }
 

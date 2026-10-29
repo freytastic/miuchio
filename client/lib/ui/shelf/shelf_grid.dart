@@ -10,10 +10,9 @@ class _Grid extends StatelessWidget {
   final Set<String> entered;
   final void Function(AlbumModel) onOpenAlbum;
 
-  static const double pairGap = 12;
-  static const double printAspect = 372 / 300;
-  static double topFor(ShelfView v) => v == ShelfView.compact ? 24 : 32;
-  static double rowGapFor(ShelfView v) => v == ShelfView.compact ? 16 : 30;
+  static const double pairGap = 14;
+  static double topFor(ShelfView v) => v == ShelfView.compact ? 22 : 28;
+  static double rowGapFor(ShelfView v) => v == ShelfView.compact ? 18 : 16;
 
   const _Grid({
     required this.plan,
@@ -188,13 +187,11 @@ class _ShelfCardState extends State<_ShelfCard> {
     return Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true);
   }
 
+  // The lifted print in the peek keeps the classic polaroid, chin and all
   Widget _print({
     required PrintSize size,
     bool fanned = false,
     bool tilted = true,
-    VoidCallback? onHold,
-    VoidCallback? onTap,
-    void Function(Rect)? onPeek,
   }) {
     final state = context.read<AppState>();
     return AlbumPrint(
@@ -212,9 +209,6 @@ class _ShelfCardState extends State<_ShelfCard> {
       behind: [_image(1), _image(2)].nonNulls.toList(),
       fanned: fanned,
       tilted: tilted,
-      onHold: onHold,
-      onTap: onTap,
-      onPeek: onPeek,
     );
   }
 
@@ -272,10 +266,22 @@ class _ShelfCardState extends State<_ShelfCard> {
     if (covers != null) context.watch<ShelfCovers>();
     context.watch<AppState>();
 
+    final state = context.read<AppState>();
     final card = Opacity(
       opacity: _lifted ? 0 : 1,
-      child: _print(
-        size: widget.size,
+      child: AlbumStack(
+        albumId: widget.album.id,
+        title: state.albumDisplayName(widget.album.id),
+        mediaCount: widget.album.mediaCount,
+        unseen: widget.unseen,
+        lastActivity: widget.album.latestActivityAt,
+        members: widget.album.memberPreviews,
+        totalMembers: widget.album.activeMemberCount,
+        nameOf: (m) => state.memberDisplayName(widget.album.id, m.memberToken),
+        develop: widget.develop,
+        small: widget.size == PrintSize.small,
+        cover: _image(0),
+        behind: [_image(1), _image(2)].nonNulls.toList(),
         onHold: () =>
             covers?.ensureRiffle(widget.album.id, widget.album.previewMedia),
         onTap: widget.onTap,
