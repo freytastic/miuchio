@@ -9,6 +9,7 @@ import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/people/everyone.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
 import 'package:miuchio/ui/create/create_album_screen.dart';
+import 'package:miuchio/ui/home/home_screen.dart';
 import 'package:miuchio/ui/screens/notifications_screen.dart';
 import 'package:miuchio/ui/shelf/profile_screen.dart';
 import 'package:miuchio/ui/shelf/shelf_screen.dart';
@@ -24,7 +25,7 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  HomeTab _tab = HomeTab.albums;
+  HomeTab _tab = HomeTab.home;
 
   static Route<T> _slide<T>(Widget page,
       {Offset from = const Offset(1, 0), bool opaque = true}) {
@@ -99,6 +100,14 @@ class _MainShellState extends State<MainShell> {
           IndexedStack(
             index: _tab.index,
             children: [
+              // Rebuilt on each visit, so what was seen last time is gone
+              if (_tab == HomeTab.home)
+                HomeScreen(
+                  onOpenAlbum: _openAlbumById,
+                  onRefresh: () => _refresh(context.read<AppState>()),
+                )
+              else
+                const SizedBox.shrink(),
               ShelfScreen(
                 docked: true,
                 onOpenAlbum: _openAlbum,

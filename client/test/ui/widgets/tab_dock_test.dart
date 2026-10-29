@@ -34,19 +34,20 @@ void main() {
 
   testWidgets('each tab selects itself and the middle button makes',
       (tester) async {
-    await pump(tester, HomeTab.albums);
+    await pump(tester, HomeTab.home);
 
-    for (final label in ['People', 'Notifications', 'You', 'Albums']) {
-      await tester.tap(find.text(label));
+    for (final label in ['Albums', 'People', 'Notifications', 'You', 'Home']) {
+      await tester.tap(find.bySemanticsLabel(label));
     }
     await tester.tap(find.byTooltip('Add'));
     await tester.pump();
 
     expect(selected, [
+      HomeTab.albums,
       HomeTab.people,
       HomeTab.notifications,
       HomeTab.you,
-      HomeTab.albums,
+      HomeTab.home,
     ]);
     expect(made, 1);
   });
@@ -75,5 +76,23 @@ void main() {
     state.setUnreadNotifications(true);
     await tester.pump();
     expect(dot, findsOneWidget);
+  });
+
+  testWidgets('five equal icon tabs, with the make button floating above',
+      (tester) async {
+    await pump(tester, HomeTab.home);
+
+    expect(find.text('Albums'), findsNothing, reason: 'icons only');
+    final xs = [
+      for (final label in ['Home', 'Albums', 'People', 'Notifications', 'You'])
+        tester.getCenter(find.bySemanticsLabel(label)).dx
+    ];
+    for (var i = 1; i < xs.length - 1; i++) {
+      expect(xs[i + 1] - xs[i], moreOrLessEquals(xs[i] - xs[i - 1]));
+    }
+    final make = tester.getRect(find.byTooltip('Add'));
+    final you = tester.getRect(find.bySemanticsLabel('You'));
+    expect(make.bottom, lessThanOrEqualTo(you.top));
+    expect(make.center.dx, greaterThan(xs[3]));
   });
 }

@@ -8,10 +8,10 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 
-enum HomeTab { albums, people, notifications, you }
+enum HomeTab { home, albums, people, notifications, you }
 
-// The home screen's bottom bar: four destinations either side of the make
-// button, all within reach of a thumb
+// The home screen's bottom bar: five equal tabs, with the make button
+// floating above its right end where a thumb rests
 class TabDock extends StatelessWidget {
   final HomeTab current;
   final ValueChanged<HomeTab> onSelect;
@@ -24,8 +24,13 @@ class TabDock extends StatelessWidget {
     required this.onMake,
   });
 
-  // Height above the bottom inset, which pages keep clear of their content
-  static const double height = 96;
+  static const double _bar = 52;
+  static const double _gap = 10;
+  static const double _make = 56;
+
+  // Height above the bottom inset, floating button included, which pages keep
+  // clear of their content
+  static const double height = 8 + _bar + _gap + _make;
 
   @override
   Widget build(BuildContext context) {
@@ -42,43 +47,56 @@ class TabDock extends StatelessWidget {
           ),
         );
 
+    // The fade sits behind both the bar and the floating button
     return Stack(
       alignment: Alignment.bottomCenter,
       children: [
-        const FootScrim(height: 150),
-        Padding(
-          padding: EdgeInsets.fromLTRB(10, 0, 10, 12 + bottom),
-          child: SizedBox(
-            height: height - 12,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                tab(
-                    HomeTab.albums,
-                    'Albums',
-                    (on) => _glyph(on, Icons.photo_library_rounded,
-                        Icons.photo_library_outlined)),
-                tab(
-                    HomeTab.people,
-                    'People',
-                    (on) => _glyph(on, Icons.people_alt_rounded,
-                        Icons.people_alt_outlined)),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 0, 6, 14),
-                  child: MakeButton(onTap: onMake, tooltip: 'Add'),
-                ),
-                tab(
-                    HomeTab.notifications,
-                    'Notifications',
-                    (on) => _Dot(
-                          show: unread,
-                          child: _glyph(on, Icons.notifications_rounded,
-                              Icons.notifications_none_rounded),
-                        )),
-                tab(HomeTab.you, 'You', (on) => _Me(on: on)),
-              ],
+        const Positioned.fill(child: FootScrim(height: double.infinity)),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 18),
+              child: MakeButton(onTap: onMake, tooltip: 'Add', size: _make),
             ),
-          ),
+            const SizedBox(height: _gap),
+            Padding(
+              padding: EdgeInsets.fromLTRB(4, 0, 4, 8 + bottom),
+              child: SizedBox(
+                height: _bar,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    tab(
+                        HomeTab.home,
+                        'Home',
+                        (on) => _glyph(
+                            on, Icons.home_rounded, Icons.home_outlined)),
+                    tab(
+                        HomeTab.albums,
+                        'Albums',
+                        (on) => _glyph(on, Icons.photo_library_rounded,
+                            Icons.photo_library_outlined)),
+                    tab(
+                        HomeTab.people,
+                        'People',
+                        (on) => _glyph(on, Icons.people_alt_rounded,
+                            Icons.people_alt_outlined)),
+                    tab(
+                        HomeTab.notifications,
+                        'Notifications',
+                        (on) => _Dot(
+                              show: unread,
+                              child: _glyph(on, Icons.notifications_rounded,
+                                  Icons.notifications_none_rounded),
+                            )),
+                    tab(HomeTab.you, 'You', (on) => _Me(on: on)),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -86,7 +104,7 @@ class TabDock extends StatelessWidget {
 
   static Widget _glyph(bool on, IconData filled, IconData outline) => Icon(
         on ? filled : outline,
-        size: 25,
+        size: 27,
         color: on ? Warm.ink : Warm.inkSoft,
       );
 }
@@ -117,25 +135,11 @@ class _Tab extends StatelessWidget {
           if (!on) HapticFeedback.selectionClick();
           onTap();
         },
+        // Icons only: five labels do not fit a phone's width. The name is
+        // still read out by screen readers
         child: SizedBox(
-          height: 56,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              SizedBox(height: 28, child: Center(child: icon)),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.visible,
-                softWrap: false,
-                style: Warm.tab.copyWith(
-                  fontSize: 11,
-                  color: on ? Warm.ink : Warm.inkSoft,
-                ),
-              ),
-            ],
-          ),
+          height: TabDock._bar,
+          child: Center(child: icon),
         ),
       ),
     );
@@ -189,7 +193,7 @@ class _Me extends StatelessWidget {
     final photo = context.select<OwnAvatarStore?, Uint8List?>(
         (o) => o?.state == OwnAvatarState.set ? o?.jpeg : null);
     return FaceCircle(
-      size: 26,
+      size: 28,
       color: photo == null ? Warm.orbPeach : Colors.transparent,
       photo: photo,
       border: Border.all(
