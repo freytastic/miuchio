@@ -4,21 +4,17 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:miuchio/data/native/image_transcoder.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
-import 'package:miuchio/data/storage/picked_file.dart';
 import 'package:miuchio/domain/account/account_deletion.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
-import 'package:miuchio/e2ee/avatar_image.dart';
 import 'package:miuchio/e2ee/display_name.dart';
 import 'package:miuchio/e2ee/handle.dart';
 import 'package:miuchio/e2ee/identity.dart';
 import 'package:miuchio/e2ee/identity_trust.dart';
-import 'package:miuchio/ui/shelf/avatar_crop_screen.dart';
+import 'package:miuchio/ui/shelf/avatar_pick.dart';
 import 'package:miuchio/ui/shelf/safety_summary.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/settings/delete_account_screen.dart';
@@ -129,30 +125,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // The photo is cleaned of metadata before the crop screen ever shows it
   Future<void> _pickPhoto() async {
     final own = context.read<OwnAvatarStore?>();
     if (own == null || _preparing) return;
-    final messenger = ScaffoldMessenger.of(context);
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked == null || !mounted) return;
-    setState(() => _preparing = true);
-    Uint8List? clean;
-    try {
-      clean = await AvatarImage.prepare(await picked.readAsBytes(),
-          transcode: platformImageTranscoder);
-    } catch (_) {
-      messenger.showSnackBar(const SnackBar(
-        content: Text("This photo couldn't be used. Try another one."),
-        behavior: SnackBarBehavior.floating,
-      ));
-    } finally {
-      unawaited(pickerCacheRoots()
-          .then((roots) => discardPickedFile(picked.path, roots)));
-      if (mounted) setState(() => _preparing = false);
-    }
-    if (clean == null || !mounted) return;
-    final jpeg = await AvatarCropScreen.show(context, clean);
+    final jpeg = await pickAvatarPhoto(context, onPreparing: (busy) {
+      if (mounted) setState(() => _preparing = busy);
+    });
     if (jpeg == null || !mounted) return;
     await own.set(jpeg);
     if (mounted) unawaited(context.read<AvatarPublisher?>()?.sync());
