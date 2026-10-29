@@ -88,17 +88,18 @@ void main() {
 
   Finder pages() => find.byKey(const Key('photo-viewer-pages'));
 
-  testWidgets('opens on the photo alone, a tap shows the controls',
+  testWidgets('opens with the controls, a tap hides and shows them',
       (tester) async {
     await open(tester);
+    expect(chrome(tester), 1);
+    expect(find.text('Ana'), findsOneWidget);
+    expect(find.byTooltip('Back'), findsOneWidget);
+
+    await tapPhoto(tester);
     expect(chrome(tester), 0);
 
     await tapPhoto(tester);
     expect(chrome(tester), 1);
-    expect(find.text('Ana'), findsOneWidget);
-
-    await tapPhoto(tester);
-    expect(chrome(tester), 0);
   });
 
   testWidgets('swipes sideways through the album', (tester) async {
@@ -150,6 +151,7 @@ void main() {
         .value
         .getMaxScaleOnAxis();
     expect(zoom, greaterThan(1.5));
+    expect(chrome(tester), 0, reason: 'zooming in is for the photo alone');
 
     await tester.fling(pages(), const Offset(-400, 0), 1000);
     await tester.pumpAndSettle();
@@ -158,14 +160,12 @@ void main() {
 
   testWidgets('only the uploader sees delete', (tester) async {
     await open(tester);
-    await tapPhoto(tester);
     expect(find.byKey(const Key('photo-peek-delete')), findsNothing);
   });
 
   testWidgets('delete asks first, then moves on to the next photo',
       (tester) async {
     await open(tester, owner: true);
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-delete')));
     await tester.pumpAndSettle();
@@ -183,7 +183,6 @@ void main() {
 
   testWidgets('deleting the last photo closes the viewer', (tester) async {
     await open(tester, owner: true, records: [_shot('m1')]);
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-delete')));
     await tester.pumpAndSettle();
@@ -195,7 +194,6 @@ void main() {
   testWidgets('a failed delete keeps the photo', (tester) async {
     deleteWorks = false;
     await open(tester, owner: true);
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-delete')));
     await tester.pumpAndSettle();
@@ -209,7 +207,6 @@ void main() {
     await open(tester,
         owner: true,
         onDelete: (r) => r.id == 'm1' ? first.future : Future.value(true));
-    await tapPhoto(tester);
 
     Future<void> delete() async {
       await tester.tap(find.byKey(const Key('photo-peek-delete')));
@@ -241,7 +238,6 @@ void main() {
       asked.add(r.id);
       return r.id == 'm1' ? first.future : Future.value(true);
     });
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-delete')));
     await tester.pumpAndSettle();
@@ -261,7 +257,6 @@ void main() {
 
   testWidgets('heart and save say they are not here yet', (tester) async {
     await open(tester);
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-heart')));
     await tester.pump();

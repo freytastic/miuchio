@@ -45,7 +45,9 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   late final PageController _pages =
       PageController(initialPage: widget.initialIndex);
   late int _index = widget.initialIndex;
-  bool _chrome = false;
+  // Controls show on open, so back and the actions are never hidden behind
+  // an unexplained tap; a tap or a zoom clears them for the photo alone
+  bool _chrome = true;
   bool _zoomed = false;
   String? _lastDeleted;
   double _dragY = 0;
@@ -171,7 +173,11 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                 key: ValueKey(_records[i].id),
                 onTap: () => setState(() => _chrome = !_chrome),
                 onZoom: (zoomed) {
-                  if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
+                  if (zoomed == _zoomed) return;
+                  setState(() {
+                    _zoomed = zoomed;
+                    if (zoomed) _chrome = false;
+                  });
                 },
                 child: widget.imageBuilder?.call(_records[i], cap) ??
                     _FullPhoto(
