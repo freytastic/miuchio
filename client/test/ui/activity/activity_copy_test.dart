@@ -31,19 +31,6 @@ void main() {
       expect(copy.go, 'Compare');
     });
 
-    // The key and membership arrive before the shelf lists the album
-    test('an added album offers to open it, not to join it', () {
-      final copy = cardCopyFor(
-        InvitedToAlbum(id: 'x', albumId: 'a', at: at),
-        names,
-      );
-
-      expect(copy.title, contains('Birthday'));
-      expect(copy.go, 'Open');
-      expect(copy.go, isNot('Join'));
-      expect(copy.body, contains('still arriving'));
-    });
-
     test('a removal says what actually happened, and only acknowledges', () {
       final copy = cardCopyFor(
         RemovedFromAlbum(id: 'x', albumId: 'a', at: at),
@@ -149,32 +136,6 @@ void main() {
     });
   });
 
-  group('headings', () {
-    test('security counts what needs review and names the alarm', () {
-      final say =
-          sayForSecurity(needs: 2, happened: 4, changedSafetyNumber: 'Noor');
-      expect(say.title, '2 security updates to review.');
-      expect(say.sub, "One is Noor's new security code.");
-    });
-
-    test('security without an alarm points at access changes', () {
-      final say = sayForSecurity(needs: 1, happened: 0);
-      expect(say.title, '1 security update to review.');
-      expect(say.sub, contains('access'));
-    });
-
-    test('albums count photos and the albums they landed in', () {
-      final say = sayForAlbums(photos: 40, albums: 3);
-      expect(say.title, '40 photos arrived.');
-      expect(say.sub, startsWith('Across 3 albums,'));
-      expect(sayForAlbums(photos: 1, albums: 1).title, '1 photo arrived.');
-      expect(sayForAlbums(photos: 1, albums: 1).sub,
-          startsWith('Across 1 album,'));
-      expect(sayForAlbums(photos: 0, albums: 0).title, 'Nothing new.');
-    });
-
-  });
-
   group('day labels follow the phone\'s own calendar', () {
     final now = DateTime(2026, 9, 22, 9);
 
@@ -193,6 +154,13 @@ void main() {
       expect(dayLabel(DateTime(2026, 9, 2).toUtc(), now: now),
           'Earlier this month');
       expect(dayLabel(DateTime(2026, 6, 1).toUtc(), now: now), 'Older');
+    });
+
+    test('an added album says when, never "added older"', () {
+      expect(
+          addedWhen(DateTime(2026, 9, 22, 8).toUtc(), now: now), 'Added today');
+      expect(addedWhen(DateTime(2026, 6, 1).toUtc(), now: now),
+          'Added a while ago');
     });
   });
 }

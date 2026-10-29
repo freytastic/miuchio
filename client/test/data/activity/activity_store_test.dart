@@ -132,6 +132,28 @@ void main() {
       await store.dismiss('t1');
       expect((await store.read()).single.dismissed, isTrue);
     });
+
+    test('invitations filed under Security move to Albums on upgrade',
+        () async {
+      await store.record([
+        InvitedToAlbum(id: 'i1', albumId: 'album-1', at: at),
+        joined('j1'),
+      ]);
+      await store.dismiss('i1');
+      await store.close();
+      final path = '${dir.path}/activity.db';
+      final old = await databaseFactory.openDatabase(path);
+      await old.update('activity', {'lane': ActivityLane.security.index});
+      await old.setVersion(2);
+      await old.close();
+
+      store = await ActivityStore.open(cacheRootKey: key, dir: dir);
+      final albums = await store.read(lane: ActivityLane.albums);
+      expect(albums.single.event, isA<InvitedToAlbum>());
+      expect(albums.single.dismissed, isTrue);
+      expect((await store.read(lane: ActivityLane.security)).single.event,
+          isA<MemberJoined>());
+    });
   });
 
   group('rewriting a row', () {

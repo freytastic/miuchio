@@ -52,12 +52,13 @@ class ActivityStore implements ActivityFeed {
     if (!root.existsSync()) root.createSync(recursive: true);
     final db = await openDatabase(
       p.join(root.path, 'activity.db'),
-      version: 2,
+      version: 3,
       onUpgrade: (db, from, _) async {
         if (from < 2) {
           await db.execute(
               'ALTER TABLE activity ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0');
         }
+        if (from < 3) await ActivityStore._(db, cacheRootKey)._relane();
       },
       onCreate: (db, _) async {
         await db.execute('''
@@ -209,6 +210,17 @@ class ActivityStore implements ActivityFeed {
       where: 'row_key = ?',
       whereArgs: [await _rowKey(e.id)],
     );
+  }
+
+  // The lane column is clear, so a kind that changes lane must be moved by
+  // opening each row; invitations left Security for Albums in version 3
+  Future<void> _relane() async {
+    for (final r in await _db.query('activity')) {
+      final e = await _open(r['payload'] as Uint8List);
+      if (e == null || e.lane.index == r['lane']) continue;
+      await _db.update('activity', {'lane': e.lane.index},
+          where: 'row_key = ?', whereArgs: [r['row_key']]);
+    }
   }
 
   // Album rows age out; security rows remain as the access record

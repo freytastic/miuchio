@@ -158,7 +158,8 @@ void main() {
 
       final e = events.single as InvitedToAlbum;
       expect(e.albumId, 'b');
-      expect(e.lane, ActivityLane.security);
+      // Joining is done by now, so it is shelf news, not an access alarm
+      expect(e.lane, ActivityLane.albums);
       expect(e.needsDecision, isTrue);
     });
 

@@ -21,6 +21,8 @@ class ActivityScreen extends StatefulWidget {
   final ActivityNames names;
   final Future<void> Function()? refresh;
   final ActivityThumb? thumb;
+  // An album's latest photo, for the albums you were added to
+  final Widget? Function(String albumId)? cover;
   final void Function(String albumId)? onOpenAlbum;
   // Only persisted verification resolves the alerted key
   final Future<void> Function(SafetyNumberChanged event)? onCompare;
@@ -34,6 +36,7 @@ class ActivityScreen extends StatefulWidget {
     required this.names,
     this.refresh,
     this.thumb,
+    this.cover,
     this.onOpenAlbum,
     this.onCompare,
     this.onUnreadChanged,
@@ -95,6 +98,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
       // Show stored activity even if refresh fails
     }
     await _reread();
+    // Open where the news is, unless Security has anything new of its own
+    bool fresh(ActivityLane lane) => _rows.any((r) =>
+        r.event.lane == lane &&
+        (!r.seen || (r.event.needsDecision && !r.dismissed)));
+    if (mounted &&
+        !fresh(ActivityLane.security) &&
+        fresh(ActivityLane.albums)) {
+      setState(() => _lane = ActivityLane.albums);
+    }
     _announceUnread();
     await _readCurrentLane();
   }
@@ -122,26 +134,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
             !_quieted.contains(r.event.id))
         .toList();
     final rest = security.where((r) => !needs.contains(r)).toList();
-    final added = [
-      for (final r in albums)
-        if (r.event case final PhotosAdded p) p,
-    ];
-    final photos = added.fold<int>(0, (n, p) => n + p.count);
-
-    final alarm =
-        needs.map((r) => r.event).whereType<SafetyNumberChanged>().firstOrNull;
-    final say = _lane == ActivityLane.security
-        ? sayForSecurity(
-            needs: needs.length,
-            happened: rest.length,
-            changedSafetyNumber: alarm == null
-                ? null
-                : widget.names.memberName(alarm.albumId, alarm.peerToken),
-          )
-        : sayForAlbums(
-            photos: photos,
-            albums: added.map((p) => p.albumId).toSet().length,
-          );
+    // Once opened or dismissed an arrival is done, not history
+    final arrived = albums
+        .where((r) =>
+            r.event is InvitedToAlbum &&
+            !r.dismissed &&
+            !_quieted.contains(r.event.id))
+        .toList();
+    final history = albums.where((r) => r.event is! InvitedToAlbum).toList();
 
     return Scaffold(
       backgroundColor: Warm.ground,
@@ -157,16 +157,19 @@ class _ActivityScreenState extends State<ActivityScreen> {
               const Align(alignment: Alignment.centerLeft, child: _Back()),
               const SizedBox(height: 27),
             ],
-            _Heading(say: say),
-            const SizedBox(height: 20),
+            Text('Notifications', style: Warm.pageTitle),
+            const SizedBox(height: 14),
             _Segmented(
               lane: _lane,
               onSelect: _select,
+              // The number is what waits on you; a dot is only something new
+              securityCount: needs.length,
+              albumsCount: arrived.length,
               securityMeta:
                   needs.isEmpty ? 'Up to date' : '${needs.length} to review',
-              albumsMeta: '$photos photo${photos == 1 ? '' : 's'}',
-              securityAttention:
-                  needs.isNotEmpty || security.any((r) => !r.seen),
+              albumsMeta:
+                  arrived.isEmpty ? 'Nothing new' : '${arrived.length} new',
+              securityAttention: security.any((r) => !r.seen),
               albumsAttention: albums.any((r) => !r.seen),
             ),
             if (!_loading)
@@ -200,10 +203,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       )
                     : _AlbumsPanel(
                         key: const ValueKey(ActivityLane.albums),
-                        rows: albums,
+                        arrived: arrived,
+                        rows: history,
                         names: widget.names,
                         thumb: widget.thumb,
+                        cover: widget.cover,
                         onOpenAlbum: widget.onOpenAlbum,
+                        onOpen: _handleGo,
+                        onDismiss: _handleQuiet,
                       ),
               ),
           ],
@@ -252,45 +259,11 @@ class _Back extends StatelessWidget {
   }
 }
 
-class _Heading extends StatelessWidget {
-  final Say say;
-  const _Heading({required this.say});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 160),
-      layoutBuilder: (current, previous) => Stack(
-        alignment: Alignment.topLeft,
-        children: [...previous, if (current != null) current],
-      ),
-      transitionBuilder: (child, a) => FadeTransition(
-        opacity: a,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.12),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
-          child: child,
-        ),
-      ),
-      child: Column(
-        key: ValueKey(say.title + say.sub),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(say.title, style: Warm.h1),
-          const SizedBox(height: 8),
-          Text(say.sub, style: Warm.sub),
-        ],
-      ),
-    );
-  }
-}
-
 class _Segmented extends StatelessWidget {
   final ActivityLane lane;
   final void Function(ActivityLane lane) onSelect;
+  final int securityCount;
+  final int albumsCount;
   final String securityMeta;
   final String albumsMeta;
   final bool securityAttention;
@@ -299,6 +272,8 @@ class _Segmented extends StatelessWidget {
   const _Segmented({
     required this.lane,
     required this.onSelect,
+    required this.securityCount,
+    required this.albumsCount,
     required this.securityMeta,
     required this.albumsMeta,
     required this.securityAttention,
@@ -312,6 +287,8 @@ class _Segmented extends StatelessWidget {
         _Tab(
           label: 'Security',
           meta: securityMeta,
+          count: securityCount,
+          urgent: true,
           active: lane == ActivityLane.security,
           attention: securityAttention,
           attentionKey: const ValueKey('attention-security'),
@@ -321,6 +298,7 @@ class _Segmented extends StatelessWidget {
         _Tab(
           label: 'Albums',
           meta: albumsMeta,
+          count: albumsCount,
           active: lane == ActivityLane.albums,
           attention: albumsAttention,
           attentionKey: const ValueKey('attention-albums'),
@@ -334,6 +312,9 @@ class _Segmented extends StatelessWidget {
 class _Tab extends StatelessWidget {
   final String label;
   final String meta;
+  final int count;
+  // Waiting security items are alarms; waiting albums are just news
+  final bool urgent;
   final bool active;
   final bool attention;
   final Key attentionKey;
@@ -342,6 +323,8 @@ class _Tab extends StatelessWidget {
   const _Tab({
     required this.label,
     required this.meta,
+    this.count = 0,
+    this.urgent = false,
     required this.active,
     required this.attention,
     required this.attentionKey,
@@ -374,7 +357,27 @@ class _Tab extends StatelessWidget {
                           .copyWith(color: active ? Warm.ink : Warm.inkFaint),
                       child: Text(label, maxLines: 1),
                     ),
-                    if (attention) ...[
+                    if (count > 0) ...[
+                      const SizedBox(width: 7),
+                      Container(
+                        key: attentionKey,
+                        constraints: const BoxConstraints(minWidth: 20),
+                        height: 20,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: urgent ? Warm.warn : Warm.cta,
+                        ),
+                        child: Text(
+                          '$count',
+                          style: Warm.acTabMeta.copyWith(
+                              color: Warm.paper,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ] else if (attention) ...[
                       const SizedBox(width: 6),
                       Container(
                         key: attentionKey,
@@ -462,17 +465,25 @@ class _SecurityPanel extends StatelessWidget {
 }
 
 class _AlbumsPanel extends StatelessWidget {
+  final List<StoredActivity> arrived;
   final List<StoredActivity> rows;
   final ActivityNames names;
   final ActivityThumb? thumb;
+  final Widget? Function(String albumId)? cover;
   final void Function(String albumId)? onOpenAlbum;
+  final void Function(ActivityEvent e) onOpen;
+  final void Function(ActivityEvent e) onDismiss;
 
   const _AlbumsPanel({
     super.key,
+    required this.arrived,
     required this.rows,
     required this.names,
     this.thumb,
+    this.cover,
     this.onOpenAlbum,
+    required this.onOpen,
+    required this.onDismiss,
   });
 
   @override
@@ -480,8 +491,30 @@ class _AlbumsPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (rows.isEmpty)
+        if (arrived.isEmpty && rows.isEmpty)
           const _Blank('Nothing has been added to your albums yet.'),
+        if (arrived.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 30),
+            child: SharedAlbumsCard(
+              albums: [
+                for (final r in arrived)
+                  (
+                    albumId: r.event.albumId,
+                    title: names.albumTitle(r.event.albumId),
+                  ),
+              ],
+              when: addedWhen(arrived.first.event.at),
+              cover: cover,
+              onOpen: (id) => onOpen(
+                  arrived.firstWhere((r) => r.event.albumId == id).event),
+              onDismiss: () {
+                for (final r in arrived) {
+                  onDismiss(r.event);
+                }
+              },
+            ),
+          ),
         ..._grouped(rows, names, onOpenAlbum, thumb),
       ],
     );

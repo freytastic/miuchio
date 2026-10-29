@@ -37,12 +37,6 @@ class LineCopy {
   });
 }
 
-class Say {
-  final String title;
-  final String sub;
-  const Say(this.title, this.sub);
-}
-
 CardCopy cardCopyFor(ActivityEvent e, ActivityNames names) {
   final where = names.albumTitle(e.albumId);
   return switch (e) {
@@ -57,14 +51,6 @@ CardCopy cardCopyFor(ActivityEvent e, ActivityNames names) {
             'them in person before trusting new photos.',
         go: 'Compare',
         quiet: 'Not now',
-      ),
-    // The album and key are already present when this event is derived
-    InvitedToAlbum() => CardCopy(
-        title: 'You were added to $where',
-        where: 'Now on your shelf',
-        body: 'You can open it now. The photos are still arriving.',
-        go: 'Open',
-        quiet: 'Later',
       ),
     // Covers removal and deletion while offline cleanup may still be queued
     RemovedFromAlbum() => CardCopy(
@@ -144,35 +130,10 @@ LineCopy _photos(PhotosAdded e, ActivityNames names, String where) {
   );
 }
 
-Say sayForSecurity({
-  required int needs,
-  required int happened,
-  String? changedSafetyNumber,
-}) {
-  if (needs == 0 && happened == 0) {
-    return const Say('No security activity yet.',
-        'Changes to who can see your albums will appear here.');
-  }
-  if (needs == 0) {
-    return const Say("You're up to date.", 'Nothing needs you right now.');
-  }
-  return Say(
-    '$needs security update${needs == 1 ? '' : 's'} to review.',
-    changedSafetyNumber != null
-        ? "One is $changedSafetyNumber's new security code."
-        : "Someone's access to your albums changed.",
-  );
-}
-
-Say sayForAlbums({required int photos, required int albums}) {
-  if (photos == 0) {
-    return const Say('Nothing new.', 'New photos will gather here.');
-  }
-  return Say(
-    '$photos photo${photos == 1 ? '' : 's'} arrived.',
-    'Across $albums album${albums == 1 ? '' : 's'}, from the people you share '
-        'them with.',
-  );
+// When an album you were added to arrived, for its row under the heading
+String addedWhen(DateTime at, {DateTime? now}) {
+  final day = dayLabel(at, now: now);
+  return day == 'Older' ? 'Added a while ago' : 'Added ${day.toLowerCase()}';
 }
 
 // Group stored UTC timestamps by the phone's local calendar date

@@ -13,6 +13,7 @@ import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/activity/activity_copy.dart';
 import 'package:miuchio/ui/activity/activity_screen.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
+import 'package:miuchio/ui/shelf/shelf_data.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
 import 'package:miuchio/ui/widgets/safety_number_sheet.dart';
@@ -49,6 +50,7 @@ class NotificationsScreen extends StatelessWidget {
         record: record,
         cache: context.read<MediaCacheManager>(),
       ),
+      cover: (albumId) => _LatestPhoto(albumId: albumId),
       names: names,
       onOpenAlbum: open,
       onCompare: (e) => _compare(context, e, names, store, trust, open),
@@ -118,5 +120,46 @@ class NotificationsScreen extends StatelessWidget {
         await store.resolveVerified(e);
       }
     }
+  }
+}
+
+// The album's newest photo, from the same decrypted covers the shelf shows
+class _LatestPhoto extends StatefulWidget {
+  final String albumId;
+
+  const _LatestPhoto({required this.albumId});
+
+  @override
+  State<_LatestPhoto> createState() => _LatestPhotoState();
+}
+
+class _LatestPhotoState extends State<_LatestPhoto> {
+  ShelfCovers? get _covers {
+    try {
+      return context.read<ShelfCovers>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final album = context
+        .read<AppState>()
+        .albums
+        .where((a) => a.id == widget.albumId)
+        .firstOrNull;
+    if (album != null) _covers?.ensureCover(album.id, album.previewMedia);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final covers = _covers;
+    if (covers != null) context.watch<ShelfCovers>();
+    final bytes = covers?.bytes(widget.albumId, 0);
+    if (bytes == null) return const SizedBox.shrink();
+    return Image.memory(bytes,
+        fit: BoxFit.cover, gaplessPlayback: true, width: double.infinity);
   }
 }

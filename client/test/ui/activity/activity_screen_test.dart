@@ -110,9 +110,10 @@ void main() {
 
     expect(find.text("Noor's security code changed"), findsOneWidget);
     expect(find.text('Compare'), findsOneWidget);
-    expect(find.text('1 security update to review.'), findsOneWidget);
-    expect(find.text("One is Noor's new security code."), findsOneWidget);
     expect(find.bySemanticsLabel('Security, 1 to review'), findsOneWidget);
+    // The tab carries the count, so no heading repeats it
+    expect(find.text('1'), findsOneWidget);
+    expect(find.textContaining('to review'), findsNothing);
   });
 
   testWidgets('a membership change belongs to Security, not Albums',
@@ -134,14 +135,25 @@ void main() {
         id: 'p', albumId: 'a', at: at, count: 5, uploaderToken: 'noor'));
     await pump(tester);
 
-    expect(find.text('Nothing has changed about who can see your albums.'),
-        findsOneWidget);
-
-    await tester.tap(find.text('Albums'));
-    await tester.pumpAndSettle();
-
+    // Nothing new in Security, so the screen opens where the news is
     expect(find.textContaining('added 5 photos', findRichText: true),
         findsOneWidget);
+
+    await tester.tap(find.text('Security'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nothing has changed about who can see your albums.'),
+        findsOneWidget);
+  });
+
+  testWidgets('anything new in Security keeps the screen there',
+      (tester) async {
+    store.add(PhotosAdded(id: 'p', albumId: 'a', at: at, count: 5));
+    store.add(MemberJoined(id: 'j', albumId: 'a', at: at, memberToken: 'juno'));
+    await pump(tester);
+
+    expect(find.textContaining('Juno', findRichText: true), findsOneWidget);
+    expect(find.textContaining('5 photos', findRichText: true), findsNothing);
   });
 
   testWidgets('a tab flags only its own unseen rows', (tester) async {
@@ -152,19 +164,7 @@ void main() {
 
     expect(find.byKey(const ValueKey('attention-security')), findsNothing);
     expect(find.byKey(const ValueKey('attention-albums')), findsOneWidget);
-    expect(find.bySemanticsLabel('Albums, 7 photos'), findsOneWidget);
-  });
-
-  testWidgets('the albums heading counts what arrived', (tester) async {
-    store.add(PhotosAdded(id: 'p1', albumId: 'a', at: at, count: 5));
-    store.add(PhotosAdded(id: 'p2', albumId: 'b', at: at, count: 2));
-    await pump(tester);
-
-    await tester.tap(find.text('Albums'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('7 photos arrived.'), findsOneWidget);
-    expect(find.textContaining('Across 2 albums'), findsOneWidget);
+    expect(find.bySemanticsLabel('Albums, Nothing new'), findsOneWidget);
   });
 
   testWidgets('an upload row shows its previews and how many more',
@@ -225,19 +225,102 @@ void main() {
   testWidgets('every card answer is saved', (tester) async {
     store.add(
         SafetyNumberChanged(id: 't', albumId: 'a', at: at, peerToken: 'noor'));
-    store.add(InvitedToAlbum(id: 'i', albumId: 'b', at: at));
     store.add(RemovedFromAlbum(
         id: 'r', albumId: 'c', at: at.subtract(const Duration(minutes: 1))));
     await pump(tester);
 
     await tester.tap(find.text('Not now'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Later'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Okay'));
     await tester.pumpAndSettle();
 
-    expect(store.dismissed, unorderedEquals(['t', 'i', 'r']));
+    expect(store.dismissed, unorderedEquals(['t', 'r']));
+  });
+
+  group('an album you were added to', () {
+    testWidgets('waits in Albums, not Security', (tester) async {
+      store.add(InvitedToAlbum(id: 'i', albumId: 'b', at: at));
+      await pump(tester);
+
+      expect(find.bySemanticsLabel('Security, Up to date'), findsOneWidget);
+      expect(find.bySemanticsLabel('Albums, 1 new'), findsOneWidget);
+      expect(find.byKey(const ValueKey('attention-albums')), findsOneWidget);
+
+      await tester.tap(find.text('Albums'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Shared with you'), findsOneWidget);
+      expect(find.text('1 album · Added today'), findsOneWidget);
+      expect(find.text('Birthday'), findsOneWidget);
+      expect(find.text('Open'), findsNothing);
+      expect(find.text('Later'), findsNothing);
+    });
+
+    testWidgets('opens the album and is done', (tester) async {
+      final opened = <String>[];
+      store.add(InvitedToAlbum(id: 'i', albumId: 'b', at: at));
+      await tester.pumpWidget(MaterialApp(
+        home:
+            ActivityScreen(store: store, names: names, onOpenAlbum: opened.add),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Albums'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Birthday'));
+      await tester.pumpAndSettle();
+
+      expect(opened, ['b']);
+      expect(store.dismissed, ['i']);
+      expect(find.text('Birthday'), findsNothing);
+    });
+
+    testWidgets('shows the album\'s latest photo', (tester) async {
+      store.add(InvitedToAlbum(id: 'i', albumId: 'b', at: at));
+      await tester.pumpWidget(MaterialApp(
+        home: ActivityScreen(
+          store: store,
+          names: names,
+          cover: (id) => Text('cover of $id'),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('cover of b'), findsOneWidget);
+    });
+
+    testWidgets('can be dismissed without opening it', (tester) async {
+      store.add(InvitedToAlbum(id: 'i', albumId: 'b', at: at));
+      store.add(PhotosAdded(id: 'p', albumId: 'a', at: at, count: 2));
+      await pump(tester);
+      await tester.tap(find.text('Albums'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Dismiss'));
+      await tester.pumpAndSettle();
+
+      expect(store.dismissed, ['i']);
+      expect(find.text('Shared with you'), findsNothing);
+      expect(find.textContaining('2 photos were added', findRichText: true),
+          findsOneWidget);
+    });
+
+    testWidgets('several share one card, dismissed together', (tester) async {
+      store.add(InvitedToAlbum(id: 'i1', albumId: 'b', at: at));
+      store.add(InvitedToAlbum(id: 'i2', albumId: 'c', at: at));
+      await pump(tester);
+      await tester.tap(find.text('Albums'));
+      await tester.pumpAndSettle();
+
+      expect(find.bySemanticsLabel('Albums, 2 new'), findsOneWidget);
+      expect(find.text('2 albums · Added today'), findsOneWidget);
+      await tester.tap(find.byTooltip('Dismiss'));
+      await tester.pumpAndSettle();
+
+      expect(store.dismissed, unorderedEquals(['i1', 'i2']));
+      expect(find.text('Nothing has been added to your albums yet.'),
+          findsOneWidget);
+    });
   });
 
   testWidgets('comparing without a match leaves the card up', (tester) async {
@@ -301,13 +384,12 @@ void main() {
 
     expect(find.text('Compare'), findsNothing);
     expect(find.text("You haven't compared it yet."), findsOneWidget);
-    expect(find.text("You're up to date."), findsOneWidget);
+    expect(find.bySemanticsLabel('Security, Up to date'), findsOneWidget);
   });
 
   testWidgets('an empty security lane says so in the app voice',
       (tester) async {
     await pump(tester);
-    expect(find.text('No security activity yet.'), findsOneWidget);
     expect(find.bySemanticsLabel('Security, Up to date'), findsOneWidget);
     expect(
       find.text('Nothing has changed about who can see your albums.'),

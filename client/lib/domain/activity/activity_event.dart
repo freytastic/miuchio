@@ -2,7 +2,8 @@ import 'dart:typed_data';
 
 import 'package:miuchio/e2ee/media_record.dart';
 
-// Security groups identity and access changes; Albums groups content
+// Security groups changes to who can see an album; Albums groups your shelf:
+// photos arriving and albums you were added to
 enum ActivityLane { security, albums }
 
 // Album history ages out; security history remains as the access record
@@ -57,6 +58,8 @@ class SafetyNumberChanged extends ActivityEvent {
   bool get needsDecision => true;
 }
 
+// Joining is already done when this is seen, so it is news, not an access
+// alarm: it waits at the top of Albums until opened or dismissed
 class InvitedToAlbum extends ActivityEvent {
   const InvitedToAlbum({
     required super.id,
@@ -65,7 +68,7 @@ class InvitedToAlbum extends ActivityEvent {
   });
 
   @override
-  ActivityLane get lane => ActivityLane.security;
+  ActivityLane get lane => ActivityLane.albums;
   @override
   bool get needsDecision => true;
 }
