@@ -59,4 +59,22 @@ void main() {
         AvatarImage.prepare(Uint8List.fromList(List.filled(64, 7))),
         throwsA(isA<UnprocessableImageException>()));
   });
+
+  test('a generic picture is a valid avatar in every palette', () async {
+    final seen = <int>{};
+    for (var seed = 0; seed < 5; seed++) {
+      final out = await AvatarImage.generic(seed);
+      final decoded = img.decodeJpg(out)!;
+      expect(decoded.width, kAvatarDim);
+      expect(decoded.height, kAvatarDim);
+      expect(out.length, lessThanOrEqualTo(kAvatarMaxJpegBytes));
+      // The corner shows the palette; the centre of the head is the figure
+      final corner = decoded.getPixel(4, 4);
+      final head =
+          decoded.getPixel(kAvatarDim ~/ 2, (kAvatarDim * 0.41).round());
+      expect(corner.r, isNot(head.r));
+      seen.add(corner.r.toInt());
+    }
+    expect(seen.length, greaterThan(1), reason: 'the seed picks a palette');
+  });
 }
