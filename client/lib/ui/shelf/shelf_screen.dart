@@ -13,6 +13,7 @@ import 'package:miuchio/ui/album/album_rename.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/shelf/album_print.dart';
 import 'package:miuchio/ui/shelf/album_stack.dart';
+import 'package:miuchio/ui/shelf/album_style.dart';
 import 'package:miuchio/ui/shelf/develop_store.dart';
 import 'package:miuchio/ui/shelf/print_style.dart';
 import 'package:miuchio/ui/shelf/shelf_bench.dart';

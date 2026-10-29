@@ -267,6 +267,12 @@ class _ShelfCardState extends State<_ShelfCard> {
     context.watch<AppState>();
 
     final state = context.read<AppState>();
+    AlbumStyle style;
+    try {
+      style = context.watch<AlbumStylePreference>().style;
+    } catch (_) {
+      style = AlbumStyle.tape;
+    }
     final card = Opacity(
       opacity: _lifted ? 0 : 1,
       child: AlbumStack(
@@ -280,6 +286,7 @@ class _ShelfCardState extends State<_ShelfCard> {
         nameOf: (m) => state.memberDisplayName(widget.album.id, m.memberToken),
         develop: widget.develop,
         small: widget.size == PrintSize.small,
+        style: style,
         cover: _image(0),
         behind: [_image(1), _image(2)].nonNulls.toList(),
         onHold: () =>

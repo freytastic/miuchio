@@ -186,3 +186,78 @@ class _Grip extends StatelessWidget {
         ),
       );
 }
+
+// How the albums page holds each pile down, shown as it would look
+class _StyleSheet extends StatelessWidget {
+  final AlbumStyle current;
+
+  const _StyleSheet({required this.current});
+
+  static Future<AlbumStyle?> show(BuildContext context, AlbumStyle current) =>
+      showModalBottomSheet<AlbumStyle>(
+        context: context,
+        backgroundColor: Warm.ground,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        builder: (_) => _StyleSheet(current: current),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _Grip(),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text('Album style', style: Warm.sheetTitle),
+            ),
+            const SizedBox(height: 10),
+            for (final style in AlbumStyle.values)
+              Semantics(
+                button: true,
+                selected: style == current,
+                label: style.label,
+                excludeSemantics: true,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(style),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                    child: Row(
+                      children: [
+                        AlbumStylePreview(style: style),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(style.label, style: Warm.sheetRow),
+                              const SizedBox(height: 2),
+                              Text(style.detail, style: Warm.rowValue),
+                            ],
+                          ),
+                        ),
+                        AnimatedOpacity(
+                          opacity: style == current ? 1 : 0,
+                          duration: Warm.quick,
+                          child: const Icon(Icons.check_rounded,
+                              size: 22, color: Warm.ink),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

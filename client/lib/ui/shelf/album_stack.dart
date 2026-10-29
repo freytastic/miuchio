@@ -6,6 +6,7 @@ import 'package:miuchio/data/models/album_summary.dart';
 import 'package:miuchio/diagnostics/fx.dart';
 import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/ui/shelf/album_print.dart';
+import 'package:miuchio/ui/shelf/album_style.dart';
 import 'package:miuchio/ui/shelf/print_style.dart';
 import 'package:miuchio/ui/shelf/shelf_copy.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
@@ -47,6 +48,7 @@ class AlbumStack extends StatefulWidget {
   final List<Widget> behind;
   final Animation<double> develop;
   final bool small;
+  final AlbumStyle style;
   final VoidCallback? onHold;
   final VoidCallback? onTap;
   // Global layout rect of the pile, untilted
@@ -64,6 +66,7 @@ class AlbumStack extends StatefulWidget {
     required this.nameOf,
     required this.develop,
     this.small = false,
+    this.style = AlbumStyle.tape,
     this.cover,
     this.behind = const [],
     this.onHold,
@@ -202,16 +205,8 @@ class _AlbumStackState extends State<AlbumStack> {
                 widget.cover != null && !Fx.noDevelop ? widget.develop : null,
             child: widget.cover,
           )),
-          Positioned(
-            left: left + side * 0.32,
-            top: top - side * 0.04,
-            width: side * 0.36,
-            height: side * 0.09,
-            // Each album keeps its own tape colour, the way it keeps its tilt
-            child: _Tape(
-                color: Warm.orbPalette[fnv1a32('tape:${widget.albumId}') %
-                    Warm.orbPalette.length]),
-          ),
+          ...decorate(widget.style, widget.albumId,
+              left: left, top: top, side: side),
           if (widget.unseen > 0)
             Positioned(
               right: left - side * 0.07,
@@ -286,6 +281,74 @@ class _AlbumStackState extends State<AlbumStack> {
           ],
         ),
       );
+}
+
+// Whatever holds the top print down, placed over a print of [side] whose top
+// left corner is at [left], [top]. Each album keeps its own colour, the way
+// it keeps its tilt
+List<Widget> decorate(AlbumStyle style, String albumId,
+    {required double left, required double top, required double side}) {
+  switch (style) {
+    case AlbumStyle.tape:
+      return [
+        Positioned(
+          left: left + side * 0.32,
+          top: top - side * 0.04,
+          width: side * 0.36,
+          height: side * 0.09,
+          child: _Tape(
+              color: Warm.orbPalette[
+                  fnv1a32('tape:$albumId') % Warm.orbPalette.length]),
+        ),
+      ];
+    case AlbumStyle.plain:
+      return const [];
+  }
+}
+
+// A small blank print wearing [style], for choosing between them
+class AlbumStylePreview extends StatelessWidget {
+  final AlbumStyle style;
+  final double size;
+
+  const AlbumStylePreview({super.key, required this.style, this.size = 56});
+
+  @override
+  Widget build(BuildContext context) {
+    final side = size * 0.78;
+    final left = (size - side) / 2;
+    final top = size * 0.14;
+    return SizedBox.square(
+      dimension: size,
+      child: Transform.rotate(
+        angle: -3 * _degrees,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: left,
+              top: top,
+              width: side,
+              height: side,
+              child: _Print(
+                side: side,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xFFBFD3E3), Color(0xFFE9D6B8)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            ...decorate(style, 'preview', left: left, top: top, side: side),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // A square print with a thin paper border

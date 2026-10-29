@@ -83,6 +83,7 @@ import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/shelf/seen_store_impl.dart';
 import 'package:miuchio/ui/shelf/shelf_covers_impl.dart';
 import 'package:miuchio/ui/shelf/shelf_data.dart';
+import 'package:miuchio/ui/shelf/album_style.dart';
 import 'package:miuchio/ui/shelf/shelf_view_preference.dart';
 
 // Composition root: builds every service once, in dependency order, and hands
@@ -615,8 +616,9 @@ void main() async {
   });
 
   // Load before the first frame to avoid a visible layout jump
-  final shelfView =
-      await ShelfViewPreference.load(await SharedPreferences.getInstance());
+  final prefs = await SharedPreferences.getInstance();
+  final shelfView = await ShelfViewPreference.load(prefs);
+  final albumStyle = await AlbumStylePreference.load(prefs);
 
   runApp(
     MultiProvider(
@@ -654,6 +656,7 @@ void main() async {
         Provider<ActivityStore>.value(value: activityStore),
         Provider<ActivitySync>.value(value: activitySync),
         ChangeNotifierProvider<ShelfViewPreference>.value(value: shelfView),
+        ChangeNotifierProvider<AlbumStylePreference>.value(value: albumStyle),
         Provider<TerminalWipe>.value(value: terminalWipe),
         Provider<AccountOwnerStore>.value(value: accountOwner),
       ],

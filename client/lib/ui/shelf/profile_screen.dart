@@ -14,6 +14,8 @@ import 'package:miuchio/e2ee/display_name.dart';
 import 'package:miuchio/e2ee/handle.dart';
 import 'package:miuchio/e2ee/identity.dart';
 import 'package:miuchio/e2ee/identity_trust.dart';
+import 'package:miuchio/ui/shelf/album_stack.dart';
+import 'package:miuchio/ui/shelf/album_style.dart';
 import 'package:miuchio/ui/shelf/avatar_pick.dart';
 import 'package:miuchio/ui/shelf/safety_summary.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
@@ -143,6 +145,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) unawaited(context.read<AvatarPublisher?>()?.sync());
   }
 
+  Future<void> _chooseStyle() async {
+    final pref = context.read<AlbumStylePreference?>();
+    if (pref == null) return;
+    final next = await _StyleSheet.show(context, pref.style);
+    if (next != null) await pref.set(next);
+  }
+
   Future<void> _open(Widget page) =>
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
 
@@ -216,6 +225,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       title: 'Storage',
                       value: _stored == null ? null : formatBytes(_stored!),
                       onTap: _openStorage,
+                    ),
+                  ]),
+                  _Group(children: [
+                    _Row(
+                      icon: Icons.style_outlined,
+                      title: 'Album style',
+                      value: context
+                          .select<AlbumStylePreference?, AlbumStyle?>(
+                              (p) => p?.style)
+                          ?.label,
+                      onTap: _chooseStyle,
                     ),
                   ]),
                   _Group(children: [
