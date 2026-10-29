@@ -103,7 +103,13 @@ void main() {
     expect(find.text('bobtoken'), findsNothing);
     expect(find.byType(MemberAvatars), findsOneWidget);
     expect(find.text('·'), findsOneWidget);
-    expect(find.byType(DashedCircle), findsOneWidget);
+    // One dashed place for Bob, who has not opened it, and one in the admin's
+    // add slot
+    expect(find.byType(DashedCircle), findsNWidgets(2));
+    expect(
+        find.descendant(
+            of: find.byType(AddSlot), matching: find.byType(DashedCircle)),
+        findsOneWidget);
   });
 
   testWidgets('an invited member is counted as invited, not as a person',

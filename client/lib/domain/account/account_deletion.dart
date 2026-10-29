@@ -148,14 +148,17 @@ class AccountDeletion {
     );
     // No request leaves without a marker, or a lost response strands the data
     await _marker.write(pending);
+    // Only the request is guarded: a failed wipe in _finish reaches the caller
+    var sent = false;
     try {
       await _api.request(pending.sharedAlbumIds, pending.receipt);
-      return _finish(pending);
+      sent = true;
     } on ApiError catch (e) {
       if (e.code == 'E_DELETION_PLAN_STALE') {
         return _giveUp(pending, DeletionResult.planChanged);
       }
     } catch (_) {}
+    if (sent) return _finish(pending);
     // This retry is still part of the original confirmation
     if (await _api.receiptAccepted(pending.receipt)) return _finish(pending);
     return _send(pending);
@@ -193,7 +196,6 @@ class AccountDeletion {
   Future<DeletionResult> _send(PendingDeletion pending) async {
     try {
       await _api.request(pending.sharedAlbumIds, pending.receipt);
-      return _finish(pending);
     } on ApiError catch (e) {
       if (e.code == 'E_DELETION_PLAN_STALE') {
         return _giveUp(pending, DeletionResult.planChanged);
@@ -202,6 +204,7 @@ class AccountDeletion {
       if (await _api.receiptAccepted(pending.receipt)) return _finish(pending);
       return DeletionResult.unconfirmed;
     }
+    return _finish(pending);
   }
 
   Future<DeletionResult> _giveUp(
