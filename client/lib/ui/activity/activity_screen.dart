@@ -13,6 +13,7 @@ import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'activity_card.dart';
 import 'activity_copy.dart';
 import 'activity_row.dart';
+import 'shared_albums.dart';
 
 const Duration _swap = Duration(milliseconds: 180);
 
@@ -496,7 +497,7 @@ class _AlbumsPanel extends StatelessWidget {
         if (arrived.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 30),
-            child: SharedAlbumsCard(
+            child: SharedAlbums(
               albums: [
                 for (final r in arrived)
                   (
