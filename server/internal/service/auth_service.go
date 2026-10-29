@@ -82,6 +82,7 @@ type AuthService struct {
 	reviewEmail  string
 	reviewCode   string
 	acceptAnyOTP bool
+	noRateLimit  bool
 }
 
 // Lets app reviewers sign in with a fixed code
@@ -93,6 +94,11 @@ func (s *AuthService) EnableReviewLogin(email, code string) {
 // Dev only: any code signs in, so testing never needs the real one
 func (s *AuthService) AcceptAnyOTP() {
 	s.acceptAnyOTP = true
+}
+
+// Dev only: stops limiting how often a code can be requested
+func (s *AuthService) DisableRateLimit() {
+	s.noRateLimit = true
 }
 
 func (s *AuthService) isReviewEmail(email string) bool {
@@ -145,13 +151,15 @@ func (s *AuthService) RequestOTP(ctx context.Context, email string) error {
 	}
 	emailHMAC := s.HashEmail(email)
 	key := hex.EncodeToString(emailHMAC)
-	allowed, err := s.OTPRepo.CheckRateLimit(ctx, key, maxOTPRequests, otpRequestWindow)
-	if err != nil {
-		log.Printf("RequestOTP: rate limit check failed: %v", err)
-		return err
-	}
-	if !allowed {
-		return ErrTooManyRequests
+	if !s.noRateLimit {
+		allowed, err := s.OTPRepo.CheckRateLimit(ctx, key, maxOTPRequests, otpRequestWindow)
+		if err != nil {
+			log.Printf("RequestOTP: rate limit check failed: %v", err)
+			return err
+		}
+		if !allowed {
+			return ErrTooManyRequests
+		}
 	}
 
 	otp, err := generateOTP(6)

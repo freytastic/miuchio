@@ -502,6 +502,28 @@ func TestAuthService_VerifyOTP_AcceptAnySkipsTheCodeCheck(t *testing.T) {
 	}
 }
 
+func TestAuthService_RequestOTP_DisabledRateLimitSkipsTheCheck(t *testing.T) {
+	sends := 0
+	otpStore := &MockOTPStore{
+		CheckRateLimitFunc: func(context.Context, string, int, time.Duration) (bool, error) {
+			return false, errors.New("a disabled rate limit must not be checked")
+		},
+		SetOTPFunc: func(context.Context, string, string, time.Duration) error { return nil },
+	}
+	mail := &MockEmailService{SendOTPFunc: func(string, string) error { sends++; return nil }}
+
+	s := NewAuthService(otpStore, &MockUserStore{}, &MockSessionStore{}, mail, testHMACKey)
+	s.DisableRateLimit()
+	for range maxOTPRequests + 1 {
+		if err := s.RequestOTP(context.Background(), "alice@dev.test"); err != nil {
+			t.Fatalf("RequestOTP: %v", err)
+		}
+	}
+	if sends != maxOTPRequests+1 {
+		t.Errorf("sent %d codes, want %d", sends, maxOTPRequests+1)
+	}
+}
+
 func TestAuthService_VerifyOTP_PassesAttemptLimit(t *testing.T) {
 	var got int
 	otpStore := &MockOTPStore{

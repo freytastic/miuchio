@@ -130,9 +130,11 @@ func main() {
 
 	rateLimiter := middleware.NewRateLimiter(rdb)
 	if cfg.DevMode {
-		// Local testing never needs a real sign-in code
+		// Local testing never waits on a real sign-in code or a rate limit
 		authService.AcceptAnyOTP()
-		log.Printf("dev: any sign-in code is accepted")
+		authService.DisableRateLimit()
+		rateLimiter.Disable()
+		log.Printf("dev: any sign-in code is accepted and rate limits are off")
 	}
 
 	authHandler := handler.NewAuthHandler(authService)

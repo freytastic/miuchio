@@ -15,7 +15,7 @@ type Config struct {
 	Port         string
 	ResendAPIKey string
 	EmailFrom    string
-	DevMode      bool // enables /test/* endpoints and any sign-in code: never true in production
+	DevMode      bool // enables /test/* endpoints, any sign-in code and no rate limits: never true in production
 
 	// HMAC key for users.email_hmac. Rotating it orphans every account, so treat
 	// it as a primary secret. Required outside dev, dev derives a deterministic

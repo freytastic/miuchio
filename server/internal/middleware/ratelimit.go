@@ -15,11 +15,17 @@ import (
 
 // RateLimiter is a Redis backed sliding window rate limiter
 type RateLimiter struct {
-	rdb *redis.Client
+	rdb      *redis.Client
+	disabled bool
 }
 
 func NewRateLimiter(rdb *redis.Client) *RateLimiter {
 	return &RateLimiter{rdb: rdb}
+}
+
+// Dev only: Allow lets every request through without touching Redis
+func (r *RateLimiter) Disable() {
+	r.disabled = true
 }
 
 type LimitConfig struct {
@@ -32,6 +38,9 @@ type LimitConfig struct {
 func (r *RateLimiter) Allow(ctx context.Context, cfg LimitConfig) (bool, int, error) {
 	if cfg.Max <= 0 || cfg.Window <= 0 {
 		return false, 0, errors.New("ratelimit: Max and Window must be > 0")
+	}
+	if r.disabled {
+		return true, 0, nil
 	}
 	now := time.Now().UnixNano()
 	cutoff := now - cfg.Window.Nanoseconds()
