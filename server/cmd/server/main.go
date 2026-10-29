@@ -129,6 +129,11 @@ func main() {
 		repository.NewAccountDeletionRepository(dbPool, linker), mediaService, hub)
 
 	rateLimiter := middleware.NewRateLimiter(rdb)
+	if cfg.DevMode {
+		// Local testing never needs a real sign-in code
+		authService.AcceptAnyOTP()
+		log.Printf("dev: any sign-in code is accepted")
+	}
 
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)

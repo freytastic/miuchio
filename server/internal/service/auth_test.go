@@ -477,6 +477,31 @@ func TestAuthService_RequestOTP_StoresNoPlaintext(t *testing.T) {
 	}
 }
 
+func TestAuthService_VerifyOTP_AcceptAnySkipsTheCodeCheck(t *testing.T) {
+	userID := uuid.New()
+	otpStore := &MockOTPStore{
+		CheckOTPFunc: func(context.Context, string, string, int) (bool, error) {
+			return false, errors.New("an accepted code must not be checked")
+		},
+	}
+	userStore := &MockUserStore{
+		GetByEmailHMACFunc: func(context.Context, []byte) (*model.User, error) {
+			return &model.User{ID: userID}, nil
+		},
+	}
+	sessStore := &MockSessionStore{CreateFunc: func(context.Context, *model.Session) error { return nil }}
+
+	s := NewAuthService(otpStore, userStore, sessStore, &MockEmailService{}, testHMACKey)
+	s.AcceptAnyOTP()
+	got, err := s.VerifyOTP(context.Background(), "carol@dev.test", "482915", "")
+	if err != nil {
+		t.Fatalf("VerifyOTP: %v", err)
+	}
+	if got.UserID != userID {
+		t.Errorf("UserID = %v, want %v", got.UserID, userID)
+	}
+}
+
 func TestAuthService_VerifyOTP_PassesAttemptLimit(t *testing.T) {
 	var got int
 	otpStore := &MockOTPStore{

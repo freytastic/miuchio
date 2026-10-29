@@ -81,12 +81,18 @@ type AuthService struct {
 	otpKey       []byte
 	reviewEmail  string
 	reviewCode   string
+	acceptAnyOTP bool
 }
 
 // Lets app reviewers sign in with a fixed code
 func (s *AuthService) EnableReviewLogin(email, code string) {
 	s.reviewEmail = strings.ToLower(strings.TrimSpace(email))
 	s.reviewCode = code
+}
+
+// Dev only: any code signs in, so testing never needs the real one
+func (s *AuthService) AcceptAnyOTP() {
+	s.acceptAnyOTP = true
 }
 
 func (s *AuthService) isReviewEmail(email string) bool {
@@ -184,14 +190,8 @@ func (s *AuthService) VerifyOTP(ctx context.Context, email, otp, installID strin
 		}
 	} else {
 		emailHMAC = s.HashEmail(email)
-		ok, err := s.OTPRepo.CheckOTP(ctx, hex.EncodeToString(emailHMAC), s.otpMAC(emailHMAC, otp), maxOTPAttempts)
-		if err != nil {
-			// Intentionally no email/otp in the log line
-			log.Printf("VerifyOTP: check failed: %v", err)
+		if err := s.checkOTP(ctx, emailHMAC, otp); err != nil {
 			return VerifiedSession{}, err
-		}
-		if !ok {
-			return VerifiedSession{}, ErrInvalidOTP
 		}
 	}
 
@@ -233,6 +233,22 @@ func (s *AuthService) VerifyOTP(ctx context.Context, email, otp, installID strin
 		Token:     token,
 		ExpiresAt: session.ExpiresAt,
 	}, nil
+}
+
+func (s *AuthService) checkOTP(ctx context.Context, emailHMAC []byte, otp string) error {
+	if s.acceptAnyOTP {
+		return nil
+	}
+	ok, err := s.OTPRepo.CheckOTP(ctx, hex.EncodeToString(emailHMAC), s.otpMAC(emailHMAC, otp), maxOTPAttempts)
+	if err != nil {
+		// Intentionally no email/otp in the log line
+		log.Printf("VerifyOTP: check failed: %v", err)
+		return err
+	}
+	if !ok {
+		return ErrInvalidOTP
+	}
+	return nil
 }
 
 // Returns the per installation account key. The install ID is folded into the
