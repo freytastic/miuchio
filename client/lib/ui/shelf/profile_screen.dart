@@ -197,23 +197,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onPhoto: () => _editPhoto(photo != null),
                     onName: _editName,
                   ),
-                  _Group(top: 30, children: [
+                  _Group(top: 34, children: [
                     _IdRow(handle: state.miuchioId),
                     _Row(
+                      icon: Icons.verified_user_outlined,
                       title: 'Security codes',
                       value: _verified,
                       onTap: widget.onSafetyNumbers,
                     ),
                     _Row(
-                      title: 'Notifications',
-                      onTap: () => _open(const NotificationsPage()),
-                    ),
-                    _Row(
+                      icon: Icons.cloud_outlined,
                       title: 'Backup',
                       value: 'Not yet',
                       onTap: () => _open(const BackupPage()),
                     ),
                     _Row(
+                      icon: Icons.storage_rounded,
                       title: 'Storage',
                       value: _stored == null ? null : formatBytes(_stored!),
                       onTap: _openStorage,
@@ -221,16 +220,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ]),
                   _Group(children: [
                     const _Row(
-                        title: 'Send feedback', href: '$_repoUrl/issues/new'),
+                        icon: Icons.chat_bubble_outline_rounded,
+                        title: 'Send feedback',
+                        href: '$_repoUrl/issues/new'),
                     _Row(
+                      icon: Icons.receipt_long_outlined,
                       title: DebugLogCopy.title,
                       onTap: () => _open(const DebugLogPage()),
                     ),
                     const _Row(
-                        title: 'Privacy policy', href: '$_siteUrl/privacy'),
+                        icon: Icons.privacy_tip_outlined,
+                        title: 'Privacy policy',
+                        href: '$_siteUrl/privacy'),
                   ]),
                   _Group(children: [
                     _Row(
+                        icon: Icons.delete_outline_rounded,
                         title: 'Delete account',
                         warn: true,
                         onTap: _openDelete),
@@ -397,19 +402,55 @@ class _NoFace extends StatelessWidget {
       );
 }
 
+// A soft card of rows, divided by hairlines that start after the icons
 class _Group extends StatelessWidget {
   final double top;
   final List<Widget> children;
 
-  const _Group({required this.children, this.top = 26});
+  const _Group({required this.children, this.top = 18});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(Warm.pagePad - 8, top, Warm.pagePad - 8, 0),
-      child: Column(children: children),
+      padding: EdgeInsets.fromLTRB(_cardMargin, top, _cardMargin, 0),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Warm.groundLift,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0)
+                const Padding(
+                  padding: EdgeInsets.only(left: _rowPad + _iconBox + 14),
+                  child:
+                      Divider(height: 1, thickness: 0.5, color: Warm.inkGhost),
+                ),
+              children[i],
+            ],
+          ],
+        ),
+      ),
     );
   }
+}
+
+const double _cardMargin = Warm.pagePad - 16;
+const double _rowPad = 16;
+const double _iconBox = 22;
+
+class _Lead extends StatelessWidget {
+  final IconData icon;
+  final bool warn;
+
+  const _Lead(this.icon, {this.warn = false});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: _iconBox,
+        child: Icon(icon, size: 20, color: warn ? Warm.warn : Warm.inkSoft),
+      );
 }
 
 class _IdRow extends StatefulWidget {
@@ -462,10 +503,12 @@ class _IdRowState extends State<_IdRow> {
         h == null ? '••••-••••' : (_shown ? formatHandle(h) : '••••-••••');
 
     return SizedBox(
-      height: 48,
+      height: 52,
       child: Row(
         children: [
-          const SizedBox(width: 8),
+          const SizedBox(width: _rowPad),
+          const _Lead(Icons.badge_outlined),
+          const SizedBox(width: 14),
           Expanded(
             child:
                 Text(_copied ? 'Copied' : 'Miuchio ID', style: Warm.rowTitle),
@@ -484,6 +527,7 @@ class _IdRowState extends State<_IdRow> {
             label: 'Copy Miuchio ID',
             onTap: h == null ? null : _copy,
           ),
+          const SizedBox(width: 6),
         ],
       ),
     );
@@ -515,6 +559,7 @@ class _IconButton extends StatelessWidget {
 }
 
 class _Row extends StatelessWidget {
+  final IconData icon;
   final String title;
   final String? value;
   final String? href;
@@ -522,6 +567,7 @@ class _Row extends StatelessWidget {
   final VoidCallback? onTap;
 
   const _Row({
+    required this.icon,
     required this.title,
     this.value,
     this.href,
@@ -558,11 +604,13 @@ class _Row extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: tap,
       child: SizedBox(
-        height: 48,
+        height: 52,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: _rowPad),
           child: Row(
             children: [
+              _Lead(icon, warn: warn),
+              const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   title,

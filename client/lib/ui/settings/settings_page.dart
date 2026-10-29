@@ -134,21 +134,6 @@ class SettingsFacts extends StatelessWidget {
   }
 }
 
-class NotificationsPage extends StatelessWidget {
-  const NotificationsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const SettingsPage(
-        title: 'Notifications',
-        glyph: Icons.notifications_none_rounded,
-        children: [
-          SettingsLead('For now, everything new shows up in Activity when you '
-              'open Miuchio.'),
-          SettingsLead('Notifications on your lock screen are coming soon.'),
-        ],
-      );
-}
-
 class BackupPage extends StatelessWidget {
   const BackupPage({super.key});
 
