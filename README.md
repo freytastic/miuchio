@@ -120,6 +120,16 @@ docker compose logs -f server
 
 To try invites, removal or safety numbers, sign in on a second phone or emulator with another email and add each other with your Miuchio IDs.
 
+### Seed data
+
+`tools/dev_seed/seed.sh` resets the local stack and sets up two people, Alice and Bob, with the albums in `tools/dev_seed/albums.json`: six albums of stock photos, all created by Alice and shared with Bob. It deletes the local database and storage, and removes the app from both devices first, so every run ends in the same state.
+
+```bash
+tools/dev_seed/seed.sh
+```
+
+By default it uses the iPhone 18 Pro and iPhone 17 simulators. Set `ALICE_DEVICE` and `BOB_DEVICE` to other simulator names, or to Android device IDs from `flutter devices`. The seeding runs through the app's own code on each device, so the keys stay on that device and the photos open like any other upload. With `APP_ENV=dev`, any 6 digit code signs in, for example `000000` for `alice@dev.test`, and the server's rate limits are off.
+
 ### Configuration
 
 The server is configured with environment variables. `.env.example` lists the ones Docker Compose uses.

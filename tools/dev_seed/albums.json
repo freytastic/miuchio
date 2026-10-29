@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Lake weekend",
+    "shared": true,
+    "photos": [
+      "lake-weekend/picsum-1015.jpg",
+      "lake-weekend/picsum-1018.jpg",
+      "lake-weekend/picsum-1025.jpg",
+      "lake-weekend/picsum-1039.jpg",
+      "lake-weekend/picsum-1069.jpg",
+      "lake-weekend/picsum-1080.jpg"
+    ]
+  },
+  {
+    "name": "Road trip",
+    "shared": true,
+    "photos": [
+      "road-trip/picsum-10.jpg",
+      "road-trip/picsum-11.jpg",
+      "road-trip/picsum-13.jpg",
+      "road-trip/picsum-14.jpg",
+      "road-trip/picsum-15.jpg",
+      "road-trip/picsum-16.jpg"
+    ]
+  },
+  {
+    "name": "Summer 2026",
+    "shared": true,
+    "photos": [
+      "summer-2026/picsum-17.jpg",
+      "summer-2026/picsum-18.jpg",
+      "summer-2026/picsum-19.jpg",
+      "summer-2026/picsum-20.jpg",
+      "summer-2026/picsum-28.jpg"
+    ]
+  },
+  {
+    "name": "Weekend away",
+    "shared": true,
+    "photos": [
+      "weekend-away/picsum-29.jpg",
+      "weekend-away/picsum-33.jpg",
+      "weekend-away/picsum-37.jpg",
+      "weekend-away/picsum-42.jpg"
+    ]
+  },
+  {
+    "name": "Spring break",
+    "shared": true,
+    "photos": [
+      "spring-break/picsum-48.jpg",
+      "spring-break/picsum-49.jpg",
+      "spring-break/picsum-50.jpg",
+      "spring-break/picsum-54.jpg",
+      "spring-break/picsum-56.jpg"
+    ]
+  },
+  {
+    "name": "Visiting home",
+    "shared": true,
+    "photos": [
+      "visiting-home/picsum-57.jpg",
+      "visiting-home/picsum-58.jpg",
+      "visiting-home/picsum-59.jpg",
+      "visiting-home/picsum-60.jpg"
+    ]
+  }
+]
