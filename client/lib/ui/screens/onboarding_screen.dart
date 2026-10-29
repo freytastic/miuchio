@@ -5,19 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'package:miuchio/app/sign_in_flow.dart';
 import 'package:miuchio/data/api/auth_api.dart';
-import 'package:miuchio/data/storage/activity_store.dart';
-import 'package:miuchio/data/storage/storage_service.dart';
 import 'package:miuchio/domain/account/account_deletion.dart' show TerminalWipe;
 import 'package:miuchio/domain/account/account_gate.dart';
-import 'package:miuchio/domain/account/sign_in_gate.dart';
 import 'package:miuchio/ui/screens/account_conflict_screens.dart';
 import 'package:miuchio/ui/screens/erase_installation_flow.dart';
 import 'package:miuchio/ui/screens/start_deletion_flow.dart';
-import 'package:miuchio/data/api/realtime_service.dart';
-import 'package:miuchio/data/api/user_api.dart';
 import 'package:miuchio/e2ee/identity.dart';
-import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/camera_stage.dart';
@@ -167,73 +162,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _verify() async {
     final identity = context.read<IdentityService>();
-    final gate = context.read<SignInGate>();
+    final flow = SignInFlow.of(context);
     setState(() => _busy = true);
     // Let the pressed state paint before the request starts
     await WidgetsBinding.instance.endOfFrame;
 
     try {
-      final auth = AuthService();
-      final pending = await auth.verifyOtp(_email, _code);
+      final result = await flow.verify(_email, _code);
       if (!mounted) return;
-      if (pending == null) {
-        _otpCtrl.clear();
-        setState(() => _busy = false);
-        _otpFocus.requestFocus();
-        HapticFeedback.vibrate();
-        _showError('That code did not match. Try again.');
-        return;
+      switch (result) {
+        case SignInWrongCode():
+          _otpCtrl.clear();
+          setState(() => _busy = false);
+          _otpFocus.requestFocus();
+          HapticFeedback.vibrate();
+          _showError('That code did not match. Try again.');
+          return;
+        case SignInRefused(:final outcome):
+          setState(() => _busy = false);
+          switch (outcome) {
+            case AccountGateOutcome.lostDevice:
+              _showKeysLost();
+            case AccountGateOutcome.blockedDifferentAccount:
+            case AccountGateOutcome.unclaimedVault:
+              _showBelongsToAnother();
+            case AccountGateOutcome.connectionRequired:
+              _showError('Couldn’t connect. Try again when you’re online.');
+            case AccountGateOutcome.proceed:
+            case AccountGateOutcome.adoptUnbound:
+            case AccountGateOutcome.newAccount:
+              break;
+          }
+          return;
+        case SignInDone():
+          break;
       }
-
-      // Refuse a foreign vault before writing credentials
-      if (!await gate.admits(pending.userId)) {
-        if (!mounted) return;
-        setState(() => _busy = false);
-        _showBelongsToAnother();
-        return;
-      }
-
-      await auth.commit(pending, email: _email);
-      if (!mounted) return;
-
-      final outcome = await gate.resolve(pending.userId);
-      if (!mounted) return;
-      if (!AccountGate.admitsShelf(outcome)) {
-        // Discard credentials that could reopen a refused vault offline
-        if (!AccountGate.retainsSession(outcome)) {
-          await StorageService().deleteAuth();
-        }
-        if (!mounted) return;
-        setState(() => _busy = false);
-        switch (outcome) {
-          case AccountGateOutcome.lostDevice:
-            _showKeysLost();
-          case AccountGateOutcome.blockedDifferentAccount:
-          case AccountGateOutcome.unclaimedVault:
-            _showBelongsToAnother();
-          case AccountGateOutcome.connectionRequired:
-            _showError('Couldn’t connect. Try again when you’re online.');
-          case AccountGateOutcome.proceed:
-          case AccountGateOutcome.adoptUnbound:
-          case AccountGateOutcome.newAccount:
-            break;
-        }
-        return;
-      }
-
-      if (outcome == AccountGateOutcome.newAccount) {
-        try {
-          await context.read<ActivityStore?>()?.seedEmptyBaseline();
-        } catch (_) {}
-        if (!mounted) return;
-      }
-
-      final userData = await UserService().getMe();
-      if (!mounted) return;
-      final appState = context.read<AppState>();
-      if (userData != null) appState.setUserData(userData);
-      appState.setEmail(_email);
-      unawaited(context.read<RealtimeService>().connect());
 
       final messenger = ScaffoldMessenger.of(context);
       FocusManager.instance.primaryFocus?.unfocus();
@@ -266,7 +229,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _bootstrapInBackground(
       IdentityService identity, ScaffoldMessengerState messenger) async {
     try {
-      await identity.bootstrap();
+      await bootstrapIdentity(identity);
     } on BootstrapAccountConflictException {
       messenger.showSnackBar(const SnackBar(
         content: Text(
@@ -274,20 +237,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ),
         duration: Duration(seconds: 6),
       ));
-      return;
     } catch (_) {
       messenger.showSnackBar(const SnackBar(
         content: Text('Something went wrong. Close Miuchio and open it again.'),
         duration: Duration(seconds: 5),
       ));
-      return;
     }
-    try {
-      await identity.replenishOpks(
-        target: kTargetOpkPool,
-        trigger: kTargetOpkPool,
-      );
-    } catch (_) {}
   }
 
   void _goHome() {
