@@ -18,7 +18,11 @@ import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
 import 'package:miuchio/ui/widgets/safety_number_sheet.dart';
 
 class NotificationsScreen extends StatelessWidget {
-  const NotificationsScreen({super.key});
+  // A home tab opens albums itself, a page hands the album back to the shelf
+  final void Function(String albumId)? onOpenAlbum;
+  final bool asTab;
+
+  const NotificationsScreen({super.key, this.onOpenAlbum, this.asTab = false});
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +36,10 @@ class NotificationsScreen extends StatelessWidget {
       albumTitle: (id) => state.albumDisplayName(id) ?? 'an album',
     );
 
+    final open = onOpenAlbum ?? (String id) => Navigator.of(context).pop(id);
+
     return ActivityScreen(
+      asTab: asTab,
       store: store,
       refresh: () async {
         await sync.flush();
@@ -43,8 +50,8 @@ class NotificationsScreen extends StatelessWidget {
         cache: context.read<MediaCacheManager>(),
       ),
       names: names,
-      onOpenAlbum: (albumId) => Navigator.of(context).pop(albumId),
-      onCompare: (e) => _compare(context, e, names, store, trust),
+      onOpenAlbum: open,
+      onCompare: (e) => _compare(context, e, names, store, trust, open),
       onUnreadChanged: state.setUnreadNotifications,
     );
   }
@@ -56,12 +63,13 @@ class NotificationsScreen extends StatelessWidget {
     ActivityNames names,
     ActivityFeed store,
     IdentityTrust trust,
+    void Function(String albumId) open,
   ) async {
     final ik = e.presentedIk;
     final album = uuidToBytes(e.albumId);
     // Rows recorded before the key was kept can only point at the album
     if (ik == null || album == null) {
-      Navigator.of(context).pop(e.albumId);
+      open(e.albumId);
       return;
     }
     final digits = await trust.safetyNumber(albumId: album, peerIkPub: ik);

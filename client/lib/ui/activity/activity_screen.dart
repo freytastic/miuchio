@@ -7,6 +7,7 @@ import 'package:miuchio/data/storage/activity_store.dart';
 import 'package:miuchio/domain/activity/activity_event.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/tab_dock.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 import 'activity_card.dart';
@@ -24,6 +25,8 @@ class ActivityScreen extends StatefulWidget {
   // Only persisted verification resolves the alerted key
   final Future<void> Function(SafetyNumberChanged event)? onCompare;
   final void Function(bool unread)? onUnreadChanged;
+  // A home tab rather than a page: no back, and room for the dock
+  final bool asTab;
 
   const ActivityScreen({
     super.key,
@@ -34,6 +37,7 @@ class ActivityScreen extends StatefulWidget {
     this.onOpenAlbum,
     this.onCompare,
     this.onUnreadChanged,
+    this.asTab = false,
   });
 
   @override
@@ -144,11 +148,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding:
-              const EdgeInsets.fromLTRB(Warm.pagePad, 21, Warm.pagePad, 48),
+          padding: EdgeInsets.fromLTRB(Warm.pagePad, 21, Warm.pagePad,
+              widget.asTab ? TabDock.height + 48 : 48),
           children: [
-            const Align(alignment: Alignment.centerLeft, child: _Back()),
-            const SizedBox(height: 27),
+            if (widget.asTab)
+              const SizedBox(height: 22)
+            else ...[
+              const Align(alignment: Alignment.centerLeft, child: _Back()),
+              const SizedBox(height: 27),
+            ],
             _Heading(say: say),
             const SizedBox(height: 20),
             _Segmented(

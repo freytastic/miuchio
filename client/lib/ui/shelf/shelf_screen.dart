@@ -35,6 +35,8 @@ class ShelfScreen extends StatefulWidget {
   final VoidCallback? onCreateAlbum;
   final VoidCallback? onOpenActivity;
   final Future<void> Function(AlbumModel album)? onOpenPeople;
+  // Under the home tab dock, which brings its own bar and holds the profile
+  final bool docked;
 
   const ShelfScreen({
     super.key,
@@ -43,6 +45,7 @@ class ShelfScreen extends StatefulWidget {
     this.onCreateAlbum,
     this.onOpenActivity,
     this.onOpenPeople,
+    this.docked = false,
   });
 
   @override
@@ -184,16 +187,19 @@ class _ShelfScreenState extends State<ShelfScreen>
               develop: _develop,
               entered: _entered,
               onSetView: _setView,
-              onOpenProfile: widget.onOpenProfile,
+              onOpenProfile: widget.docked ? null : widget.onOpenProfile,
+              showFace: !widget.docked,
               onOpenAlbum: _open,
               onCreateAlbum: widget.onCreateAlbum,
             ),
-            const _BarScrim(),
-            _Bar(
-              unread: state.hasUnreadNotifications,
-              onCreate: widget.onCreateAlbum,
-              onActivity: widget.onOpenActivity,
-            ),
+            if (!widget.docked) ...[
+              const _BarScrim(),
+              _Bar(
+                unread: state.hasUnreadNotifications,
+                onCreate: widget.onCreateAlbum,
+                onActivity: widget.onOpenActivity,
+              ),
+            ],
             const Positioned(
               left: 0,
               right: 0,
@@ -234,6 +240,7 @@ class _Scroll extends StatelessWidget {
   final Set<String> entered;
   final ValueChanged<ShelfView> onSetView;
   final VoidCallback? onOpenProfile;
+  final bool showFace;
   final void Function(AlbumModel) onOpenAlbum;
   final VoidCallback? onCreateAlbum;
 
@@ -248,6 +255,7 @@ class _Scroll extends StatelessWidget {
     required this.entered,
     required this.onSetView,
     required this.onOpenProfile,
+    required this.showFace,
     required this.onOpenAlbum,
     required this.onCreateAlbum,
   });
@@ -306,6 +314,7 @@ class _Scroll extends StatelessWidget {
               view: view,
               onSetView: onSetView,
               onOpenProfile: onOpenProfile,
+              showFace: showFace,
             ),
           ),
           SliverToBoxAdapter(child: _Say(headline: headline)),

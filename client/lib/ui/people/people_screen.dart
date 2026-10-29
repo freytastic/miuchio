@@ -4,6 +4,7 @@ import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
+import 'package:miuchio/ui/widgets/tab_dock.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 class PersonEntry {
@@ -38,6 +39,8 @@ class PeopleScreen extends StatefulWidget {
   // Null leaves invited rows inert
   final Future<void> Function(PersonEntry entry)? onOpenInvited;
   final String? note;
+  // A home tab rather than a page: no back, and room for the dock
+  final bool asTab;
 
   const PeopleScreen({
     super.key,
@@ -48,6 +51,7 @@ class PeopleScreen extends StatefulWidget {
     this.onAdd,
     this.onOpenInvited,
     this.note,
+    this.asTab = false,
   });
 
   @override
@@ -114,10 +118,13 @@ class _PeopleScreenState extends State<PeopleScreen> {
           child: ListView(
             physics: const BouncingScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(
-                Warm.pagePad - 8, 16, Warm.pagePad - 8, 56),
+            padding: EdgeInsets.fromLTRB(Warm.pagePad - 8, 16, Warm.pagePad - 8,
+                widget.asTab ? TabDock.height + 56 : 56),
             children: [
-              const Align(alignment: Alignment.centerLeft, child: WarmBack()),
+              if (widget.asTab)
+                const SizedBox(height: 26)
+              else
+                const Align(alignment: Alignment.centerLeft, child: WarmBack()),
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 22, 8, 0),
                 child: Column(

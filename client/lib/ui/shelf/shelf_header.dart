@@ -4,11 +4,13 @@ class _Header extends StatelessWidget {
   final ShelfView view;
   final ValueChanged<ShelfView> onSetView;
   final VoidCallback? onOpenProfile;
+  final bool showFace;
 
   const _Header(
       {required this.view,
       required this.onSetView,
-      required this.onOpenProfile});
+      required this.onOpenProfile,
+      required this.showFace});
 
   @override
   Widget build(BuildContext context) {
@@ -23,15 +25,18 @@ class _Header extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          GestureDetector(
-            onTap: onOpenProfile,
-            child: FaceCircle(
-              size: 34,
-              color: photo == null ? Warm.orbPeach : Colors.transparent,
-              photo: photo,
-              child: Text(initial, style: Warm.avatarInitial),
-            ),
-          ),
+          if (showFace)
+            GestureDetector(
+              onTap: onOpenProfile,
+              child: FaceCircle(
+                size: 34,
+                color: photo == null ? Warm.orbPeach : Colors.transparent,
+                photo: photo,
+                child: Text(initial, style: Warm.avatarInitial),
+              ),
+            )
+          else
+            const SizedBox(height: 48),
           _ViewPicker(view: view, onSelect: onSetView),
         ],
       ),

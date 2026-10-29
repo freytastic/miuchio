@@ -27,6 +27,7 @@ import 'package:miuchio/ui/settings/debug_log_page.dart';
 import 'package:miuchio/ui/settings/settings_page.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/print_card.dart';
+import 'package:miuchio/ui/widgets/tab_dock.dart';
 import 'package:miuchio/ui/widgets/upload_copy.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/widgets/warm_field.dart';
@@ -41,8 +42,10 @@ const _revealFor = Duration(seconds: 20);
 class ProfileScreen extends StatefulWidget {
   // Null leaves the safety numbers row as a count only
   final VoidCallback? onSafetyNumbers;
+  // The You tab rather than a page: no back, and room for the dock
+  final bool asTab;
 
-  const ProfileScreen({super.key, this.onSafetyNumbers});
+  const ProfileScreen({super.key, this.onSafetyNumbers, this.asTab = false});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -198,13 +201,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ListView(
                 physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics()),
-                padding: const EdgeInsets.only(bottom: 40),
+                padding: EdgeInsets.only(
+                    bottom: widget.asTab ? TabDock.height + 40 : 40),
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(Warm.pagePad - 8, 16, 0, 0),
-                    child: Align(
-                        alignment: Alignment.centerLeft, child: WarmBack()),
-                  ),
+                  if (widget.asTab)
+                    const SizedBox(height: 40)
+                  else
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(Warm.pagePad - 8, 16, 0, 0),
+                      child: Align(
+                          alignment: Alignment.centerLeft, child: WarmBack()),
+                    ),
                   _You(
                     photo: photo,
                     name: state.profileName,
@@ -482,7 +489,8 @@ class _IdRowState extends State<_IdRow> {
         children: [
           const SizedBox(width: 8),
           Expanded(
-            child: Text(_copied ? 'Copied' : 'Miuchio ID', style: Warm.rowTitle),
+            child:
+                Text(_copied ? 'Copied' : 'Miuchio ID', style: Warm.rowTitle),
           ),
           Text(value, style: Warm.idValue.copyWith(color: Warm.inkSoft)),
           const SizedBox(width: 4),

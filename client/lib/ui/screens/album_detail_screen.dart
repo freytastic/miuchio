@@ -63,6 +63,8 @@ class AlbumDetailScreen extends StatefulWidget {
   final AlbumService albumService;
   final MediaApi? mediaApi;
   final MultiImagePicker? pickImages;
+  // Opens the photo picker as soon as the album can take uploads
+  final bool addOnOpen;
 
   AlbumDetailScreen({
     super.key,
@@ -70,6 +72,7 @@ class AlbumDetailScreen extends StatefulWidget {
     AlbumService? albumService,
     this.mediaApi,
     this.pickImages,
+    this.addOnOpen = false,
   }) : albumService = albumService ?? AlbumService();
 
   @override
@@ -82,6 +85,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   List<MediaRecord> _items = [];
   AlbumFeedState _feed = AlbumFeedState.loadingNoCache;
   bool _markedOpenSeen = false;
+  late bool _addPending = widget.addOnOpen;
 
   // Deduplicate events repeated by unrelated AppState notifications
   String? _lastSeenMediaAddedId;
@@ -335,8 +339,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   void _notYet() {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(_note('Coming soon.'));
+    ScaffoldMessenger.of(context).showSnackBar(_note('Coming soon.'));
   }
 
   Future<void> _openAlbumInfo() async {
@@ -1120,7 +1123,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       sources: staged,
     );
     if (picked.length > _maxBatch) {
-      messenger.showSnackBar(_note('Adding the first $_maxBatch. Add the rest after.'));
+      messenger.showSnackBar(
+          _note('Adding the first $_maxBatch. Add the rest after.'));
     }
     await UploadSheet.show(context,
         batchId: batchId, onPickMore: _pickAndUpload, onDismiss: _dismissBatch);
@@ -1157,6 +1161,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     // Uploads stay blocked until catch up reaches the refused epoch
     final keyBlock = state.keyBlockFor(widget.album.id);
     final rotation = state.rotationFor(widget.album.id);
+    if (_addPending && !syncing && keyBlock == null) {
+      _addPending = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_pickAndUpload());
+      });
+    }
 
     final memberDisplayNames = _resolvedNames();
     final title = state.albumDisplayName(widget.album.id) ?? 'Album';
@@ -1169,9 +1179,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         ? visible
         : visible.where((r) => r.uploaderToken == _filterToken).toList();
     final stats = AlbumStats.of(visible,
-        peopleCount: loaded
-            ? avatars.length - invited
-            : widget.album.activeMemberCount);
+        peopleCount:
+            loaded ? avatars.length - invited : widget.album.activeMemberCount);
 
     final page = Scaffold(
       backgroundColor: Warm.ground,
@@ -1228,8 +1237,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   ),
                 if (rotation != null && keyBlock == null)
                   SliverToBoxAdapter(
-                    child:
-                        RotationBanner(status: rotation, onRetry: _retryRotation),
+                    child: RotationBanner(
+                        status: rotation, onRetry: _retryRotation),
                   ),
                 if (_changedKeyMembers.isNotEmpty)
                   SliverToBoxAdapter(

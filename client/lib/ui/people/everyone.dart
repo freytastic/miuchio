@@ -189,6 +189,35 @@ Future<void> openEveryone(BuildContext context, {AlbumService? service}) {
   ));
 }
 
+// The People tab: everyone across your albums, each opening their security
+// code
+class EveryoneTab extends StatefulWidget {
+  final AlbumService? service;
+
+  const EveryoneTab({super.key, this.service});
+
+  @override
+  State<EveryoneTab> createState() => _EveryoneTabState();
+}
+
+class _EveryoneTabState extends State<EveryoneTab> {
+  late final _Roster _roster = _Roster(
+    context,
+    albums: () => context.read<AppState>().albums,
+    withInvites: false,
+    service: widget.service,
+  );
+
+  @override
+  Widget build(BuildContext context) => PeopleScreen(
+        asTab: true,
+        title: 'People',
+        subtitle: 'Everyone you share an album with',
+        load: _roster.load,
+        onOpen: (e) => _roster.open(context, e),
+      );
+}
+
 // The album's roster without opening the album, as the shelf menu offers it
 Future<void> openAlbumPeople(BuildContext context, AlbumModel album,
     {AlbumService? service}) async {
@@ -210,8 +239,8 @@ Future<void> openAlbumPeople(BuildContext context, AlbumModel album,
           if (!a.pending) a
       ],
       myMiuchioId: state.miuchioId,
-      onInvite: (miuchioId) =>
-          initiator.inviteExistingUser(miuchioId: miuchioId, albumId: albumBytes),
+      onInvite: (miuchioId) => initiator.inviteExistingUser(
+          miuchioId: miuchioId, albumId: albumBytes),
     );
   }
 
@@ -223,8 +252,7 @@ Future<void> openAlbumPeople(BuildContext context, AlbumModel album,
       load: roster.load,
       onOpen: (e) => roster.open(context, e),
       onAdd: admin ? add : null,
-      note:
-          admin ? null : 'Only the owner can add people.',
+      note: admin ? null : 'Only the owner can add people.',
     ),
   ));
 }
