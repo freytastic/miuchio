@@ -7,9 +7,15 @@ import 'package:provider/provider.dart';
 
 import 'package:miuchio/app/sign_in_flow.dart';
 import 'package:miuchio/data/api/auth_api.dart';
+import 'package:miuchio/data/storage/own_avatar_store.dart';
+import 'package:miuchio/data/storage/storage_service.dart';
+import 'package:miuchio/domain/avatar/avatar_publisher.dart'
+    show OwnAvatarState;
 import 'package:miuchio/domain/account/account_deletion.dart' show TerminalWipe;
 import 'package:miuchio/domain/account/account_gate.dart';
 import 'package:miuchio/ui/screens/account_conflict_screens.dart';
+import 'package:miuchio/ui/screens/add_name_screen.dart';
+import 'package:miuchio/ui/screens/add_photo_screen.dart';
 import 'package:miuchio/ui/screens/erase_installation_flow.dart';
 import 'package:miuchio/ui/screens/start_deletion_flow.dart';
 import 'package:miuchio/e2ee/identity.dart';
@@ -206,7 +212,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       });
       await Future<void>.delayed(const Duration(milliseconds: 1150));
       if (!mounted) return;
-      _goHome();
+      await _setUpProfile();
       // Keep keystore work off the sign in transition
       unawaited(_bootstrapInBackground(identity, messenger));
     } on AccountDeletingException {
@@ -257,6 +263,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
       (_) => false,
     );
+  }
+
+  // Asks only for what this phone does not have yet, name before photo, so
+  // someone signing back in goes straight in
+  Future<void> _setUpProfile() async {
+    final needsName = await StorageService().getName() == null;
+    if (!mounted) return;
+    final needsPhoto =
+        context.read<OwnAvatarStore?>()?.state != OwnAvatarState.set;
+    final steps = <Widget Function(VoidCallback next)>[
+      if (needsName) (next) => AddNameScreen(onDone: next),
+      if (needsPhoto) (next) => AddPhotoScreen(onDone: next),
+    ];
+    void show(int i) {
+      if (i == steps.length) return _goHome();
+      Navigator.of(context).push(PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 420),
+        pageBuilder: (_, __, ___) => steps[i](() => show(i + 1)),
+        transitionsBuilder: (_, a, __, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: a, curve: Curves.easeOutQuad),
+          child: child,
+        ),
+      ));
+    }
+
+    show(0);
   }
 
   void _showBelongsToAnother() {

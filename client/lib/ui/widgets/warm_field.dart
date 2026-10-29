@@ -12,6 +12,7 @@ class WarmField extends StatefulWidget {
   final int? maxLength;
   final bool autofocus;
   final bool autocorrect;
+  final TextCapitalization textCapitalization;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final bool soft;
@@ -27,6 +28,7 @@ class WarmField extends StatefulWidget {
     this.maxLength,
     this.autofocus = false,
     this.autocorrect = true,
+    this.textCapitalization = TextCapitalization.none,
     this.onChanged,
     this.onSubmitted,
     this.soft = false,
@@ -90,6 +92,7 @@ class _WarmFieldState extends State<WarmField> {
         autofillHints: widget.autofillHints,
         autofocus: widget.autofocus,
         autocorrect: widget.autocorrect,
+        textCapitalization: widget.textCapitalization,
         maxLength: widget.maxLength,
         maxLengthEnforcement: MaxLengthEnforcement.enforced,
         style: Warm.fieldText,
@@ -151,6 +154,7 @@ class _WarmFieldState extends State<WarmField> {
         autofillHints: widget.autofillHints,
         autofocus: widget.autofocus,
         autocorrect: widget.autocorrect,
+        textCapitalization: widget.textCapitalization,
         maxLength: widget.maxLength,
         maxLengthEnforcement: MaxLengthEnforcement.enforced,
         style: Warm.fieldText,
