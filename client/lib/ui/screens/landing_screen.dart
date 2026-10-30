@@ -26,7 +26,6 @@ import 'package:miuchio/ui/screens/start_deletion_flow.dart';
 import 'package:miuchio/ui/screens/onboarding_screen.dart';
 import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
-import 'package:miuchio/ui/widgets/camera_stage.dart';
 import 'package:miuchio/ui/widgets/hello_wordmark.dart';
 
 class LandingPage extends StatefulWidget {
@@ -108,11 +107,8 @@ class _LandingPageState extends State<LandingPage> {
 
     // Preview builds show the first page without signing out
     final intro = !valid || Fx.intro;
-    // Hide clip preparation behind the route fade
-    if (intro) {
-      CameraStage.prewarm();
-      WordmarkPrep.prewarm(kWordmarkMiuchio);
-    }
+    // Hide wordmark preparation behind the route fade
+    if (intro) WordmarkPrep.prewarm(kWordmarkMiuchio);
     final destination =
         intro ? OnboardingScreen(preview: valid) : const MainShell();
 

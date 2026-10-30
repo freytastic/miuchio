@@ -54,14 +54,12 @@ class _Scrim extends StatelessWidget {
 
 class _Copy extends StatelessWidget {
   const _Copy({
-    required this.wordCue,
     required this.phase,
     required this.email,
     required this.compact,
     required this.box,
   });
 
-  final WordmarkCue wordCue;
   final _Phase phase;
   final String email;
   final bool compact;
@@ -89,8 +87,7 @@ class _Copy extends StatelessWidget {
               children: [...previous, if (current != null) current],
             ),
             child: onIntro
-                ? _IntroCopy(
-                    key: const ValueKey('intro'), wordCue: wordCue)
+                ? const _IntroCopy(key: ValueKey('intro'))
                 : _PhaseCopy(
                     key: ValueKey(phase),
                     phase: phase,
@@ -105,9 +102,7 @@ class _Copy extends StatelessWidget {
 }
 
 class _IntroCopy extends StatelessWidget {
-  const _IntroCopy({super.key, required this.wordCue});
-
-  final WordmarkCue wordCue;
+  const _IntroCopy({super.key});
 
   // The box shrinks to the email copy while this fades out, so it may overhang
   @override
@@ -129,9 +124,8 @@ class _IntroCopy extends StatelessWidget {
             glyphs: kWordmarkMiuchio,
             height: Warm.wordmarkHeight,
             color: Warm.cta,
-            duration: CameraStage.printsSettled,
-            cue: wordCue,
-            written: CameraStage.still,
+            duration: Duration.zero,
+            written: true,
             semanticsLabel: 'Miuchio',
           ),
         ),

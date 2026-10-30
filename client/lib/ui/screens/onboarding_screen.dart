@@ -21,9 +21,9 @@ import 'package:miuchio/ui/screens/start_deletion_flow.dart';
 import 'package:miuchio/e2ee/identity.dart';
 import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
-import 'package:miuchio/ui/widgets/camera_stage.dart';
 import 'package:miuchio/ui/widgets/caret_blink.dart';
 import 'package:miuchio/ui/widgets/hello_wordmark.dart';
+import 'package:miuchio/ui/widgets/mark_stage.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/widgets/warm_field.dart';
 
@@ -44,9 +44,10 @@ const double _kDotsExtent = 6;
 const double _kDotsGap = 22;
 // Space kept between the last line of copy and the dots
 const double _kFootClearance = 16;
+// The logo stands just above the wordmark, eating into the air over the copy
+const double _kMarkToWordmark = 10;
 
-const String _kIntroLead =
-    'Shared photo albums for the people who were actually there.';
+const String _kIntroLead = 'Share photo albums, privately.';
 const String _kEmailLead = 'We’ll send a one-time sign-in code to your email.';
 const String _kPreviewEmail = 'your.name@example.com';
 
@@ -79,8 +80,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   _Phase _phase = _Phase.intro;
   bool _busy = false;
-  // The wordmark writes with the camera clip, not with the screen
-  final _wordCue = WordmarkCue();
 
   @override
   void initState() {
@@ -97,7 +96,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _otpCtrl.dispose();
     _emailFocus.dispose();
     _otpFocus.dispose();
-    _wordCue.dispose();
     super.dispose();
   }
 
@@ -386,11 +384,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         size.height - compactFootBottom - _kCompactFootExtent;
     final compactHeroMaxBottom =
         compactFootTop - compactCopyExtent - 2 * _kCompactContentGap;
-    final compactStageScale = CameraStage.shrunkScaleToFit(
+    final compactStageScale = MarkStage.shrunkScaleToFit(
       context,
       maxVisualBottom: compactHeroMaxBottom,
     );
-    final compactHeroBottom = CameraStage.shrunkVisualBottom(
+    final compactHeroBottom = MarkStage.shrunkVisualBottom(
       context,
       scale: compactStageScale,
     );
@@ -417,10 +415,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _kCopyLead -
           copyBody,
     );
-    final stageScale = CameraStage.scaleToFit(
-      context,
-      maxVisualBottom: copyTop - _kFootClearance,
-    );
+    final markBottom = copyTop + _kCopyLead - _kMarkToWordmark;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Warm.overlayOnGround,
@@ -434,19 +429,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             children: [
               const Positioned.fill(child: _Ground()),
 
-              // Keep the scrim behind the camera so its colours stay unchanged
+              // Keep the scrim behind the logo so its colours stay unchanged
               const Positioned.fill(child: IgnorePointer(child: _Scrim())),
 
-              CameraStage.positioned(
+              MarkStage.positioned(
                 context,
-                // The lite clip runs at 30 fps, so the pen follows its frames
-                onStart: (tier) =>
-                    _wordCue.start(followClip: tier == StageTier.lite),
-                onFrame: _wordCue.clip,
-                onComplete: _wordCue.hurry,
+                restBottom: markBottom,
                 shrink: keyboardOpen,
                 shrunkScale: compactStageScale,
-                scale: stageScale,
               ),
 
               AnimatedPositioned(
@@ -460,7 +450,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   duration: const Duration(milliseconds: 700),
                   curve: Warm.easeSoft,
                   child: _Copy(
-                    wordCue: _wordCue,
                     phase: _phase,
                     email: _email,
                     compact: keyboardOpen,

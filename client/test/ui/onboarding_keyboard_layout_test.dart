@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:miuchio/ui/screens/onboarding_screen.dart';
-import 'package:miuchio/ui/widgets/camera_stage.dart';
+import 'package:miuchio/ui/widgets/mark_stage.dart';
 
 void main() {
   Future<void> pumpEmailWithKeyboard(
@@ -33,14 +33,14 @@ void main() {
   }
 
   void expectSeparatedAndCentered(WidgetTester tester, Size screen) {
-    final camera = tester.getRect(find.byType(CameraStage));
+    final logo = tester.getRect(find.byType(MarkStage));
     final description = tester.getRect(find.text(
       'We’ll send a one-time sign-in code to your email.',
     ));
     final field = tester.getRect(find.byType(TextField));
     final action = tester.getRect(find.text('Send code'));
 
-    expect(camera.bottom, lessThanOrEqualTo(description.top));
+    expect(logo.bottom, lessThanOrEqualTo(description.top));
     expect(description.bottom, lessThan(field.top));
     expect(field.bottom, lessThan(action.top));
     expect(description.center.dx, closeTo(screen.width / 2, 0.5));
