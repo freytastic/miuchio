@@ -85,4 +85,29 @@ void main() {
     expect(find.text(AlbumCopy.leaveAlbum), findsNothing);
     expect(find.text(AlbumCopy.deleteAlbum), findsNothing);
   });
+
+  testWidgets('lists everyone who can see it instead of a people count',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: AlbumInfoScreen(
+        albumName: 'Lisbon',
+        createdAt: DateTime(2026, 3, 14),
+        stats: AlbumStats.of([_shot('a', 'alice', 1000)], peopleCount: 3),
+        nameOf: (t) => {'alice': 'Alice', 'bob': 'Bob'}[t],
+        people: const [
+          InfoPerson(token: 'alice', name: 'Alice', owner: true, self: true),
+          InfoPerson(token: 'bob', name: 'Bob'),
+          InfoPerson(token: 'inv', name: null, invited: true),
+        ],
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AlbumCopy.you), findsOneWidget);
+    expect(find.text('Bob'), findsOneWidget);
+    expect(find.text(AlbumCopy.invitedShort), findsOneWidget);
+    expect(find.text(AlbumCopy.nothingAddedYet), findsOneWidget,
+        reason: 'Bob can see it but has added nothing');
+    expect(find.text('people'), findsNothing, reason: 'no bare people count');
+  });
 }

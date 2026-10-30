@@ -3,8 +3,12 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:miuchio/data/models/album_model.dart';
+import 'package:miuchio/data/models/album_summary.dart';
+import 'package:provider/provider.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_menu.dart';
+import 'package:miuchio/ui/providers/app_state.dart';
+import 'package:miuchio/ui/shelf/album_print.dart';
 import 'package:miuchio/ui/shelf/shelf_copy.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/blur_scrim.dart';
@@ -208,6 +212,32 @@ class _ShelfPeekState extends State<ShelfPeek> {
         ],
       );
 
+  // The face keeps your own name and colour; only the sentence says "You"
+  String? _nameOf(BuildContext context, MemberPreview m) {
+    final a = widget.album;
+    final state = Provider.of<AppState?>(context, listen: false);
+    if (m.memberToken == a.memberToken) return state?.profileName;
+    return state?.memberDisplayName(a.id, m.memberToken);
+  }
+
+  // "You and Bob", "You, Bob and 3 others": the names are the count
+  String _whoCanSee(BuildContext context) {
+    final a = widget.album;
+    final names = [
+      for (final m in a.memberPreviews)
+        m.memberToken == a.memberToken
+            ? AlbumCopy.you
+            : _nameOf(context, m) ?? 'Someone',
+    ]..sort((x, y) => x == AlbumCopy.you ? -1 : (y == AlbumCopy.you ? 1 : 0));
+    final shown = names.take(2).toList();
+    final rest = math.max(a.activeMemberCount, names.length) - shown.length;
+    if (rest > 0) {
+      return '${shown.join(', ')} and $rest other${rest == 1 ? '' : 's'}';
+    }
+    if (shown.length == 1) return '${shown.single} only';
+    return shown.join(' and ');
+  }
+
   Widget _facts() {
     final a = widget.album;
     return MenuCard(
@@ -244,13 +274,35 @@ class _ShelfPeekState extends State<ShelfPeek> {
               _Count(
                   value: a.mediaCount,
                   unit: a.mediaCount == 1 ? 'photo' : 'photos'),
-              const SizedBox(width: 22),
-              _Count(
-                  value: a.activeMemberCount,
-                  unit: a.activeMemberCount == 1 ? 'person' : 'people'),
             ],
           ),
         ),
+        // Who can see it, as faces and names, so the count is never a bare
+        // number to take on trust
+        if (a.memberPreviews.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Row(
+              children: [
+                PrintFaces(
+                  albumId: a.id,
+                  members: a.memberPreviews,
+                  total: a.activeMemberCount,
+                  nameOf: (m) => _nameOf(context, m),
+                  ring: Warm.paper,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _whoCanSee(context),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, color: Warm.inkSoft),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (_lastPhoto(a.mediaCount, a.latestActivityAt) case final line?)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),

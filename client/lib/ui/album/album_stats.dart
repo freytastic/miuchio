@@ -53,12 +53,12 @@ class AlbumStats {
     return List.unmodifiable(entries);
   }
 
-  String summary({int invited = 0}) {
-    final people = '$peopleCount ${peopleCount == 1 ? 'person' : 'people'}';
-    final tail = invited > 0 ? '$people, $invited invited' : people;
-    if (photoCount == 0) return tail;
+  // Who is in the album shows as faces beside this, so no head count. An
+  // empty album says nothing here; the grid below speaks for it
+  String summary() {
+    if (photoCount == 0) return '';
     final photos = '$photoCount ${photoCount == 1 ? 'photo' : 'photos'}';
-    return '$photos · ${formatBytes(totalBytes)} · $tail';
+    return '$photos · ${formatBytes(totalBytes)}';
   }
 
   static String formatBytes(int b) {

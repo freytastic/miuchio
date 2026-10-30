@@ -16,7 +16,6 @@ class AlbumHeader extends StatelessWidget {
   final ValueChanged<String> onTapMember;
   final VoidCallback onClearFilter;
   final VoidCallback? onAdd;
-  final VoidCallback? onPeople;
   // Only the name itself is the target, never the row around it
   final VoidCallback? onRename;
   // True once the header has scrolled away, which folds the people row
@@ -34,7 +33,6 @@ class AlbumHeader extends StatelessWidget {
     this.filterName,
     this.filterCount = 0,
     this.onAdd,
-    this.onPeople,
     this.onRename,
     this.folded = false,
   });
@@ -74,8 +72,11 @@ class AlbumHeader extends StatelessWidget {
                 ),
               ),
             ),
-          const SizedBox(height: 7),
-          _Summary(text: summary, onPeople: onPeople),
+          if (summary.isNotEmpty) ...[
+            const SizedBox(height: 7),
+            Text(summary,
+                style: const TextStyle(fontSize: 12.5, color: Warm.inkSoft)),
+          ],
           if (members.isNotEmpty || onAdd != null) ...[
             const SizedBox(height: 17),
             MemberAvatars(
@@ -84,7 +85,6 @@ class AlbumHeader extends StatelessWidget {
               selectedToken: filterToken,
               onTap: onTapMember,
               onAdd: onAdd,
-              editsPeople: true,
               folded: folded,
             ),
           ],
@@ -107,49 +107,6 @@ class AlbumHeader extends StatelessWidget {
     height: 1.14,
     color: Warm.ink,
   );
-}
-
-// The people part of the line is the way into the roster
-class _Summary extends StatelessWidget {
-  final String text;
-  final VoidCallback? onPeople;
-
-  const _Summary({required this.text, required this.onPeople});
-
-  static const _style = TextStyle(fontSize: 12.5, color: Warm.inkSoft);
-
-  @override
-  Widget build(BuildContext context) {
-    final people = onPeople;
-    if (people == null) return Text(text, style: _style);
-    final cut = text.lastIndexOf(' · ');
-    final lead = cut < 0 ? '' : text.substring(0, cut + 3);
-    final tail = cut < 0 ? text : text.substring(cut + 3);
-    return Semantics(
-      button: true,
-      label: tail,
-      child: GestureDetector(
-        key: const Key('album-people'),
-        behavior: HitTestBehavior.opaque,
-        onTap: people,
-        child: Text.rich(
-          TextSpan(children: [
-            TextSpan(text: lead),
-            TextSpan(
-              text: tail,
-              style: const TextStyle(
-                color: Warm.ink,
-                fontWeight: FontWeight.w500,
-                decoration: TextDecoration.underline,
-                decorationColor: Warm.inkGhost,
-              ),
-            ),
-          ]),
-          style: _style,
-        ),
-      ),
-    );
-  }
 }
 
 // The filter as a line of text with a way out
@@ -191,6 +148,8 @@ class AlbumTopBar extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback? onSelect;
   final VoidCallback onInfo;
+  // Owners reach info through settings, so the bar offers settings instead
+  final VoidCallback? onSettings;
 
   const AlbumTopBar({
     super.key,
@@ -199,6 +158,7 @@ class AlbumTopBar extends StatelessWidget {
     required this.onBack,
     required this.onInfo,
     this.onSelect,
+    this.onSettings,
   });
 
   static const barHeight = 62.0;
@@ -248,11 +208,8 @@ class AlbumTopBar extends StatelessWidget {
               ),
               SelectPill(key: const Key('album-select-bar'), onTap: onSelect),
               const SizedBox(width: 6),
-              AlbumIconButton(
-                icon: Icons.info_outline_rounded,
-                tooltip: AlbumCopy.albumInfo,
-                onTap: onInfo,
-              ),
+              AlbumCornerButton(
+                  onInfo: onInfo, onSettings: onSettings, keySuffix: '-bar'),
             ],
           ),
         ),
@@ -346,12 +303,39 @@ class SelectPill extends StatelessWidget {
   const SelectPill({super.key, required this.onTap});
 
   @override
+  Widget build(BuildContext context) => HeaderPill(
+        icon: Icons.check_circle_outline_rounded,
+        label: AlbumCopy.select,
+        semantics: AlbumCopy.selectPhotos,
+        onTap: onTap,
+      );
+}
+
+// The album's labelled actions share one quiet pill, so Select and Manage
+// people read as the same kind of control
+class HeaderPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? semantics;
+  // Null shows the pill disabled
+  final VoidCallback? onTap;
+
+  const HeaderPill({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.semantics,
+  });
+
+  @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
+    final ink = enabled ? Warm.ink : Warm.inkFaint;
     return Semantics(
       button: true,
       enabled: enabled,
-      label: AlbumCopy.selectPhotos,
+      label: semantics ?? label,
       excludeSemantics: true,
       child: PressableScale(
         onTap: onTap,
@@ -366,21 +350,51 @@ class SelectPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.check_circle_outline_rounded,
-                  size: 16, color: enabled ? Warm.ink : Warm.inkFaint),
+              Icon(icon, size: 16, color: ink),
               const SizedBox(width: 6),
               Text(
-                AlbumCopy.select,
+                label,
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
-                  color: enabled ? Warm.ink : Warm.inkFaint,
+                  color: ink,
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+// Settings for the owner, who finds the album's facts inside them; info for
+// everyone else
+class AlbumCornerButton extends StatelessWidget {
+  final VoidCallback onInfo;
+  final VoidCallback? onSettings;
+  // The bar that appears on scroll keys its copy apart from the header's
+  final String keySuffix;
+
+  const AlbumCornerButton(
+      {super.key, required this.onInfo, this.onSettings, this.keySuffix = ''});
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = onSettings;
+    if (settings != null) {
+      return AlbumIconButton(
+        key: Key('album-settings$keySuffix'),
+        icon: Icons.settings_outlined,
+        tooltip: AlbumCopy.albumSettings,
+        onTap: settings,
+      );
+    }
+    return AlbumIconButton(
+      key: Key('album-info$keySuffix'),
+      icon: Icons.info_outline_rounded,
+      tooltip: AlbumCopy.albumInfo,
+      onTap: onInfo,
     );
   }
 }

@@ -20,7 +20,8 @@ import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_foot.dart';
 import 'package:miuchio/ui/album/album_header.dart';
 import 'package:miuchio/ui/album/album_info_screen.dart';
-import 'package:miuchio/ui/album/manage_people_screen.dart';
+import 'package:miuchio/ui/album/album_settings_screen.dart';
+import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
 import 'package:miuchio/ui/album/album_rename.dart';
 import 'package:miuchio/ui/album/album_stats.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
@@ -46,7 +47,6 @@ import 'package:miuchio/e2ee/sealed_name.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/shelf/shelf_data.dart';
 import 'package:miuchio/ui/screens/photo_viewer_screen.dart';
-import 'package:miuchio/ui/people/people_screen.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/decrypted_image_preview.dart';
@@ -228,19 +228,61 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     if (mounted) await _loadMembers();
   }
 
-  Future<void> _openManagePeople() async {
+  Future<void> _openSettings() async {
     final state = context.read<AppState>();
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => ManagePeopleScreen(
-        albumTitle: state.albumDisplayName(widget.album.id) ?? 'This album',
+    MediaCacheManager? cache;
+    try {
+      cache = context.read<MediaCacheManager>();
+    } catch (_) {
+      cache = null;
+    }
+    Widget thumb(MediaRecord r) => cache == null
+        ? const SizedBox.shrink()
+        : EncryptedThumbnail(record: r, cache: cache, fit: BoxFit.cover);
+    final current = state.albums
+        .where((a) => a.id == widget.album.id)
+        .firstOrNull
+        ?.coverMediaId;
+    final exit =
+        await Navigator.of(context).push(MaterialPageRoute<AlbumInfoExit>(
+      builder: (_) => AlbumSettingsScreen(
+        name: () => state.albumDisplayName(widget.album.id) ?? 'Album',
+        photos: _visible,
+        coverId: current,
+        thumb: thumb,
+        onChangeCover: (was) => _chooseCover(was, thumb),
+        onRename: _rename,
         load: () async => _managed(),
         onAdd: _openAddMember,
         onRemove: (p) async {
           final m = _members.where((m) => m.memberToken == p.id).firstOrNull;
           if (m != null) await _removeMember(m, invited: p.invited);
         },
+        onOpen: (p) async {
+          final m = _members.where((m) => m.memberToken == p.id).firstOrNull;
+          if (m != null) await _openPerson(m);
+        },
+        onInfo: _openAlbumInfo,
+        onDelete: () => Navigator.of(context).pop(AlbumInfoExit.delete),
       ),
     ));
+    if (exit == AlbumInfoExit.delete && mounted) await _deleteAlbum();
+  }
+
+  // Returns the cover in use afterwards, which is the old one on failure
+  Future<String?> _chooseCover(
+      String? was, Widget Function(MediaRecord) thumb) async {
+    final picked = await CoverPickerScreen.show(context,
+        photos: _visible, current: was, thumb: thumb);
+    if (picked == null || picked.id == was || !mounted) return was;
+    final messenger = ScaffoldMessenger.of(context);
+    final state = context.read<AppState>();
+    if (!await widget.albumService.setCover(widget.album.id, picked.id)) {
+      messenger.showSnackBar(_note(AlbumCopy.coverFailed));
+      return was;
+    }
+    state.refreshSummarySoon();
+    return picked.id;
   }
 
   List<ManagedPerson> _managed() {
@@ -270,32 +312,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     ];
   }
 
-  Future<void> _openPeople() async {
-    final state = context.read<AppState>();
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => PeopleScreen(
-        title: AlbumCopy.people,
-        subtitle: state.albumDisplayName(widget.album.id) ?? 'This album',
-        load: () async => _people(),
-        onOpen: (p) async {
-          final m = _members.where((m) => m.memberToken == p.id).firstOrNull;
-          if (m != null) await _openPerson(m);
-        },
-        onAdd: _viewerIsAdmin ? _openAddMember : null,
-        onOpenInvited: _viewerIsAdmin
-            ? (p) async {
-                final m =
-                    _members.where((m) => m.memberToken == p.id).firstOrNull;
-                if (m != null) await _removeMember(m, invited: true);
-              }
-            : null,
-        note: _viewerIsAdmin
-            ? AlbumCopy.ownerNote
-            : 'Only the owner can add people.',
-      ),
-    ));
-  }
-
   Future<void> _openPerson(AlbumMember m) async {
     final album = ModalRoute.of(context);
     final name = _resolvedNames()[m.memberToken];
@@ -322,30 +338,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     }
   }
 
-  // Everyone but us: our own key has nothing to compare
-  List<PersonEntry> _people() {
-    final names = _resolvedNames();
-    return [
-      for (final m in _members)
-        if (!m.revoked && m.memberToken != widget.album.memberToken)
-          m.profile.nameCt == null
-              ? PersonEntry(
-                  id: m.memberToken,
-                  name: AlbumCopy.invitedShort,
-                  face: const SizedBox(),
-                  invited: true,
-                  detail: "Hasn't opened it yet",
-                )
-              : PersonEntry(
-                  id: m.memberToken,
-                  name: names[m.memberToken] ?? AlbumCopy.unknownMember,
-                  owner: m.role == 'admin',
-                  face: _face(m.memberToken, names[m.memberToken], 40),
-                  trust: _trust[m.memberToken] ?? TrustState.unverified,
-                ),
-    ];
-  }
-
   Widget _face(String token, String? name, double size) => MemberFace(
         albumId: widget.album.id,
         token: token,
@@ -370,7 +362,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final people = _members.where((m) => !m.revoked).length;
     final owner = _owner;
     if (!mounted) return;
-    final exit = await Navigator.of(context).push(MaterialPageRoute<AlbumInfoExit>(
+    final exit =
+        await Navigator.of(context).push(MaterialPageRoute<AlbumInfoExit>(
       builder: (_) => AlbumInfoScreen(
         albumId: widget.album.id,
         albumName: _appState?.albumDisplayName(widget.album.id) ?? 'Album',
@@ -382,11 +375,27 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             : owner.memberToken == widget.album.memberToken
                 ? AlbumCopy.madeByYou
                 : names[owner.memberToken],
-        exit: _viewerIsAdmin
-            ? AlbumInfoExit.delete
-            : _me == null
-                ? null
-                : AlbumInfoExit.leave,
+        people: [
+          for (final m in _members)
+            if (!m.revoked)
+              InfoPerson(
+                token: m.memberToken,
+                name: m.memberToken == widget.album.memberToken
+                    ? names[m.memberToken] ??
+                        context.read<AppState>().profileName
+                    : names[m.memberToken],
+                owner: m.role == 'admin',
+                self: m.memberToken == widget.album.memberToken,
+                invited: m.memberToken != widget.album.memberToken &&
+                    m.profile.nameCt == null,
+              ),
+        ],
+        onOpenPerson: (token) {
+          final m = _members.where((m) => m.memberToken == token).firstOrNull;
+          if (m != null) _openPerson(m);
+        },
+        // The owner deletes from settings, everyone else leaves from here
+        exit: _viewerIsAdmin || _me == null ? null : AlbumInfoExit.leave,
       ),
     ));
     if (!mounted) return;
@@ -1234,11 +1243,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           onBack: () => Navigator.of(context).maybePop(),
                           onSelect: shown.isEmpty ? null : _selection.start,
                           onInfo: _openAlbumInfo,
+                          onSettings: _viewerIsAdmin ? _openSettings : null,
                         ),
                         AlbumHeader(
                           albumId: widget.album.id,
                           title: title,
-                          summary: stats.summary(invited: invited),
+                          summary: stats.summary(),
                           members: avatars,
                           filterToken: _filterToken,
                           filterName: _filterToken == null
@@ -1248,8 +1258,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           onTapMember: _toggleFilter,
                           onClearFilter: () =>
                               setState(() => _filterToken = null),
-                          onAdd: _viewerIsAdmin ? _openManagePeople : null,
-                          onPeople: _openPeople,
+                          onAdd: _viewerIsAdmin ? _openAddMember : null,
                           onRename: _viewerIsAdmin ? _rename : null,
                           folded: _collapsed,
                         ),
@@ -1336,6 +1345,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             onBack: () => Navigator.of(context).maybePop(),
             onSelect: shown.isEmpty ? null : _selection.start,
             onInfo: _openAlbumInfo,
+            onSettings: _viewerIsAdmin ? _openSettings : null,
           ),
           ListenableBuilder(
             listenable: _selection,
@@ -1384,9 +1394,13 @@ class _AlbumTopRow extends StatelessWidget {
   // Null while there is nothing to pick
   final VoidCallback? onSelect;
   final VoidCallback onInfo;
+  final VoidCallback? onSettings;
 
   const _AlbumTopRow(
-      {required this.onBack, required this.onSelect, required this.onInfo});
+      {required this.onBack,
+      required this.onSelect,
+      required this.onInfo,
+      this.onSettings});
 
   @override
   Widget build(BuildContext context) {
@@ -1402,11 +1416,7 @@ class _AlbumTopRow extends StatelessWidget {
           const Spacer(),
           SelectPill(key: const Key('album-select'), onTap: onSelect),
           const SizedBox(width: 6),
-          AlbumIconButton(
-            icon: Icons.info_outline_rounded,
-            tooltip: AlbumCopy.albumInfo,
-            onTap: onInfo,
-          ),
+          AlbumCornerButton(onInfo: onInfo, onSettings: onSettings),
         ],
       ),
     );

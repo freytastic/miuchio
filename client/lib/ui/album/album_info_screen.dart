@@ -5,6 +5,7 @@ import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 
 import 'album_copy.dart';
+import 'member_avatars.dart';
 import 'album_stats.dart';
 
 // Returns null until the member name is decrypted
@@ -13,6 +14,23 @@ typedef MemberNameLookup = String? Function(String memberToken);
 // What the album should do once this screen closes
 enum AlbumInfoExit { leave, delete }
 
+// Someone who can see the album, joined or still invited
+class InfoPerson {
+  final String token;
+  final String? name;
+  final bool owner;
+  final bool self;
+  final bool invited;
+
+  const InfoPerson({
+    required this.token,
+    required this.name,
+    this.owner = false,
+    this.self = false,
+    this.invited = false,
+  });
+}
+
 class AlbumInfoScreen extends StatelessWidget {
   final String? albumId;
   final String albumName;
@@ -20,6 +38,10 @@ class AlbumInfoScreen extends StatelessWidget {
   final AlbumStats stats;
   final MemberNameLookup nameOf;
   final String? madeBy;
+  // Everyone with access. The list is the count, so no number stands alone
+  final List<InfoPerson> people;
+  // Opens someone who joined: their security code and their photos
+  final void Function(String token)? onOpenPerson;
   // The ending this viewer may choose: owners delete, everyone else leaves.
   // Null shows neither
   final AlbumInfoExit? exit;
@@ -32,6 +54,8 @@ class AlbumInfoScreen extends StatelessWidget {
     required this.stats,
     required this.nameOf,
     this.madeBy,
+    this.people = const [],
+    this.onOpenPerson,
     this.exit,
   });
 
@@ -73,37 +97,22 @@ class AlbumInfoScreen extends StatelessWidget {
               const SizedBox(height: 32),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(AlbumCopy.infoStorage.toUpperCase(),
+                child: Text(AlbumCopy.infoWho.toUpperCase(),
                     style: Warm.sectionLabel),
               ),
               const SizedBox(height: 12),
-              if (stats.perUploader.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(AlbumCopy.infoStorageEmpty, style: Warm.note),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                  decoration: BoxDecoration(
-                    color: Warm.groundLift,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Column(
-                    children: [
-                      for (final entry in stats.byWeight)
-                        _UploaderRow(
-                          albumId: albumId,
-                          token: entry.key,
-                          name: nameOf(entry.key),
-                          tally: entry.value,
-                          share: stats.totalBytes == 0
-                              ? 0
-                              : entry.value.bytes / stats.totalBytes,
-                        ),
-                    ],
-                  ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                decoration: BoxDecoration(
+                  color: Warm.groundLift,
+                  borderRadius: BorderRadius.circular(18),
                 ),
+                child: Column(
+                  children: [
+                    for (final row in _rows()) row,
+                  ],
+                ),
+              ),
               const SizedBox(height: 18),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -137,6 +146,47 @@ class AlbumInfoScreen extends StatelessWidget {
     );
   }
 
+  // Everyone with access first, owner leading, each with what they added.
+  // Photos from people who have since left follow, so the space adds up
+  List<Widget> _rows() {
+    final total = stats.totalBytes;
+    double share(String t) =>
+        total == 0 ? 0 : (stats.perUploader[t]?.bytes ?? 0) / total;
+    int rank(InfoPerson p) => p.owner ? 0 : (p.invited ? 2 : 1);
+    final members = [...people]..sort((a, b) => rank(a).compareTo(rank(b)));
+    final seen = {for (final p in members) p.token};
+    return [
+      for (final p in members)
+        _PersonRow(
+          albumId: albumId,
+          token: p.token,
+          name: p.name,
+          self: p.self,
+          role: p.invited
+              ? AlbumCopy.invitedPending
+              : p.owner
+                  ? AlbumCopy.owner
+                  : null,
+          invited: p.invited,
+          tally: stats.perUploader[p.token],
+          share: share(p.token),
+          onTap: p.self || p.invited || onOpenPerson == null
+              ? null
+              : () => onOpenPerson!(p.token),
+        ),
+      for (final e in stats.byWeight)
+        if (!seen.contains(e.key))
+          _PersonRow(
+            albumId: albumId,
+            token: e.key,
+            name: nameOf(e.key),
+            role: people.isEmpty ? null : AlbumCopy.leftAlbum,
+            tally: e.value,
+            share: share(e.key),
+          ),
+    ];
+  }
+
   static String _formatDate(DateTime d) {
     const months = [
       'January', 'February', 'March', 'April', 'May', 'June', //
@@ -156,7 +206,6 @@ class _Totals extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final photos = stats.photoCount;
-    final people = stats.peopleCount;
     final size = AlbumStats.formatBytes(stats.totalBytes);
     return Container(
       decoration: BoxDecoration(
@@ -174,13 +223,6 @@ class _Totals extends StatelessWidget {
                 endIndent: 16,
                 color: Warm.inkGhost),
             _Total(value: size, unit: 'stored'),
-            const VerticalDivider(
-                width: 1,
-                thickness: 1,
-                indent: 16,
-                endIndent: 16,
-                color: Warm.inkGhost),
-            _Total(value: '$people', unit: people == 1 ? 'person' : 'people'),
           ],
         ),
       ),
@@ -264,38 +306,53 @@ class _ExitRow extends StatelessWidget {
   }
 }
 
-// Who the space belongs to, said as "4 photos · 1.2 MB" rather than a bare
-// count, with each person's share drawn in their own colour
-class _UploaderRow extends StatelessWidget {
+// One person who can see the album: who they are, then what they added,
+// said as "4 photos · 1.2 MB" with their share drawn in their own colour
+class _PersonRow extends StatelessWidget {
   final String? albumId;
   final String token;
   final String? name;
-  final UploaderTally tally;
+  // Labelled "You", while the face keeps your own name and colour
+  final bool self;
+  final String? role;
+  final bool invited;
+  final UploaderTally? tally;
   final double share;
+  final VoidCallback? onTap;
 
-  const _UploaderRow({
+  const _PersonRow({
     required this.albumId,
     required this.token,
     required this.name,
-    required this.tally,
     required this.share,
+    this.self = false,
+    this.role,
+    this.invited = false,
+    this.tally,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final photos = '${tally.photos} ${tally.photos == 1 ? 'photo' : 'photos'}';
-    final percent = '${(share * 100).round()}%';
-    return Padding(
+    final t = tally;
+    final added = t == null
+        ? (invited ? null : AlbumCopy.nothingAddedYet)
+        : '${t.photos} ${t.photos == 1 ? 'photo' : 'photos'} · '
+            '${AlbumStats.formatBytes(t.bytes)}';
+    final detail = [if (role != null) role!, if (added != null) added];
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          MemberFace(
-            albumId: albumId,
-            token: token,
-            name: name,
-            size: 36,
-            style: Warm.acFace.copyWith(fontSize: 13),
-          ),
+          invited
+              ? const DashedCircle(size: 36)
+              : MemberFace(
+                  albumId: albumId,
+                  token: token,
+                  name: name,
+                  size: 36,
+                  style: Warm.acFace.copyWith(fontSize: 13),
+                ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -306,35 +363,57 @@ class _UploaderRow extends StatelessWidget {
                     Expanded(
                       child: Text(
                         // Never show member tokens as names
-                        name ?? AlbumCopy.unknownMember,
+                        invited
+                            ? AlbumCopy.invitedShort
+                            : self
+                                ? AlbumCopy.you
+                                : name ?? AlbumCopy.unknownMember,
                         overflow: TextOverflow.ellipsis,
                         style: Warm.rowTitle,
                       ),
                     ),
-                    Text(
-                      percent,
-                      style: Warm.rowValue.copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()]),
-                    ),
+                    if (t != null)
+                      Text(
+                        '${(share * 100).round()}%',
+                        style: Warm.rowValue.copyWith(
+                            fontFeatures: const [FontFeature.tabularFigures()]),
+                      ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text('$photos · ${AlbumStats.formatBytes(tally.bytes)}',
-                    style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: share.clamp(0.0, 1.0),
-                    minHeight: 4,
-                    backgroundColor: Warm.wellEmpty,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(faceHue(token, name)),
+                if (detail.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(detail.join(' · '),
+                      style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
+                ],
+                if (t != null) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: share.clamp(0.0, 1.0),
+                      minHeight: 4,
+                      backgroundColor: Warm.wellEmpty,
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(faceHue(token, name)),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
+        ],
+      ),
+    );
+    if (onTap == null) return row;
+    return GestureDetector(
+      key: Key('info-person-$token'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Expanded(child: row),
+          const Icon(Icons.chevron_right_rounded,
+              size: 18, color: Warm.inkGhost),
         ],
       ),
     );

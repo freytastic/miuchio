@@ -79,8 +79,16 @@ abstract final class AlbumCopy {
   static const invitedPending = "Invited, hasn't opened it yet";
   static const invitedShort = 'Invited';
   static const addShort = 'Add';
-  static const editPeople = 'Edit people';
-  static const editShort = 'Edit';
+  static const albumSettings = 'Album settings';
+  static const changeCover = 'Change cover';
+  static const chooseCover = 'Cover photo';
+  static const chooseCoverLead =
+      'It leads the album on everyone\'s shelf.';
+  static const coverNewest = 'Newest photo';
+  static const coverNewestDetail = 'The cover follows each new photo';
+  static const coverChosen = 'Cover you chose';
+  static const coverFailed = "Couldn't change the cover.";
+  static const infoDetail = 'Photos, storage and who added what';
   static String peopleOf(int count, int capacity) =>
       '$count of $capacity people';
   static const addByIdShort = 'With their Miuchio ID';
@@ -112,8 +120,10 @@ abstract final class AlbumCopy {
   static const infoKey =
       'Only its members hold the key, so the server stores it without being '
       'able to open it';
-  static const infoStorage = 'Who added what';
-  static const infoStorageEmpty = 'Nothing has been added yet.';
+  static const infoWho = 'Who can see it';
+  static const owner = 'Owner';
+  static const leftAlbum = 'No longer in the album';
+  static const nothingAddedYet = 'Nothing added yet';
 
   static const delete = 'Delete';
   static const deleteTitle = 'Delete this photo?';

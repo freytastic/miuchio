@@ -74,7 +74,7 @@ void main() {
     );
     final empty = AlbumStats.of(const [], peopleCount: 2);
 
-    expect(stats.summary(), '1 photo · 1.4 MB · 3 people');
-    expect(empty.summary(invited: 3), '2 people, 3 invited');
+    expect(stats.summary(), '1 photo · 1.4 MB');
+    expect(empty.summary(), isEmpty);
   });
 }

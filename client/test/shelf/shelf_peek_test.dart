@@ -129,7 +129,8 @@ void main() {
     await tester.tap(find.text('Album info'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('7'), findsOneWidget);
-    expect(find.text('people'), findsOneWidget);
+    expect(find.text('people'), findsNothing,
+        reason: 'who can see it is faces and names, not a bare count');
     expect(find.text(AlbumCopy.noPhotosYet), findsNothing,
         reason: 'an undated listing of 7 photos is not empty');
     expect(find.text('photos'), findsOneWidget);

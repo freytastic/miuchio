@@ -14,8 +14,9 @@ import 'package:miuchio/data/storage/name_cache.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
+import 'package:miuchio/ui/album/album_info_screen.dart';
+import 'package:miuchio/ui/album/album_settings_screen.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
-import 'package:miuchio/ui/people/people_screen.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
 import 'package:miuchio/ui/shelf/shelf_data.dart';
 
@@ -61,12 +62,13 @@ AlbumModel _fakeAlbum({String? me}) => AlbumModel(
       memberToken: me,
     );
 
-AlbumMember _fakeMember(String token, String role) => AlbumMember(
+AlbumMember _fakeMember(String token, String role, {String? nameCt}) =>
+    AlbumMember(
       memberToken: token,
       role: role,
       revoked: false,
       joinedAt: DateTime(2024),
-      profile: MemberProfile(),
+      profile: MemberProfile(nameCt: nameCt),
     );
 
 Widget _wrap(Widget child, AlbumKeyStore aks, {NameCache? names}) =>
@@ -112,7 +114,7 @@ void main() {
         findsOneWidget);
   });
 
-  testWidgets('an invited member is counted as invited, not as a person',
+  testWidgets('an invited member is a dashed place, never a head count',
       (tester) async {
     final aks = await _emptyAks();
     await tester.pumpWidget(_wrap(
@@ -128,11 +130,14 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('1 person, 1 invited'), findsOneWidget);
+    expect(find.textContaining('person'), findsNothing);
+    expect(find.textContaining('invited'), findsNothing);
+    expect(find.byType(DashedCircle), findsNWidgets(2),
+        reason: 'Bob has not opened it yet, beside the add slot');
   });
 
   for (final (me, admin) in [('alicetoken123', true), ('bobtoken456', false)]) {
-    testWidgets('editing people is offered only to the admin ($me)',
+    testWidgets('settings and adding are offered only to the admin ($me)',
         (tester) async {
       final aks = await _emptyAks();
       await tester.pumpWidget(_wrap(
@@ -148,34 +153,14 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('edit-people')),
+      expect(find.byKey(const Key('album-settings')),
+          admin ? findsOneWidget : findsNothing);
+      expect(find.byKey(const Key('album-info')),
+          admin ? findsNothing : findsOneWidget);
+      expect(find.byKey(const ValueKey('add-someone')),
           admin ? findsOneWidget : findsNothing);
     });
   }
-
-  testWidgets('people opens the album roster without our own row',
-      (tester) async {
-    final aks = await _emptyAks();
-    await tester.pumpWidget(_wrap(
-      AlbumDetailScreen(
-        album: _fakeAlbum(me: 'alicetoken123'),
-        albumService: _MockAlbumService([
-          _fakeMember('alicetoken123', 'admin'),
-          _fakeMember('bobtoken456', 'member'),
-        ]),
-        mediaApi: _StubMediaApi(const []),
-      ),
-      aks,
-    ));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('album-people')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(PeopleScreen), findsOneWidget);
-    expect(find.byKey(const ValueKey('person-bobtoken456')), findsOneWidget);
-    expect(find.byKey(const ValueKey('person-alicetoken123')), findsNothing);
-  });
 
   testWidgets(
       'AlbumDetailScreen exits itself when the album is removed '
@@ -331,10 +316,17 @@ void main() {
         names: await names(tester),
       ));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('album-people')));
+      await tester
+          .tap(find.byKey(Key(admin ? 'album-settings' : 'album-info')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('person-caroltoken789')));
+      final carol = find.byKey(Key(
+          admin ? 'manage-open-caroltoken789' : 'info-person-caroltoken789'));
+      await tester.scrollUntilVisible(carol, 100,
+          scrollable: find.byType(Scrollable).last);
+      await tester.ensureVisible(carol);
+      await tester.pumpAndSettle();
+      await tester.tap(carol);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('person-photos')), findsOneWidget);
@@ -360,15 +352,45 @@ void main() {
       names: await names(tester),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('album-people')));
+    await tester.tap(find.byKey(const Key('album-settings')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('person-bobtoken456')));
+    final bob = find.byKey(const Key('manage-open-bobtoken456'));
+    await tester.scrollUntilVisible(bob, 100,
+        scrollable: find.byType(Scrollable).last);
+    await tester.ensureVisible(bob);
+    await tester.pumpAndSettle();
+    await tester.tap(bob);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('person-photos')));
     await tester.pumpAndSettle();
 
-    expect(find.byType(PeopleScreen), findsNothing);
+    expect(find.byType(AlbumSettingsScreen), findsNothing);
     expect(find.text(AlbumCopy.filteredBy(null, 0)), findsOneWidget);
+  });
+
+  testWidgets('a member reaches everyone else from album info', (tester) async {
+    final aks = await _emptyAks();
+    await tester.pumpWidget(_wrap(
+      AlbumDetailScreen(
+        album: _fakeAlbum(me: 'bobtoken456'),
+        albumService: _MockAlbumService([
+          joined('alicetoken123', 'admin'),
+          joined('bobtoken456', 'member'),
+        ]),
+        mediaApi: _StubMediaApi(const []),
+      ),
+      aks,
+      names: await names(tester),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('album-info')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlbumInfoScreen), findsOneWidget);
+    expect(find.byKey(const Key('info-person-alicetoken123')), findsOneWidget);
+    expect(find.byKey(const Key('info-person-bobtoken456')), findsNothing,
+        reason: 'our own row has nothing to open');
   });
 }
