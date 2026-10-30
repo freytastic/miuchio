@@ -27,6 +27,7 @@ import 'package:miuchio/ui/screens/onboarding_screen.dart';
 import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/hello_wordmark.dart';
+import 'package:miuchio/ui/widgets/mark_stage.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -114,7 +115,8 @@ class _LandingPageState extends State<LandingPage> {
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 250),
+        // Onboarding gives the logo time to glide up onto its wordmark
+        transitionDuration: Duration(milliseconds: intro ? 520 : 250),
         pageBuilder: (_, __, ___) => destination,
         transitionsBuilder: (_, a, __, child) => FadeTransition(
           opacity: CurvedAnimation(parent: a, curve: Curves.easeOut),
@@ -231,33 +233,10 @@ class _LandingPageState extends State<LandingPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Picks up from the native launch screen's mark without a jump
     return Scaffold(
       backgroundColor: Warm.ground,
-      body: Center(
-        child: Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            color: Warm.cta,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x2E3B281E),
-                blurRadius: 30,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: const HelloWordmark(
-            glyphs: kWordmarkM,
-            height: 22,
-            color: Warm.ctaInk,
-            duration: Duration(milliseconds: 900),
-            semanticsLabel: 'Miuchio',
-          ),
-        ),
-      ),
+      body: Center(child: MarkStage.launch()),
     );
   }
 }

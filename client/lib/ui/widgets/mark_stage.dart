@@ -9,13 +9,12 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 // The part of icon space the stage shows, centred on the icon like the m is
 const Rect _kView = Rect.fromLTRB(14, 19, 86, 83);
 const double _kStageWidthFactor = 0.3;
-const double _kStageTopFactorShrunk = 0.01;
-const double _kStageShrunkScale = 0.5;
-const double _kStageMinScale = 0.6;
-// Least air kept between the status bar and the mark at rest
-const double _kRestTopClearance = 8;
-const Duration _kShrinkDuration = Duration(milliseconds: 280);
-const Curve _kShrinkCurve = Curves.easeOutCubic;
+const Duration _kMoveDuration = Duration(milliseconds: 280);
+const Curve _kMoveCurve = Curves.easeOutCubic;
+
+// The native launch image is rendered from this widget at this width, so the
+// launch screen and the loading page show the same mark in the same place
+const double kLaunchMarkWidth = 126;
 
 const double _kStroke = 10;
 // The paper ring the icon cuts around the m
@@ -24,68 +23,49 @@ const double _kGap = 17;
 class MarkStage extends StatelessWidget {
   const MarkStage({super.key});
 
-  // At rest the mark stands on restBottom, so it reads as one lockup with the
-  // wordmark under it. Shrunk, it moves up out of the keyboard's way
+  // The mark flies from the loading page into onboarding under this tag
+  static const Object heroTag = 'miuchio-mark';
+
+  static double heightFor(double width) =>
+      width * _kView.height / _kView.width;
+
+  // Unscaled height of the onboarding mark on this screen
+  static double stageHeight(BuildContext context) =>
+      heightFor(MediaQuery.sizeOf(context).width * _kStageWidthFactor);
+
+  // The mark stands on bottom and scales about its base, so it moves in step
+  // with the copy under it, which animates with the same duration and curve
   static Widget positioned(
     BuildContext context, {
-    required double restBottom,
-    bool shrink = false,
-    double shrunkScale = _kStageShrunkScale,
+    required double bottom,
+    double scale = 1,
   }) {
     final size = MediaQuery.sizeOf(context);
     final width = size.width * _kStageWidthFactor;
-    final height = _height(width);
-    // viewPadding is stable while the keyboard opens
-    final topInset = MediaQuery.viewPaddingOf(context).top;
-    // Short screens trade some of the mark's size for room under the bar
-    final restScale =
-        ((restBottom - topInset - _kRestTopClearance) / height)
-            .clamp(_kStageMinScale, 1.0)
-            .toDouble();
     return AnimatedPositioned(
-      duration: _kShrinkDuration,
-      curve: _kShrinkCurve,
+      duration: _kMoveDuration,
+      curve: _kMoveCurve,
       left: (size.width - width) / 2,
-      top: shrink
-          ? topInset + size.height * _kStageTopFactorShrunk
-          : restBottom - height * restScale,
+      bottom: size.height - bottom,
       width: width,
-      height: height,
+      height: heightFor(width),
       child: AnimatedScale(
-        duration: _kShrinkDuration,
-        curve: _kShrinkCurve,
-        alignment: Alignment.topCenter,
-        scale: shrink ? shrunkScale : restScale,
-        child: const MarkStage(),
+        duration: _kMoveDuration,
+        curve: _kMoveCurve,
+        alignment: Alignment.bottomCenter,
+        scale: scale,
+        child: const _Flying(child: MarkStage()),
       ),
     );
   }
 
-  static double _height(double width) => width * _kView.height / _kView.width;
-
-  static double _unscaledHeight(BuildContext context) =>
-      _height(MediaQuery.sizeOf(context).width * _kStageWidthFactor);
-
-  static double shrunkScaleToFit(
-    BuildContext context, {
-    required double maxVisualBottom,
-  }) {
-    final top = MediaQuery.viewPaddingOf(context).top +
-        MediaQuery.sizeOf(context).height * _kStageTopFactorShrunk;
-    final unscaledHeight = _unscaledHeight(context);
-    if (unscaledHeight <= 0) return _kStageShrunkScale;
-    return ((maxVisualBottom - top) / unscaledHeight)
-        .clamp(0.0, _kStageShrunkScale)
-        .toDouble();
-  }
-
-  static double shrunkVisualBottom(
-    BuildContext context, {
-    required double scale,
-  }) {
-    final top = MediaQuery.viewPaddingOf(context).top +
-        MediaQuery.sizeOf(context).height * _kStageTopFactorShrunk;
-    return top + _unscaledHeight(context) * scale;
+  // The loading page's mark, the size of the native launch image
+  static Widget launch() {
+    return SizedBox(
+      width: kLaunchMarkWidth,
+      height: heightFor(kLaunchMarkWidth),
+      child: const _Flying(child: MarkStage()),
+    );
   }
 
   @override
@@ -96,6 +76,22 @@ class MarkStage extends StatelessWidget {
       child: const RepaintBoundary(
         child: CustomPaint(size: Size.infinite, painter: _MarkPainter()),
       ),
+    );
+  }
+}
+
+class _Flying extends StatelessWidget {
+  const _Flying({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Hero(
+      tag: MarkStage.heroTag,
+      // A straight glide rather than Material's arc
+      createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+      child: child,
     );
   }
 }

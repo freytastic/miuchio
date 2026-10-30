@@ -44,8 +44,11 @@ const double _kDotsExtent = 6;
 const double _kDotsGap = 22;
 // Space kept between the last line of copy and the dots
 const double _kFootClearance = 16;
-// The logo stands just above the wordmark, eating into the air over the copy
-const double _kMarkToWordmark = 10;
+// The logo stands just above the copy, eating into the air over it
+const double _kMarkToCopy = 10;
+// Least air kept between the status bar and the logo
+const double _kMarkTopClearance = 8;
+const double _kMarkMinScale = 0.6;
 
 const String _kIntroLead = 'Share photo albums, privately.';
 const String _kEmailLead = 'We’ll send a one-time sign-in code to your email.';
@@ -375,30 +378,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final onIntro = _phase == _Phase.intro;
     final topInset = MediaQuery.viewPaddingOf(context).top;
 
+    final markHeight = MarkStage.stageHeight(context);
+
+    // With the keyboard up the logo and copy stay one group, centred in the
+    // room above the foot, and the logo only shrinks once that room runs out
     final compactCopyBox =
         _phase == _Phase.otp ? _kCompactOtpCopyBox : _kCompactEmailCopyBox;
-    final compactCopyExtent =
-        _kCompactCopyLead + compactCopyBox;
     final compactFootBottom = keyboard + 20;
     final compactFootTop =
         size.height - compactFootBottom - _kCompactFootExtent;
-    final compactHeroMaxBottom =
-        compactFootTop - compactCopyExtent - 2 * _kCompactContentGap;
-    final compactStageScale = MarkStage.shrunkScaleToFit(
-      context,
-      maxVisualBottom: compactHeroMaxBottom,
-    );
-    final compactHeroBottom = MarkStage.shrunkVisualBottom(
-      context,
-      scale: compactStageScale,
-    );
-    final rawCompactSlack = compactFootTop -
-        compactHeroBottom -
-        compactCopyExtent -
-        2 * _kCompactContentGap;
-    final compactSlack = rawCompactSlack > 0 ? rawCompactSlack : 0.0;
-    final compactCopyTop =
-        compactHeroBottom + _kCompactContentGap + compactSlack / 2;
+    final compactRoomTop = topInset + _kMarkTopClearance;
+    final compactRoom =
+        compactFootTop - _kCompactContentGap - compactRoomTop;
+    final compactBelowMark = _kMarkToCopy + compactCopyBox;
+    final compactMarkScale = ((compactRoom - compactBelowMark) / markHeight)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final compactSlack = math.max(0.0,
+        compactRoom - compactBelowMark - markHeight * compactMarkScale);
+    final compactMarkBottom =
+        compactRoomTop + compactSlack / 2 + markHeight * compactMarkScale;
+    final compactCopyTop = compactMarkBottom - _kCompactCopyLead + _kMarkToCopy;
 
     // Fractions alone let the foot land on the copy on shorter screens
     final copyBody = _copyBody(context, size.width - Warm.pagePad * 2);
@@ -415,7 +415,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _kCopyLead -
           copyBody,
     );
-    final markBottom = copyTop + _kCopyLead - _kMarkToWordmark;
+    final markBottom = copyTop + _kCopyLead - _kMarkToCopy;
+    // Short screens trade some of the logo's size for room under the bar
+    final markScale =
+        ((markBottom - topInset - _kMarkTopClearance) / markHeight)
+            .clamp(_kMarkMinScale, 1.0)
+            .toDouble();
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Warm.overlayOnGround,
@@ -434,9 +439,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
               MarkStage.positioned(
                 context,
-                restBottom: markBottom,
-                shrink: keyboardOpen,
-                shrunkScale: compactStageScale,
+                bottom: keyboardOpen ? compactMarkBottom : markBottom,
+                scale: keyboardOpen ? compactMarkScale : markScale,
               ),
 
               AnimatedPositioned(
