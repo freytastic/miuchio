@@ -48,7 +48,8 @@ func (m *removeMemberStore) ListForUser(context.Context, uuid.UUID) ([]model.Alb
 func (m *removeMemberStore) ListMembers(context.Context, uuid.UUID) ([]model.MemberWithProfile, error) {
 	return nil, nil
 }
-func (m *removeMemberStore) UpdateName(context.Context, uuid.UUID, []byte) error { return nil }
+func (m *removeMemberStore) UpdateName(context.Context, uuid.UUID, []byte) error   { return nil }
+func (m *removeMemberStore) SetCover(context.Context, uuid.UUID, *uuid.UUID) error { return nil }
 func (m *removeMemberStore) UpdateMemberNameCT(context.Context, uuid.UUID, []byte, []byte) error {
 	return nil
 }

@@ -40,8 +40,6 @@ class MemberAvatars extends StatefulWidget {
   final String? selectedToken;
   final ValueChanged<String> onTap;
   final VoidCallback? onAdd;
-  // The slot after the faces edits the list instead of adding to it
-  final bool editsPeople;
   final bool folded;
 
   const MemberAvatars({
@@ -51,7 +49,6 @@ class MemberAvatars extends StatefulWidget {
     required this.onTap,
     this.selectedToken,
     this.onAdd,
-    this.editsPeople = false,
     this.folded = false,
   });
 
@@ -222,7 +219,6 @@ class _MemberAvatarsState extends State<MemberAvatars> {
                       rowLeft: (people.length + pending.length) *
                           (MemberAvatars._slot + MemberAvatars._gap),
                       restLeft: addRest,
-                      edits: widget.editsPeople,
                       onTap: widget.onAdd!,
                     ),
                 ],
@@ -441,14 +437,12 @@ class _Add extends StatelessWidget {
   final double rowLeft;
   final double restLeft;
   final VoidCallback onTap;
-  final bool edits;
 
   const _Add({
     required this.open,
     required this.rowLeft,
     required this.restLeft,
     required this.onTap,
-    this.edits = false,
   });
 
   @override
@@ -463,7 +457,7 @@ class _Add extends StatelessWidget {
       width: (open ? MemberAvatars._slot : size) + ring * 2,
       child: Semantics(
         button: true,
-        label: edits ? AlbumCopy.editPeople : AlbumCopy.addSomeone,
+        label: AlbumCopy.addSomeone,
         excludeSemantics: true,
         child: PressableScale(
           onTap: onTap,
@@ -475,17 +469,12 @@ class _Add extends StatelessWidget {
                 duration: Warm.springSnappy,
                 curve: Warm.easeOut,
                 builder: (_, s, __) => AddSlot(
-                    key: ValueKey(edits ? 'edit-people' : 'add-someone'),
-                    size: s,
-                    ring: ring,
-                    icon: edits ? Icons.edit_outlined : Icons.add_rounded),
+                    key: const ValueKey('add-someone'), size: s, ring: ring),
               ),
               if (open)
-                Padding(
-                  padding:
-                      const EdgeInsets.only(top: MemberAvatars._nameGap - ring),
-                  child:
-                      _Label(edits ? AlbumCopy.editShort : AlbumCopy.addShort),
+                const Padding(
+                  padding: EdgeInsets.only(top: MemberAvatars._nameGap - ring),
+                  child: _Label(AlbumCopy.addShort),
                 ),
             ],
           ),
@@ -500,14 +489,8 @@ class _Add extends StatelessWidget {
 class AddSlot extends StatelessWidget {
   final double size;
   final double ring;
-  final IconData icon;
 
-  const AddSlot({
-    super.key,
-    required this.size,
-    this.ring = 0,
-    this.icon = Icons.add_rounded,
-  });
+  const AddSlot({super.key, required this.size, this.ring = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -520,9 +503,8 @@ class AddSlot extends StatelessWidget {
         padding: EdgeInsets.all(ring),
         child: DashedCircle(
           size: size,
-          child: Icon(icon,
-              size: size * (icon == Icons.add_rounded ? 0.44 : 0.38),
-              color: Warm.inkFaint),
+          child: Icon(Icons.add_rounded,
+              size: size * 0.44, color: Warm.inkFaint),
         ),
       ),
     );

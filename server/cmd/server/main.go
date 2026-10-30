@@ -209,6 +209,7 @@ func main() {
 	scoped.HandleFunc("", albumHandler.GetAlbum).Methods(http.MethodGet)
 	scoped.HandleFunc("", albumHandler.UpdateAlbum).Methods(http.MethodPatch)
 	scoped.HandleFunc("", albumHandler.DeleteAlbum).Methods(http.MethodDelete)
+	scoped.HandleFunc("/cover", albumHandler.SetCover).Methods(http.MethodPut)
 	scoped.HandleFunc("/members", albumHandler.ListAlbumMembers).Methods(http.MethodGet)
 	// Onboarding stays on the E2EE invite path so membership includes MK delivery
 	scoped.HandleFunc("/members/me/profile-ct", albumHandler.UpdateMyProfileCT).Methods(http.MethodPut)

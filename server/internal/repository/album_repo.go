@@ -110,8 +110,9 @@ func (r *AlbumRepository) CreateWithAdmin(ctx context.Context, nameCT []byte, cr
 func (r *AlbumRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Album, error) {
 	var a model.Album
 	err := r.DB.QueryRow(ctx,
-		`SELECT id, name_ct, created_at, updated_at FROM albums WHERE id = $1`, id,
-	).Scan(&a.ID, &a.NameCT, &a.CreatedAt, &a.UpdatedAt)
+		`SELECT id, name_ct, created_at, updated_at, cover_media_id
+		 FROM albums WHERE id = $1`, id,
+	).Scan(&a.ID, &a.NameCT, &a.CreatedAt, &a.UpdatedAt, &a.CoverMediaID)
 	if err == pgx.ErrNoRows {
 		return nil, ErrAlbumNotFound
 	}
@@ -126,7 +127,8 @@ func (r *AlbumRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Alb
 func (r *AlbumRepository) ListForUser(ctx context.Context, userID uuid.UUID) ([]model.AlbumWithMemberInfo, error) {
 	handle := r.linker.Hash(userID)
 	rows, err := r.DB.Query(ctx, `
-		SELECT a.id, a.name_ct, a.created_at, a.updated_at, a.media_generation,
+		SELECT a.id, a.name_ct, a.created_at, a.updated_at, a.cover_media_id,
+		       a.media_generation,
 		       am.role, ami.member_token,
 		       COALESCE(stats.media_count, 0),
 		       stats.latest_activity_at,
@@ -160,7 +162,7 @@ func (r *AlbumRepository) ListForUser(ctx context.Context, userID uuid.UUID) ([]
 	for rows.Next() {
 		var a model.AlbumWithMemberInfo
 		if err := rows.Scan(&a.ID, &a.NameCT, &a.CreatedAt, &a.UpdatedAt,
-			&a.Summary.MediaGeneration, &a.UserRole, &a.MemberToken,
+			&a.CoverMediaID, &a.Summary.MediaGeneration, &a.UserRole, &a.MemberToken,
 			&a.Summary.MediaCount, &a.Summary.LatestActivityAt,
 			&a.Summary.ActiveMemberCount, &a.Summary.RotationRequired); err != nil {
 			return nil, err
@@ -202,7 +204,9 @@ func (r *AlbumRepository) previewMediaFor(ctx context.Context, handle []byte, id
 		    SELECT * FROM media mm
 		    WHERE mm.album_id = a.id AND mm.confirmed = TRUE
 		      AND mm.thumb_wrap_nonce IS NOT NULL
-		    ORDER BY mm.album_seq DESC NULLS LAST, mm.id DESC
+		    -- The chosen cover leads, the newest photos follow it
+		    ORDER BY (mm.id = a.cover_media_id) DESC NULLS LAST,
+		             mm.album_seq DESC NULLS LAST, mm.id DESC
 		    LIMIT 3
 		) m ON TRUE
 		WHERE ami.user_handle = $1 AND am.revoked_at IS NULL AND a.id = ANY($2)`,
@@ -590,6 +594,29 @@ func (r *AlbumRepository) UpdateName(ctx context.Context, albumID uuid.UUID, nam
 		 WHERE id = $2`,
 		nameCT, albumID)
 	return err
+}
+
+// SetCover only accepts a confirmed photo of the same album; nil clears it
+func (r *AlbumRepository) SetCover(ctx context.Context, albumID uuid.UUID, mediaID *uuid.UUID) error {
+	if mediaID == nil {
+		_, err := r.DB.Exec(ctx,
+			`UPDATE albums SET cover_media_id = NULL WHERE id = $1`, albumID)
+		return err
+	}
+	tag, err := r.DB.Exec(ctx,
+		`UPDATE albums SET cover_media_id = $2
+		 WHERE id = $1 AND EXISTS (
+		     SELECT 1 FROM media m
+		     WHERE m.id = $2 AND m.album_id = $1 AND m.confirmed = TRUE
+		       AND m.thumb_wrap_nonce IS NOT NULL)`,
+		albumID, *mediaID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrMediaNotFound
+	}
+	return nil
 }
 
 func (r *AlbumRepository) Delete(ctx context.Context, id uuid.UUID) error {

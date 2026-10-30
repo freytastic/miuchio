@@ -55,7 +55,7 @@ class RealtimeRouter {
         _mediaDeleted(ev.payload);
       // The event names only the album: the fresh listing brings the new
       // sealed title, opened on this phone, and its activity row
-      case 'e2ee.album_renamed':
+      case 'e2ee.album_renamed' || 'e2ee.album_updated':
         if (ev.payload['album_id'] is String) appState.refreshSummarySoon();
       case 'e2ee.member_added' || 'e2ee.member_updated':
         final albumStr = ev.payload['album_id'] as String?;

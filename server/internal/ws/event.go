@@ -15,6 +15,7 @@ const (
 	EventMediaDeleted    = "e2ee.media_deleted"
 	EventAlbumDeleted    = "e2ee.album_deleted"
 	EventAlbumRenamed    = "e2ee.album_renamed"
+	EventAlbumUpdated    = "e2ee.album_updated"
 	EventOPKLow          = "e2ee.opk_low"
 )
 
@@ -28,6 +29,7 @@ var allowedEventTypes = map[string]struct{}{
 	EventMediaDeleted:    {},
 	EventAlbumDeleted:    {},
 	EventAlbumRenamed:    {},
+	EventAlbumUpdated:    {},
 	EventOPKLow:          {},
 }
 

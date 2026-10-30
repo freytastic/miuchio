@@ -21,6 +21,8 @@ class AlbumModel {
   final bool hasSummary;
   // Uploads stay frozen until the album's next epoch commits
   final bool rotationRequired;
+  // The owner's chosen cover; null means the newest photo leads
+  final String? coverMediaId;
 
   AlbumModel({
     required this.id,
@@ -37,6 +39,7 @@ class AlbumModel {
     this.memberPreviews = const [],
     this.hasSummary = false,
     this.rotationRequired = false,
+    this.coverMediaId,
   });
 
   AlbumModel copyWith({
@@ -63,6 +66,7 @@ class AlbumModel {
         memberPreviews: memberPreviews,
         hasSummary: hasSummary ?? this.hasSummary,
         rotationRequired: rotationRequired ?? this.rotationRequired,
+        coverMediaId: coverMediaId,
       );
 
   factory AlbumModel.fromJson(Map<String, dynamic> json) {
@@ -87,6 +91,7 @@ class AlbumModel {
       previewMedia: _list(json['preview_media'], PreviewMedia.tryFromJson),
       memberPreviews: _list(json['member_previews'], MemberPreview.tryFromJson),
       rotationRequired: json['rotation_required'] as bool? ?? false,
+      coverMediaId: json['cover_media_id'] as String?,
     );
   }
 
@@ -105,6 +110,7 @@ class AlbumModel {
         'preview_media': [for (final p in previewMedia) p.toJson()],
         'member_previews': [for (final m in memberPreviews) m.toJson()],
         'rotation_required': rotationRequired,
+        if (coverMediaId != null) 'cover_media_id': coverMediaId,
       };
 
   // Drop malformed summary rows without failing the album list

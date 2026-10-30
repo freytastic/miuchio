@@ -11,6 +11,8 @@ type Album struct {
 	NameCT    []byte    `json:"name_ct"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Nil shows the newest photo
+	CoverMediaID *uuid.UUID `json:"cover_media_id,omitempty"`
 }
 
 type AlbumMember struct {

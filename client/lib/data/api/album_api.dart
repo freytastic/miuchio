@@ -95,6 +95,19 @@ class AlbumService {
     }
   }
 
+  // Null goes back to the newest photo
+  Future<bool> setCover(String albumId, String? mediaId) async {
+    try {
+      final response = await _client.put(
+        '/albums/$albumId/cover',
+        body: {'media_id': mediaId},
+      );
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> deleteAlbum(String id) async {
     try {
       final response = await _client.delete('/albums/$id');

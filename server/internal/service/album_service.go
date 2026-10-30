@@ -27,6 +27,7 @@ type AlbumStore interface {
 	LookupMember(ctx context.Context, userID, albumID uuid.UUID) ([]byte, string, error)
 	ListMembers(ctx context.Context, albumID uuid.UUID) ([]model.MemberWithProfile, error)
 	UpdateName(ctx context.Context, albumID uuid.UUID, nameCT []byte) error
+	SetCover(ctx context.Context, albumID uuid.UUID, mediaID *uuid.UUID) error
 	UpdateMemberNameCT(ctx context.Context, albumID uuid.UUID, memberToken, nameCT []byte) error
 	// Deletes under the album lock, re checking the caller is the active admin
 	DeleteAlbumTx(ctx context.Context, albumID uuid.UUID, callerToken []byte) (repository.AlbumRemoval, error)
@@ -101,6 +102,16 @@ func (s *AlbumService) UpdateAlbum(ctx context.Context, albumID, userID uuid.UUI
 		return errors.New("name_ct is required")
 	}
 	return s.albumRepo.UpdateName(ctx, albumID, nameCT)
+}
+
+// SetCover lets the owner pick which photo leads the album; nil goes back
+// to the newest
+func (s *AlbumService) SetCover(ctx context.Context, albumID, userID uuid.UUID, mediaID *uuid.UUID) error {
+	_, role, err := s.albumRepo.LookupMember(ctx, userID, albumID)
+	if err != nil || role != "admin" {
+		return ErrUnauthorized
+	}
+	return s.albumRepo.SetCover(ctx, albumID, mediaID)
 }
 
 // DeleteAlbum returns the members who must be told the album is gone

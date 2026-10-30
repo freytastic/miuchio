@@ -10,6 +10,7 @@ import (
 	"github.com/freytastic/miuchio/internal/apierr"
 	"github.com/freytastic/miuchio/internal/middleware"
 	"github.com/freytastic/miuchio/internal/model"
+	"github.com/freytastic/miuchio/internal/repository"
 	"github.com/freytastic/miuchio/internal/service"
 	"github.com/freytastic/miuchio/internal/ws"
 	"github.com/google/uuid"
@@ -119,12 +120,13 @@ func (h *AlbumHandler) GetAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"id":           a.ID,
-		"name_ct":      base64.StdEncoding.EncodeToString(a.NameCT),
-		"created_at":   a.CreatedAt,
-		"updated_at":   a.UpdatedAt,
-		"role":         a.UserRole,
-		"member_token": base64.StdEncoding.EncodeToString(a.MemberToken),
+		"id":             a.ID,
+		"name_ct":        base64.StdEncoding.EncodeToString(a.NameCT),
+		"created_at":     a.CreatedAt,
+		"updated_at":     a.UpdatedAt,
+		"role":           a.UserRole,
+		"member_token":   base64.StdEncoding.EncodeToString(a.MemberToken),
+		"cover_media_id": coverJSON(a.CoverMediaID),
 	})
 }
 
@@ -152,6 +154,7 @@ func (h *AlbumHandler) ListAlbums(w http.ResponseWriter, r *http.Request) {
 			"latest_activity_at":  a.Summary.LatestActivityAt,
 			"media_generation":    a.Summary.MediaGeneration,
 			"rotation_required":   a.Summary.RotationRequired,
+			"cover_media_id":      coverJSON(a.CoverMediaID),
 			"preview_media":       previewMediaJSON(a.Summary.PreviewMedia),
 			"member_previews":     memberPreviewsJSON(a.Summary.MemberPreviews),
 		}
@@ -234,13 +237,54 @@ func (h *AlbumHandler) UpdateAlbum(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, r, apierr.Internal("failed to update album").WithCause(err))
 		return
 	}
-	h.notifyRenamed(r.Context(), albumID)
+	h.notifyMembers(r.Context(), albumID, ws.EventAlbumRenamed)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Carries only the album id: members fetch the new name_ct and open it
-// themselves. A failed notice cannot undo the committed rename
-func (h *AlbumHandler) notifyRenamed(ctx context.Context, albumID uuid.UUID) {
+func (h *AlbumHandler) SetCover(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.MustGetUserID(w, r)
+	if !ok {
+		return
+	}
+	albumID, err := uuid.Parse(mux.Vars(r)["id"])
+	if err != nil {
+		apierr.Write(w, r, apierr.Validation("invalid album id").WithCause(err))
+		return
+	}
+	var req struct {
+		MediaID *string `json:"media_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apierr.Write(w, r, apierr.Validation("invalid request body").WithCause(err))
+		return
+	}
+	var mediaID *uuid.UUID
+	if req.MediaID != nil {
+		id, err := uuid.Parse(*req.MediaID)
+		if err != nil {
+			apierr.Write(w, r, apierr.Validation("invalid media id").WithCause(err))
+			return
+		}
+		mediaID = &id
+	}
+	if err := h.albumService.SetCover(r.Context(), albumID, userID, mediaID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrUnauthorized):
+			apierr.Write(w, r, apierr.Forbidden("only the admin can choose the cover"))
+		case errors.Is(err, repository.ErrMediaNotFound):
+			apierr.Write(w, r, apierr.Validation("that photo is not in this album"))
+		default:
+			apierr.Write(w, r, apierr.Internal("failed to set cover").WithCause(err))
+		}
+		return
+	}
+	h.notifyMembers(r.Context(), albumID, ws.EventAlbumUpdated)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Carries only the album id: members refetch the album and open any sealed
+// part themselves. A failed notice cannot undo the committed change
+func (h *AlbumHandler) notifyMembers(ctx context.Context, albumID uuid.UUID, event string) {
 	if h.notifier == nil || h.resolver == nil {
 		return
 	}
@@ -261,9 +305,16 @@ func (h *AlbumHandler) notifyRenamed(ctx context.Context, albumID uuid.UUID) {
 	if err != nil || len(users) == 0 {
 		return
 	}
-	_ = h.notifier.EmitToUsers(ctx, users, ws.EventAlbumRenamed, map[string]any{
+	_ = h.notifier.EmitToUsers(ctx, users, event, map[string]any{
 		"album_id": albumID.String(),
 	})
+}
+
+func coverJSON(id *uuid.UUID) any {
+	if id == nil {
+		return nil
+	}
+	return id.String()
 }
 
 func (h *AlbumHandler) DeleteAlbum(w http.ResponseWriter, r *http.Request) {

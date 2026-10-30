@@ -19,6 +19,8 @@ import (
 )
 
 type mockAlbumStore struct {
+	cover          *uuid.UUID
+	coverErr       error
 	lookupMemberFn func(ctx context.Context, userID, albumID uuid.UUID) ([]byte, string, error)
 	listMembersFn  func(ctx context.Context, albumID uuid.UUID) ([]model.MemberWithProfile, error)
 	revokeTxFn     func(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (string, bool, error)
@@ -41,6 +43,10 @@ func (m *mockAlbumStore) ListForUser(_ context.Context, _ uuid.UUID) ([]model.Al
 	return nil, nil
 }
 func (m *mockAlbumStore) UpdateName(_ context.Context, _ uuid.UUID, _ []byte) error { return nil }
+func (m *mockAlbumStore) SetCover(_ context.Context, _ uuid.UUID, id *uuid.UUID) error {
+	m.cover = id
+	return m.coverErr
+}
 func (m *mockAlbumStore) UpdateMemberNameCT(_ context.Context, _ uuid.UUID, _, _ []byte) error {
 	return nil
 }
