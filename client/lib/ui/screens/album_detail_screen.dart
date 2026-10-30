@@ -158,20 +158,14 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final removal = context.read<MemberRemovalCoordinator>();
-    if (!await confirmSheet(
-      context,
-      key: 'album-leave',
-      title: AlbumCopy.leaveTitle,
-      body: AlbumCopy.leaveBody,
-      confirm: AlbumCopy.leaveAlbum,
-      cancel: AlbumCopy.leaveCancel,
-    )) {
-      return;
-    }
+    final deletePhotos = await confirmLeave(context,
+        deletePhotos: context.read<AppState>().deleteMediaOnLeave);
+    if (deletePhotos == null) return;
     // We pop ourselves, so the removal notice must not pop again
     _accessLost = true;
     try {
-      await removal.leave(albumId, base64.decode(base64.normalize(myToken)));
+      await removal.leave(albumId, base64.decode(base64.normalize(myToken)),
+          deleteMedia: deletePhotos);
     } on MemberRemovalException {
       _accessLost = false;
       messenger.showSnackBar(_note(AlbumCopy.leaveFailed));

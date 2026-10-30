@@ -81,8 +81,9 @@ func main() {
 	prekeyRepo := repository.NewPrekeyRepository(dbPool)
 	sessionRepo := repository.NewSessionRepository(dbPool)
 	albumRepo := repository.NewAlbumRepository(dbPool, linker)
-	mediaRepo := repository.NewMediaRepository(dbPool)
-	avatarRepo := repository.NewAvatarRepository(dbPool)
+	quota := repository.StorageQuota{PerUser: cfg.UserStorageQuota, Total: cfg.TotalStorageLimit}
+	mediaRepo := repository.NewMediaRepository(dbPool, quota)
+	avatarRepo := repository.NewAvatarRepository(dbPool, quota)
 
 	s3Client, err := storage.NewS3Client(cfg.S3Endpoint, cfg.S3PublicEndpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3Region, cfg.UsePathStyle)
 	if err != nil {
@@ -101,7 +102,7 @@ func main() {
 		authService.EnableReviewLogin(cfg.ReviewEmail, cfg.ReviewCode)
 		log.Printf("review login enabled")
 	}
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, repository.NewStorageRepository(dbPool, linker, quota))
 	albumService := service.NewAlbumService(albumRepo)
 
 	hub := ws.NewHub()
@@ -169,6 +170,8 @@ func main() {
 
 	authed.HandleFunc("/ws-ticket", wsHandler.IssueTicket).Methods(http.MethodPost)
 	authed.HandleFunc("/users/me", userHandler.GetMe).Methods(http.MethodGet)
+	authed.HandleFunc("/users/me/preferences", userHandler.UpdatePreferences).Methods(http.MethodPut)
+	authed.HandleFunc("/users/me/storage", userHandler.GetStorage).Methods(http.MethodGet)
 	authed.HandleFunc("/users/me/deletion", accountHandler.DeletionPreflight).Methods(http.MethodGet)
 	authed.HandleFunc("/users/me/deletion", accountHandler.RequestDeletion).Methods(http.MethodPost)
 	authed.HandleFunc("/users/me/keys", prekeyHandler.UpsertIdentity).Methods(http.MethodPut)

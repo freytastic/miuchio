@@ -46,7 +46,7 @@ func newSummaryEnv(t *testing.T) *summaryEnv {
 	return &summaryEnv{
 		pool:  pool,
 		repo:  repository.NewAlbumRepository(pool, linker),
-		media: repository.NewMediaRepository(pool),
+		media: repository.NewMediaRepository(pool, repository.StorageQuota{}),
 	}
 }
 

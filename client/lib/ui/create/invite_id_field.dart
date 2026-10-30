@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:miuchio/e2ee/handle.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
@@ -23,7 +24,7 @@ class InviteIdField extends StatefulWidget {
 }
 
 class _InviteIdFieldState extends State<InviteIdField> {
-  final _controller = TextEditingController();
+  final _controller = _IdMaskController();
   final _focus = FocusNode();
   bool _entering = false;
   String? _error;
@@ -223,14 +224,14 @@ class _IdEntryRow extends StatelessWidget {
             enabled: enabled,
             textCapitalization: TextCapitalization.characters,
             autocorrect: false,
+            inputFormatters: [_IdDashFormatter()],
             style: const TextStyle(
                 fontSize: 15, letterSpacing: 1.2, color: Warm.glassInk),
             decoration: InputDecoration(
               isDense: true,
               labelText: CreateCopy.idPlaceholder,
-              hintText: CreateCopy.idHint,
+              floatingLabelBehavior: FloatingLabelBehavior.always,
               labelStyle: const TextStyle(color: Warm.glassInkFaint),
-              hintStyle: const TextStyle(color: Warm.glassInkFaint),
               filled: true,
               fillColor: Warm.glassFill,
               contentPadding:
@@ -256,6 +257,60 @@ class _IdEntryRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// Draws the untyped rest of the ID faintly after the text, so the dash and
+// remaining X's stay visible. Flutter ignores taps that land on that part
+class _IdMaskController extends TextEditingController {
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    const mask = CreateCopy.idHint;
+    return TextSpan(style: style, children: [
+      TextSpan(text: text),
+      if (text.length < mask.length)
+        TextSpan(
+          text: mask.substring(text.length),
+          style: const TextStyle(color: Warm.glassInkFaint),
+        ),
+    ]);
+  }
+}
+
+// Keeps the dash after the fourth character while typing, pasting or editing
+class _IdDashFormatter extends TextInputFormatter {
+  static final _separators = RegExp(r'[\s-]');
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    var raw = newValue.text.replaceAll(_separators, '');
+    if (raw.length > handleLength) raw = raw.substring(0, handleLength);
+    final end = newValue.selection.baseOffset;
+    final caret = (end < 0
+            ? raw.length
+            : newValue.text
+                .substring(0, end)
+                .replaceAll(_separators, '')
+                .length)
+        .clamp(0, raw.length);
+    // Keeps a dash the person typed themselves after the fourth character
+    if (raw.length == 4 && newValue.text.endsWith('-')) {
+      return TextEditingValue(
+          text: '$raw-', selection: const TextSelection.collapsed(offset: 5));
+    }
+    if (raw.length <= 4) {
+      return TextEditingValue(
+          text: raw, selection: TextSelection.collapsed(offset: caret));
+    }
+    return TextEditingValue(
+      text: '${raw.substring(0, 4)}-${raw.substring(4)}',
+      selection: TextSelection.collapsed(offset: caret > 4 ? caret + 1 : caret),
     );
   }
 }

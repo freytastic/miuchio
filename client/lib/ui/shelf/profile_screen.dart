@@ -215,6 +215,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: widget.onSafetyNumbers,
                     ),
                     _Row(
+                      icon: Icons.logout_rounded,
+                      title: 'When you leave',
+                      value: state.deleteMediaOnLeave
+                          ? 'Delete photos'
+                          : 'Keep photos',
+                      onTap: () => _open(const LeavingPage()),
+                    ),
+                    _Row(
                       icon: Icons.cloud_outlined,
                       title: 'Backup',
                       value: 'Not yet',

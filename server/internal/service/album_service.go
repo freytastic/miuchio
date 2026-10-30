@@ -33,7 +33,7 @@ type AlbumStore interface {
 
 	// Shares the album lock with rotation and upload reservation
 	// Rechecks caller state and the last admin guard before revoking
-	RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (role string, alreadyRevoked bool, err error)
+	RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte, media repository.DepartingMedia) (repository.Revocation, error)
 }
 
 // Deletes objects already queued for durable cleanup
@@ -129,12 +129,14 @@ func (s *AlbumService) ListMembers(ctx context.Context, albumID uuid.UUID) ([]mo
 }
 
 type RemoveMemberResult struct {
-	TargetToken    []byte
-	AlreadyRevoked bool
+	TargetToken     []byte
+	AlreadyRevoked  bool
+	DeletedMediaIDs []uuid.UUID
 }
 
 // Revocation must commit before the client's recovery rotation begins
-func (s *AlbumService) RemoveMember(ctx context.Context, albumID, callerUserID uuid.UUID, targetToken []byte) (*RemoveMemberResult, error) {
+// deleteMedia only applies when leaving, a removal follows the target's setting
+func (s *AlbumService) RemoveMember(ctx context.Context, albumID, callerUserID uuid.UUID, targetToken []byte, deleteMedia bool) (*RemoveMemberResult, error) {
 	callerToken, callerRole, err := s.albumRepo.LookupMember(ctx, callerUserID, albumID)
 	if err != nil {
 		return nil, ErrUnauthorized
@@ -147,7 +149,14 @@ func (s *AlbumService) RemoveMember(ctx context.Context, albumID, callerUserID u
 	}
 
 	// The shared lock closes races with another revoke or rotation
-	_, alreadyRevoked, err := s.albumRepo.RevokeMemberTx(ctx, albumID, callerToken, targetToken)
+	media := repository.PreferredMedia
+	if isSelf {
+		media = repository.KeepMedia
+		if deleteMedia {
+			media = repository.DeleteMedia
+		}
+	}
+	rev, err := s.albumRepo.RevokeMemberTx(ctx, albumID, callerToken, targetToken, media)
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrCallerRevoked):
@@ -161,7 +170,14 @@ func (s *AlbumService) RemoveMember(ctx context.Context, albumID, callerUserID u
 			return nil, err
 		}
 	}
-	return &RemoveMemberResult{TargetToken: targetToken, AlreadyRevoked: alreadyRevoked}, nil
+	if s.cleaner != nil {
+		s.cleaner.CleanupObjectKeys(ctx, rev.Media.Keys)
+	}
+	return &RemoveMemberResult{
+		TargetToken:     targetToken,
+		AlreadyRevoked:  rev.AlreadyRevoked,
+		DeletedMediaIDs: rev.Media.MediaIDs,
+	}, nil
 }
 
 // The middleware resolves membership before opaque encrypted bytes arrive here

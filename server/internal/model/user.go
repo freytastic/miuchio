@@ -21,7 +21,8 @@ type User struct {
 	SPKSig []byte `json:"spk_sig,omitempty" db:"spk_sig"`
 	SPKTs  *int64 `json:"spk_ts,omitempty" db:"spk_ts"`
 
-	DeletingAt *time.Time `json:"-" db:"deleting_at"`
+	DeletingAt         *time.Time `json:"-" db:"deleting_at"`
+	DeleteMediaOnLeave bool       `json:"-" db:"delete_media_on_leave"`
 }
 
 type Session struct {

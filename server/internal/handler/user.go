@@ -32,9 +32,51 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	// user's own shareable handle
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"id":         u.ID,
-		"miuchio_id": u.MiuchioID,
-		"created_at": u.CreatedAt,
-		"updated_at": u.UpdatedAt,
+		"id":                    u.ID,
+		"miuchio_id":            u.MiuchioID,
+		"delete_media_on_leave": u.DeleteMediaOnLeave,
+		"created_at":            u.CreatedAt,
+		"updated_at":            u.UpdatedAt,
+	})
+}
+
+func (h *UserHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.MustGetUserID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		DeleteMediaOnLeave *bool `json:"delete_media_on_leave"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apierr.Write(w, r, apierr.Validation("invalid request body").WithCause(err))
+		return
+	}
+	if req.DeleteMediaOnLeave == nil {
+		apierr.Write(w, r, apierr.Validation("delete_media_on_leave is required"))
+		return
+	}
+	if err := h.userService.SetDeleteMediaOnLeave(r.Context(), userID, *req.DeleteMediaOnLeave); err != nil {
+		apierr.Write(w, r, apierr.Internal("failed to update preferences").WithCause(err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// quota_bytes is 0 when the server sets no per account limit
+func (h *UserHandler) GetStorage(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.MustGetUserID(w, r)
+	if !ok {
+		return
+	}
+	u, err := h.userService.StorageUsage(r.Context(), userID)
+	if err != nil {
+		apierr.Write(w, r, apierr.Internal("failed to read storage usage").WithCause(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"used_bytes":  u.UsedBytes,
+		"quota_bytes": u.QuotaBytes,
 	})
 }

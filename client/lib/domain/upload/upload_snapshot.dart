@@ -54,6 +54,13 @@ class UploadBatchSnapshot {
       .where((i) =>
           i.phase == UploadPhase.failed && (i.failure?.retryable ?? false))
       .length;
+  // Retryable, but only once there is room again
+  int get storageFullCount => items
+      .where(
+          (i) => i.phase == UploadPhase.failed && stopsQueue(i.failure?.kind))
+      .length;
+  bool get serverFull =>
+      items.any((i) => i.failure?.kind == UploadFailureKind.serverFull);
 
   double get fraction {
     if (totalCount == 0) return 0;

@@ -401,8 +401,9 @@ void main() async {
   late final AlbumWipe wipeLocalAlbum;
 
   final memberRemoval = MemberRemovalCoordinator(
-    revoke: (albumId, token) =>
-        albumService.removeMember(uuidFromBytes(albumId), base64.encode(token)),
+    revoke: (albumId, token, {deleteMedia = false}) => albumService.removeMember(
+        uuidFromBytes(albumId), base64.encode(token),
+        deleteMedia: deleteMedia),
     activeTokens: (albumId) async {
       final members = await albumService.listMembers(uuidFromBytes(albumId));
       return [

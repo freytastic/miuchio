@@ -294,9 +294,14 @@ func (r *AccountDeletionRepository) RemoveMembership(ctx context.Context, userID
 		}
 	}
 
-	media, err := removeMedia(ctx, tx,
-		`DELETE FROM media WHERE album_id = $1 AND uploader_token = $2
-		 RETURNING id, storage_key, thumb_key`, albumID, m.MemberToken)
+	// Photos still in an album the user already left were chosen to stay
+	mediaSQL := `DELETE FROM media WHERE album_id = $1 AND uploader_token = $2
+		 RETURNING id, storage_key, thumb_key`
+	if out.Outcome == OutcomeErase {
+		mediaSQL = `DELETE FROM media WHERE album_id = $1 AND uploader_token = $2
+		 AND confirmed = FALSE RETURNING id, storage_key, thumb_key`
+	}
+	media, err := removeMedia(ctx, tx, mediaSQL, albumID, m.MemberToken)
 	if err != nil {
 		return MembershipRemoval{}, err
 	}
@@ -312,14 +317,25 @@ func (r *AccountDeletionRepository) RemoveMembership(ctx context.Context, userID
 	if out.NotifyUserIDs, err = activeUserIDs(ctx, tx, r.linker, albumID, m.MemberToken); err != nil {
 		return MembershipRemoval{}, err
 	}
-	// Severs the account from the album: the bridge row, its roster row and
-	// its wraps all go, leaving nothing that links back to the user
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM album_member_identities WHERE member_token = $1`, m.MemberToken,
-	); err != nil {
+	if err := severIdentity(ctx, tx, m.MemberToken, out.Outcome == OutcomeErase && m.OwnMedia > 0); err != nil {
 		return MembershipRemoval{}, err
 	}
 	return out, tx.Commit(ctx)
+}
+
+// Severs the account from the album. Normally the bridge row, its roster row
+// and its wraps all go. Kept photos still reference the token, so then only
+// the handle and sealed user id are replaced with random bytes, which leaves
+// nothing that links back to the user
+func severIdentity(ctx context.Context, tx pgx.Tx, memberToken []byte, keepToken bool) error {
+	sql := `DELETE FROM album_member_identities WHERE member_token = $1`
+	if keepToken {
+		sql = `UPDATE album_member_identities
+		       SET user_handle = gen_random_bytes(32), user_id_enc = gen_random_bytes(32)
+		       WHERE member_token = $1`
+	}
+	_, err := tx.Exec(ctx, sql, memberToken)
+	return err
 }
 
 // Returns false if a membership appeared and the job needs another pass

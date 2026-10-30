@@ -5,8 +5,10 @@ import 'epoch_rotator.dart';
 
 // Revoke must commit before rotation so wraps target only the remaining set
 
+// deleteMedia only counts when leaving, a removal follows the target's setting
 typedef RevokeMemberFn = Future<bool> Function(
-    Uint8List albumId, Uint8List memberToken);
+    Uint8List albumId, Uint8List memberToken,
+    {bool deleteMedia});
 typedef ActiveTokensFn = Future<List<Uint8List>> Function(Uint8List albumId);
 typedef CurrentEpochFn = Future<int> Function(Uint8List albumId);
 typedef RotateFn = Future<void> Function(
@@ -66,8 +68,9 @@ class MemberRemovalCoordinator {
   }
 
   // The leaver wipes locally and leaves recovery rotation to the admin
-  Future<void> leave(Uint8List albumId, Uint8List selfToken) async {
-    if (!await _revoke(albumId, selfToken)) {
+  Future<void> leave(Uint8List albumId, Uint8List selfToken,
+      {bool deleteMedia = false}) async {
+    if (!await _revoke(albumId, selfToken, deleteMedia: deleteMedia)) {
       throw const MemberRemovalException('revoke failed');
     }
     await _wipeLocalAlbum(albumId);

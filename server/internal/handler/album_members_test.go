@@ -47,11 +47,12 @@ func (m *mockAlbumStore) UpdateMemberNameCT(_ context.Context, _ uuid.UUID, _, _
 func (m *mockAlbumStore) DeleteAlbumTx(_ context.Context, _ uuid.UUID, _ []byte) (repository.AlbumRemoval, error) {
 	return m.removal, nil
 }
-func (m *mockAlbumStore) RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte) (string, bool, error) {
+func (m *mockAlbumStore) RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte, _ repository.DepartingMedia) (repository.Revocation, error) {
 	if m.revokeTxFn != nil {
-		return m.revokeTxFn(ctx, albumID, callerToken, targetToken)
+		role, already, err := m.revokeTxFn(ctx, albumID, callerToken, targetToken)
+		return repository.Revocation{Role: role, AlreadyRevoked: already}, err
 	}
-	return "member", false, nil
+	return repository.Revocation{Role: "member"}, nil
 }
 
 func membersRouter(store *mockAlbumStore) http.Handler {

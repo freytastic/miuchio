@@ -3,8 +3,11 @@ import 'package:miuchio/domain/upload/upload_snapshot.dart';
 String formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';
   if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
-  final mb = bytes / (1024 * 1024);
-  return mb < 10 ? '${mb.toStringAsFixed(1)} MB' : '${mb.round()} MB';
+  if (bytes < 1024 * 1024 * 1024) {
+    final mb = bytes / (1024 * 1024);
+    return mb < 10 ? '${mb.toStringAsFixed(1)} MB' : '${mb.round()} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
 }
 
 String formatRate(double? bytesPerSecond) {
@@ -55,3 +58,15 @@ String unprocessableHeadline(int count) =>
 String unprocessableBody(int count) => count == 1
     ? 'It wasn’t added. Try a different one.'
     : 'They weren’t added. Try different ones.';
+
+String storageFullHeadline({required bool server}) => server
+    ? 'Miuchio can’t take new photos right now.'
+    : 'Your storage is full.';
+
+String storageFullBody(int count, {required bool server}) {
+  final what = count == 1 ? 'This photo wasn’t' : '$count photos weren’t';
+  return server
+      ? '$what added. Try again later.'
+      : '$what added. Delete some photos you added to make room, then try '
+          'again.';
+}

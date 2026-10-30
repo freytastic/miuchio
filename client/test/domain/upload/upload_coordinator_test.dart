@@ -864,4 +864,20 @@ void main() {
           reason: 'nothing is reported cleared while the item still runs');
     });
   });
+
+  group('storage full', () {
+    test('the first refusal fails every waiting photo without asking again',
+        () async {
+      uploader.failStage('reserve',
+          const UploadStageException(UploadFailureKind.quotaFull, 'quota'));
+      final id = co.enqueue(albumId: _album, sources: pick(3));
+      await drain();
+
+      expect(uploader.reserveCount, 1);
+      expect(snap(id).failedCount, 3);
+      expect(snap(id).storageFullCount, 3);
+      expect(snap(id).retryableCount, 3,
+          reason: 'photos stay so they can go once there is room');
+    });
+  });
 }

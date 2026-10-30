@@ -45,7 +45,7 @@ func newAvatarEnv(t *testing.T) *avatarEnv {
 	})
 	return &avatarEnv{
 		summaryEnv: env,
-		avatars:    repository.NewAvatarRepository(env.pool),
+		avatars:    repository.NewAvatarRepository(env.pool, repository.StorageQuota{}),
 		album:      album.ID,
 		owner:      owner,
 		pal:        pal,
@@ -221,7 +221,7 @@ func TestAvatar_RevokeRemovesTheMembersAvatar(t *testing.T) {
 	ctx := context.Background()
 	e.upload(t, e.friend, "avatar-gone")
 
-	if _, _, err := e.repo.RevokeMemberTx(ctx, e.album, e.admin, e.friend); err != nil {
+	if _, err := e.repo.RevokeMemberTx(ctx, e.album, e.admin, e.friend, repository.KeepMedia); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 	if got := e.rosterAvatar(t, e.friend); got != nil {

@@ -7,6 +7,7 @@ import 'package:miuchio/ui/widgets/warm_field.dart';
 
 import 'album_copy.dart';
 import 'album_stats.dart';
+import 'leave_photos_choice.dart';
 
 Future<T?> _paperSheet<T>(BuildContext context, WidgetBuilder builder) {
   // Keep sheets above the transparent peek route
@@ -98,6 +99,11 @@ Future<bool> confirmSheet(
       ),
     ) ??
     false;
+
+// Null when they stay, otherwise whether to delete the photos they added
+Future<bool?> confirmLeave(BuildContext context, {required bool deletePhotos}) =>
+    _paperSheet<bool>(
+        context, (_) => _LeaveSheet(deletePhotos: deletePhotos));
 
 enum PersonAction { photos, safetyNumber, remove }
 
@@ -225,6 +231,65 @@ class _ConfirmSheet extends StatelessWidget {
                 height: 46,
                 child: Center(
                   child: Text(cancel,
+                      style: Warm.acBtnQuiet.copyWith(fontSize: 15)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LeaveSheet extends StatefulWidget {
+  final bool deletePhotos;
+
+  const _LeaveSheet({required this.deletePhotos});
+
+  @override
+  State<_LeaveSheet> createState() => _LeaveSheetState();
+}
+
+class _LeaveSheetState extends State<_LeaveSheet> {
+  late bool _delete = widget.deletePhotos;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _Grab(),
+            const SizedBox(height: 20),
+            Text(AlbumCopy.leaveTitle, style: Warm.cardTitle),
+            const SizedBox(height: 6),
+            Text(AlbumCopy.leaveBody, style: Warm.note),
+            const SizedBox(height: 18),
+            Text(AlbumCopy.leavePhotos, style: Warm.pageSubhead),
+            const SizedBox(height: 4),
+            LeavePhotosChoice(
+              delete: _delete,
+              onChanged: (v) => setState(() => _delete = v),
+            ),
+            const SizedBox(height: 18),
+            WarmButton(
+              key: const Key('album-leave-confirm'),
+              label: AlbumCopy.leaveAlbum,
+              onTap: () => Navigator.of(context).pop(_delete),
+            ),
+            const SizedBox(height: 6),
+            PressableScale(
+              key: const Key('album-leave-keep'),
+              onTap: () => Navigator.of(context).pop(),
+              child: SizedBox(
+                height: 46,
+                child: Center(
+                  child: Text(AlbumCopy.leaveCancel,
                       style: Warm.acBtnQuiet.copyWith(fontSize: 15)),
                 ),
               ),
