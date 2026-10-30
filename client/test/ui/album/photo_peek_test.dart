@@ -142,32 +142,13 @@ void main() {
     expect(deletes, 1);
   });
 
-  testWidgets('one heart, which says it is not here yet, and no save',
-      (tester) async {
+  testWidgets('offers nothing that is not built yet', (tester) async {
     await pump(tester);
-    expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.star_border_rounded), findsNothing);
 
-    await tester.tap(find.byKey(const Key('photo-peek-heart')));
-    await tester.pump();
-    expect(find.text(AlbumCopy.heartSoon), findsOneWidget);
-
+    expect(find.byIcon(Icons.favorite_border_rounded), findsNothing);
     expect(find.byIcon(Icons.download_rounded), findsNothing);
-    await tester.pumpAndSettle(const Duration(seconds: 3));
-  });
-
-  testWidgets('the note on the pushed route has no debug underline',
-      (tester) async {
-    // Match the album's transparent route without an enclosing Material
-    await push(tester);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('photo-peek-heart')));
-    await tester.pump();
-
-    final note = tester.element(find.text(AlbumCopy.heartSoon));
-    expect(DefaultTextStyle.of(note).style.decoration,
-        anyOf(isNull, TextDecoration.none));
-    await tester.pumpAndSettle(const Duration(seconds: 3));
+    expect(find.textContaining('Soon'), findsNothing);
+    expect(find.textContaining('coming soon'), findsNothing);
   });
 
   testWidgets('opens with the preview before the full image is ready',

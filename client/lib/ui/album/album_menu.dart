@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 
-import 'album_copy.dart';
 
 // The card and rows of a floating menu, as the shelf's long press shows
 class MenuCard extends StatelessWidget {
@@ -69,35 +68,9 @@ class MenuItem extends StatelessWidget {
                 ),
               ),
             ),
-            if (!enabled)
-              const _LaterBadge()
-            else if (icon != null)
+            if (icon != null)
               Icon(icon, size: 18, color: danger ? Warm.warn : Warm.inkSoft),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LaterBadge extends StatelessWidget {
-  const _LaterBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: Warm.wellEmpty,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Text(
-        AlbumCopy.laterBadge,
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
-          color: Warm.inkFaint,
         ),
       ),
     );

@@ -54,24 +54,13 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   bool _zoomed = false;
   String? _lastDeleted;
   double _dragY = 0;
-  String? _note;
-  Timer? _noteTimer;
 
   MediaRecord get _current => _records[_index];
 
   @override
   void dispose() {
-    _noteTimer?.cancel();
     _pages.dispose();
     super.dispose();
-  }
-
-  void _say(String note) {
-    _noteTimer?.cancel();
-    setState(() => _note = note);
-    _noteTimer = Timer(const Duration(milliseconds: 1800), () {
-      if (mounted) setState(() => _note = null);
-    });
   }
 
   String? _nameOf(MediaRecord r) =>
@@ -216,23 +205,8 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                       onPick: (i) => _pages.jumpToPage(i),
                     ),
               owner: widget.isOwner(record),
-              onHeart: () => _say(AlbumCopy.heartSoon),
               onDetails: _details,
               onDelete: _delete,
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: media.padding.top + 64,
-            child: IgnorePointer(
-              child: Center(
-                child: AnimatedOpacity(
-                  opacity: _note == null ? 0 : 1,
-                  duration: Warm.quick,
-                  child: PeekNote(text: _note ?? ''),
-                ),
-              ),
             ),
           ),
         ],
@@ -502,14 +476,12 @@ class _TopBar extends StatelessWidget {
 class _BottomBar extends StatelessWidget {
   final Widget? strip;
   final bool owner;
-  final VoidCallback onHeart;
   final VoidCallback onDetails;
   final VoidCallback onDelete;
 
   const _BottomBar({
     required this.strip,
     required this.owner,
-    required this.onHeart,
     required this.onDetails,
     required this.onDelete,
   });
@@ -526,7 +498,6 @@ class _BottomBar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 40),
             child: PeekDock(
               owner: owner,
-              onHeart: onHeart,
               onDetails: onDetails,
               onDelete: onDelete,
             ),

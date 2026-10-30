@@ -108,7 +108,6 @@ class _DebugLogPageState extends State<DebugLogPage> {
           title: DebugLogCopy.shareLog,
           onTap: all.isEmpty ? null : _review,
         ),
-        const _ActionRow(title: DebugLogCopy.send, value: DebugLogCopy.soon),
         _ActionRow(
           title: DebugLogCopy.clear,
           warn: true,
@@ -286,14 +285,12 @@ class _Filter extends StatelessWidget {
 // a muted row instead of a stray button
 class _ActionRow extends StatelessWidget {
   final String title;
-  final String? value;
   final bool warn;
   final bool chevron;
   final VoidCallback? onTap;
 
   const _ActionRow({
     required this.title,
-    this.value,
     this.warn = false,
     this.chevron = true,
     this.onTap,
@@ -325,9 +322,6 @@ class _ActionRow extends StatelessWidget {
               Expanded(
                 child: Text(title, style: Warm.rowTitle.copyWith(color: color)),
               ),
-              if (value != null)
-                Text(value!,
-                    style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
               if (enabled && chevron)
                 const Icon(Icons.chevron_right_rounded,
                     size: 17, color: Warm.inkGhost),

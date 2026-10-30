@@ -608,29 +608,6 @@ class _DetailsSheet extends StatelessWidget {
                 ],
               ),
             ],
-            const SizedBox(height: 22),
-            const _Section(
-                title: AlbumCopy.hearts, body: AlbumCopy.heartsLater),
-            const SizedBox(height: 18),
-            const _Section(
-                title: AlbumCopy.comments, body: AlbumCopy.commentsLater),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-              decoration: BoxDecoration(
-                color: Warm.fieldFill,
-                borderRadius: BorderRadius.circular(21),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(AlbumCopy.sayPlaceholder,
-                        style: Warm.meta.copyWith(color: Warm.inkFaint)),
-                  ),
-                  const _Chip(),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -662,50 +639,6 @@ class _Fact extends StatelessWidget {
                 fontFeatures: const [FontFeature.tabularFigures()]),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _Section extends StatelessWidget {
-  final String title;
-  final String body;
-
-  const _Section({required this.title, required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(title, style: Warm.rowTitle.copyWith(fontSize: 14)),
-            const SizedBox(width: 8),
-            const _Chip(),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(body, style: Warm.note),
-      ],
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: Warm.inkGhost,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        AlbumCopy.betaV2,
-        style: Warm.sectionLabel.copyWith(letterSpacing: 0.3),
       ),
     );
   }

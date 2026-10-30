@@ -83,7 +83,6 @@ abstract final class AlbumCopy {
   static String showEveryone(int people) =>
       'Show everyone in this album, $people ${people == 1 ? 'person' : 'people'}';
 
-  static const laterBadge = 'Soon';
 
   static String onlyTheirPhotos(String? name) =>
       name == null ? 'Only their photos' : "Only $name's photos";
@@ -112,10 +111,7 @@ abstract final class AlbumCopy {
   static const infoStorage = 'Who added what';
   static const infoStorageEmpty = 'Nothing has been added yet.';
 
-  static const save = 'Save';
   static const delete = 'Delete';
-  static const sayPlaceholder = 'Say something';
-  static const sayAdd = 'Add';
   static const deleteTitle = 'Delete this photo?';
   static const deleteBody =
       "It's deleted for everyone. This can't be undone.";
@@ -125,16 +121,9 @@ abstract final class AlbumCopy {
   static const deletingPhoto = 'Deleting the photo for everyone';
   static const unknownMember = 'Someone';
 
-  static const heartSoon = 'Hearts are coming soon.';
-  static const heart = 'Heart';
   static const details = 'Details';
   static String photoOf(int at, int count) => '$at of $count';
   static const deleteForEveryone = 'Delete for everyone';
-  static const betaV2 = 'Soon';
-  static const hearts = 'Hearts';
-  static const heartsLater = 'Hearts are coming soon.';
-  static const comments = 'Comments';
-  static const commentsLater = 'Comments are coming soon.';
   static const factSize = 'Size';
   static const factFormat = 'Type';
   static const factAdded = 'Added';

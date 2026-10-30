@@ -137,15 +137,16 @@ class SettingsFacts extends StatelessWidget {
   }
 }
 
-class BackupPage extends StatelessWidget {
-  const BackupPage({super.key});
+// Where the keys to your albums live, and what losing this phone means
+class KeysPage extends StatelessWidget {
+  const KeysPage({super.key});
 
   @override
   Widget build(BuildContext context) => const SettingsPage(
-        title: 'Backup',
-        glyph: Icons.cloud_outlined,
+        title: 'Your keys',
+        glyph: Icons.key_rounded,
         children: [
-          SettingsLead('Not available yet.'),
+          SettingsLead('Only this phone can open your albums.'),
           SettingsFacts([
             (
               Icons.lock_outline_rounded,
@@ -163,7 +164,6 @@ class BackupPage extends StatelessWidget {
                   'again.'
             ),
           ]),
-          SettingsSoft('Backup is coming soon.'),
         ],
       );
 }

@@ -134,7 +134,6 @@ class _PhotoPeekState extends State<PhotoPeek> with TickerProviderStateMixin {
   void dispose() {
     _captionDelay.cancel();
     _controlsDelay.cancel();
-    _noteTimer?.cancel();
     (_entry as CurvedAnimation).dispose();
     (_sharp as CurvedAnimation).dispose();
     _photo.dispose();
@@ -146,17 +145,6 @@ class _PhotoPeekState extends State<PhotoPeek> with TickerProviderStateMixin {
 
   Future<void> _confirmDelete() async {
     if (await confirmPhotoDelete(context)) await widget.onDelete();
-  }
-
-  String? _note;
-  Timer? _noteTimer;
-
-  void _say(String note) {
-    _noteTimer?.cancel();
-    setState(() => _note = note);
-    _noteTimer = Timer(const Duration(milliseconds: 1800), () {
-      if (mounted) setState(() => _note = null);
-    });
   }
 
   void _keepOpen() {}
@@ -242,12 +230,9 @@ class _PhotoPeekState extends State<PhotoPeek> with TickerProviderStateMixin {
                                   scaleFrom: 0.96,
                                   child: PeekDock(
                                     owner: widget.isOwner,
-                                    onHeart: () => _say(AlbumCopy.heartSoon),
                                     onDelete: _confirmDelete,
                                   ),
                                 ),
-                                const SizedBox(height: 14),
-                                const _SayBar(),
                               ],
                             ),
                           ),
@@ -255,20 +240,6 @@ class _PhotoPeekState extends State<PhotoPeek> with TickerProviderStateMixin {
                       );
                     },
                   ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: MediaQuery.paddingOf(context).top + 16,
-            child: IgnorePointer(
-              child: Center(
-                child: AnimatedOpacity(
-                  opacity: _note == null ? 0 : 1,
-                  duration: Warm.quick,
-                  child: PeekNote(text: _note ?? ''),
                 ),
               ),
             ),
@@ -493,56 +464,6 @@ class _CaptionDot extends StatelessWidget {
       decoration: const BoxDecoration(
         color: Color(0x57FFFFFF),
         shape: BoxShape.circle,
-      ),
-    );
-  }
-}
-
-class _SayBar extends StatelessWidget {
-  const _SayBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 320),
-      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
-      decoration: BoxDecoration(
-        color: Warm.glassFill,
-        borderRadius: BorderRadius.circular(21),
-        border: Border.all(color: Warm.glassHairline),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(AlbumCopy.sayPlaceholder,
-                style: TextStyle(fontSize: 13.5, color: Warm.glassInkFaint)),
-          ),
-          const _LaterPill(),
-        ],
-      ),
-    );
-  }
-}
-
-class _LaterPill extends StatelessWidget {
-  const _LaterPill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: Warm.glassFill,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Text(
-        AlbumCopy.laterBadge,
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
-          color: Warm.glassInkFaint,
-        ),
       ),
     );
   }

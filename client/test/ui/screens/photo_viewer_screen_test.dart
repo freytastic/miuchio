@@ -127,7 +127,8 @@ void main() {
     expect(find.text(AlbumCopy.sharedBy('Ana', mine: false)), findsOneWidget);
     expect(find.text('1.4 MB'), findsOneWidget);
     expect(find.text('JPEG'), findsOneWidget);
-    expect(find.text(AlbumCopy.betaV2), findsWidgets);
+    expect(find.textContaining('Soon'), findsNothing,
+        reason: 'hearts and comments are not built, so are not shown');
   });
 
   testWidgets('swiping down closes the viewer', (tester) async {
@@ -257,15 +258,12 @@ void main() {
     expect(asked, ['m1', 'm2']);
   });
 
-  testWidgets('heart says it is not here yet, and there is no save',
-      (tester) async {
+  testWidgets('offers only actions that work', (tester) async {
     await open(tester);
 
-    await tester.tap(find.byKey(const Key('photo-peek-heart')));
-    await tester.pump();
-    expect(find.text(AlbumCopy.heartSoon), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border_rounded), findsNothing);
     expect(find.byIcon(Icons.download_rounded), findsNothing);
-    await tester.pumpAndSettle(const Duration(seconds: 3));
+    expect(find.byKey(const Key('photo-peek-details')), findsOneWidget);
   });
 
   testWidgets('the strip shows where you are and jumps to a photo',

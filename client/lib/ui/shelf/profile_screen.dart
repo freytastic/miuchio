@@ -224,10 +224,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () => _open(const LeavingPage()),
                     ),
                     _Row(
-                      icon: Icons.cloud_outlined,
-                      title: 'Backup',
-                      value: 'Not yet',
-                      onTap: () => _open(const BackupPage()),
+                      icon: Icons.key_rounded,
+                      title: 'Your keys',
+                      value: 'This phone only',
+                      onTap: () => _open(const KeysPage()),
                     ),
                     _Row(
                       icon: Icons.storage_rounded,

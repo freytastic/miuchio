@@ -8,7 +8,6 @@ import 'album_copy.dart';
 
 class PeekDock extends StatelessWidget {
   final bool owner;
-  final VoidCallback onHeart;
   final VoidCallback onDelete;
   // Null where the details already show, as in the peek
   final VoidCallback? onDetails;
@@ -16,7 +15,6 @@ class PeekDock extends StatelessWidget {
   const PeekDock({
     super.key,
     required this.owner,
-    required this.onHeart,
     required this.onDelete,
     this.onDetails,
   });
@@ -24,15 +22,10 @@ class PeekDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final details = onDetails;
+    if (details == null && !owner) return const SizedBox.shrink();
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        PeekRoundButton(
-          key: const Key('photo-peek-heart'),
-          label: AlbumCopy.heart,
-          icon: Icons.favorite_border_rounded,
-          onTap: onHeart,
-        ),
         if (details != null)
           PeekRoundButton(
             key: const Key('photo-peek-details'),
@@ -40,6 +33,7 @@ class PeekDock extends StatelessWidget {
             icon: Icons.info_outline_rounded,
             onTap: details,
           ),
+        if (details != null && owner) const SizedBox(width: 56),
         if (owner)
           PeekRoundButton(
             key: const Key('photo-peek-delete'),
@@ -85,35 +79,6 @@ class PeekRoundButton extends StatelessWidget {
           child: Icon(icon,
               size: 21,
               color: quiet ? const Color(0x9EFFFFFF) : const Color(0xD9FFFFFF)),
-        ),
-      ),
-    );
-  }
-}
-
-class PeekNote extends StatelessWidget {
-  final String text;
-
-  const PeekNote({super.key, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xE62A2622),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      // The note sits outside the peek's Material and needs its own text style
-      child: Material(
-        type: MaterialType.transparency,
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w500,
-            color: Colors.white,
-          ),
         ),
       ),
     );
