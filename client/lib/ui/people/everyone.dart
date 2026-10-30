@@ -18,6 +18,7 @@ import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/safety_number_sheet.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 // One person across albums, grouped by key on this phone only
 class _Person {
@@ -179,8 +180,8 @@ Future<void> openEveryone(BuildContext context, {AlbumService? service}) {
   final state = context.read<AppState>();
   final roster = _Roster(context,
       albums: () => state.albums, withInvites: false, service: service);
-  return Navigator.of(context).push(MaterialPageRoute<void>(
-    builder: (_) => PeopleScreen(
+  return Navigator.of(context).push(screenRoute<void>(
+    PeopleScreen(
       title: 'Security codes',
       subtitle: 'Everyone you share an album with',
       load: roster.load,
@@ -245,8 +246,8 @@ Future<void> openAlbumPeople(BuildContext context, AlbumModel album,
   }
 
   final admin = state.isAdminOf(album.id);
-  await Navigator.of(context).push(MaterialPageRoute<void>(
-    builder: (_) => PeopleScreen(
+  await Navigator.of(context).push(screenRoute<void>(
+    PeopleScreen(
       title: AlbumCopy.people,
       subtitle: title,
       load: roster.load,

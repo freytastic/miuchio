@@ -26,6 +26,7 @@ import 'package:miuchio/ui/widgets/hello_wordmark.dart';
 import 'package:miuchio/ui/widgets/mark_stage.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/widgets/warm_field.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 part 'onboarding_parts.dart';
 
@@ -294,8 +295,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _showBelongsToAnother() {
     final wipe = context.read<TerminalWipe>();
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => AccountBelongsToAnotherScreen(
+    Navigator.of(context).push(screenRoute<void>(AccountBelongsToAnotherScreen(
         onUseOwnerAccount: (_) {
           Navigator.of(context).pop();
           _otpCtrl.clear();
@@ -310,8 +310,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _showKeysLost() {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => AccountKeysLostScreen(
+    Navigator.of(context).push(screenRoute<void>(AccountKeysLostScreen(
         onDismiss: (_) {
           Navigator.of(context).pop();
           _otpCtrl.clear();

@@ -5,6 +5,7 @@ import 'package:miuchio/domain/account/account_deletion.dart';
 import 'package:miuchio/domain/account/deletion_launch.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/widgets/delete_shared_albums_dialog.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 import 'account_deletion_screen.dart';
 
@@ -39,9 +40,7 @@ Future<void> startDeletionFlow(BuildContext context) async {
           ) ==
           true,
       openScreen: (plan) => navigator.push<DeletionResult>(
-        MaterialPageRoute(
-          builder: (_) => AccountDeletionScreen(deletion: deletion, plan: plan),
-        ),
+        screenRoute(AccountDeletionScreen(deletion: deletion, plan: plan)),
       ),
     );
   } catch (_) {

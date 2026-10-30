@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:miuchio/e2ee/avatar_image.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 const double _maxZoom = 5;
 // Enough for a sharp preview at the largest zoom without holding the full photo
@@ -24,7 +25,7 @@ class AvatarCropScreen extends StatefulWidget {
 
   static Future<Uint8List?> show(BuildContext context, Uint8List source) =>
       Navigator.of(context).push<Uint8List>(
-          MaterialPageRoute(builder: (_) => AvatarCropScreen(source: source)));
+          screenRoute(AvatarCropScreen(source: source)));
 
   @override
   State<AvatarCropScreen> createState() => _AvatarCropScreenState();

@@ -17,6 +17,7 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/tab_dock.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 import 'feed_posts.dart';
 
@@ -158,8 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final state = context.read<AppState>();
     String? nameOf(String token) =>
         state.memberDisplayName(update.albumId, token);
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => PhotoViewerScreen(
+    Navigator.of(context).push(screenRoute<void>(PhotoViewerScreen(
         records: update.photos,
         initialIndex: index,
         cache: context.read<MediaCacheManager>(),

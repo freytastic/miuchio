@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:miuchio/domain/account/account_deletion.dart' show TerminalWipe;
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 import 'account_conflict_screens.dart';
 
@@ -33,9 +34,7 @@ Future<void> confirmAndEraseInstallation(
 
   // The screen reports wipe failure and owns retry
   await navigator.pushAndRemoveUntil(
-    MaterialPageRoute<void>(
-      builder: (_) => EraseInstallationScreen(wipe: wipe.run),
-    ),
+    screenRoute<void>(EraseInstallationScreen(wipe: wipe.run)),
     (_) => false,
   );
 }

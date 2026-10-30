@@ -28,6 +28,7 @@ import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/hello_wordmark.dart';
 import 'package:miuchio/ui/widgets/mark_stage.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -188,14 +189,14 @@ class _LandingPageState extends State<LandingPage> {
       AccountGateOutcome.connectionRequired => const ConnectionRequiredScreen(),
       _ => AccountBelongsToAnotherScreen(
           onUseOwnerAccount: (ctx) => Navigator.of(ctx).pushAndRemoveUntil(
-            MaterialPageRoute<void>(builder: (_) => const OnboardingScreen()),
+            screenRoute<void>(const OnboardingScreen()),
             (_) => false,
           ),
           onEraseInstallation: (ctx) => confirmAndEraseInstallation(ctx, wipe),
         ),
     };
     rootNavigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => screen),
+      screenRoute<void>(screen),
       (_) => false,
     );
   }

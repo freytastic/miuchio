@@ -5,6 +5,7 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 import 'album_copy.dart';
 import 'member_avatars.dart';
@@ -449,9 +450,8 @@ class CoverPickerScreen extends StatelessWidget {
     required String? current,
     required Widget Function(MediaRecord record) thumb,
   }) =>
-      Navigator.of(context).push(MaterialPageRoute<({String? id})>(
-        builder: (_) =>
-            CoverPickerScreen(photos: photos, current: current, thumb: thumb),
+      Navigator.of(context).push(screenRoute<({String? id})>(
+        CoverPickerScreen(photos: photos, current: current, thumb: thumb),
       ));
 
   @override

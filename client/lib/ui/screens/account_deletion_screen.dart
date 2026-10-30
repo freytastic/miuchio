@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:miuchio/domain/account/account_deletion.dart';
 import 'package:miuchio/ui/screens/account_deleted_screen.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 enum _Phase { working, offline, stuck, unconfirmed }
 
@@ -44,7 +45,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
       switch (result) {
         case DeletionResult.deleted:
           nav.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const AccountDeletedScreen()),
+            screenRoute(const AccountDeletedScreen()),
             (_) => false,
           );
         case DeletionResult.unconfirmed:
@@ -53,7 +54,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
         case DeletionResult.notAccepted:
           final next = widget.onNotAccepted;
           if (next != null) {
-            nav.pushReplacement(MaterialPageRoute(builder: next));
+            nav.pushReplacement(screenRoute(next(context)));
           } else {
             nav.pop(result);
           }

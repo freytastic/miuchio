@@ -12,6 +12,7 @@ import 'package:miuchio/ui/people/everyone.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
 import 'package:miuchio/ui/create/create_album_screen.dart';
 import 'package:miuchio/ui/home/home_screen.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 import 'package:miuchio/ui/screens/notifications_screen.dart';
 import 'package:miuchio/ui/shelf/album_print.dart';
 import 'package:miuchio/ui/shelf/profile_screen.dart';
@@ -30,34 +31,19 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   HomeTab _tab = HomeTab.home;
 
-  static Route<T> _slide<T>(Widget page,
-      {Offset from = const Offset(1, 0), bool opaque = true}) {
-    return PageRouteBuilder<T>(
-      opaque: opaque,
-      pageBuilder: (_, __, ___) => page,
-      transitionsBuilder: (_, a, __, child) => SlideTransition(
-        position: Tween<Offset>(begin: from, end: Offset.zero)
-            .animate(CurvedAnimation(parent: a, curve: Warm.easeSoft)),
-        child: child,
-      ),
-      transitionDuration: Warm.springSnappy,
-    );
-  }
-
   void _select(HomeTab tab) => setState(() => _tab = tab);
 
   Future<void> _create() async {
     HapticFeedback.mediumImpact();
     final appState = context.read<AppState>();
-    await Navigator.of(context).push(_slide(const CreateAlbumScreen(),
-        from: const Offset(0, 1), opaque: false));
+    await Navigator.of(context).push(screenRoute(const CreateAlbumScreen()));
     await _refresh(appState);
   }
 
   Future<void> _openAlbum(AlbumModel album, {bool add = false}) async {
     final appState = context.read<AppState>();
     await Navigator.of(context)
-        .push(_slide(AlbumDetailScreen(album: album, addOnOpen: add)));
+        .push(screenRoute(AlbumDetailScreen(album: album, addOnOpen: add)));
     // Refresh without delaying shelf development
     unawaited(_refresh(appState));
   }
@@ -96,49 +82,57 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Warm.ground,
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: _tab.index,
-            children: [
-              // Rebuilt on each visit, so what was seen last time is gone
-              if (_tab == HomeTab.home)
-                HomeScreen(
-                  onOpenAlbum: _openAlbumById,
-                  onRefresh: () => _refresh(context.read<AppState>()),
-                )
-              else
-                const SizedBox.shrink(),
-              ShelfScreen(
-                docked: true,
-                onOpenAlbum: _openAlbum,
-                onCreateAlbum: _create,
-                onOpenPeople: (album) => openAlbumPeople(context, album),
-              ),
-              // Rebuilt on each visit, so rosters and unread rows are fresh
-              if (_tab == HomeTab.people)
-                const EveryoneTab()
-              else
-                const SizedBox.shrink(),
-              if (_tab == HomeTab.notifications)
-                NotificationsScreen(asTab: true, onOpenAlbum: _openAlbumById)
-              else
-                const SizedBox.shrink(),
-              ProfileScreen(
-                asTab: true,
-                onSafetyNumbers: () => _select(HomeTab.people),
-              ),
-            ],
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: TabDock(current: _tab, onSelect: _select, onMake: _make),
-          ),
-        ],
+    // Android back on another tab goes Home first, as a second press there
+    // leaves the app
+    return PopScope(
+      canPop: _tab == HomeTab.home,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _select(HomeTab.home);
+      },
+      child: Scaffold(
+        backgroundColor: Warm.ground,
+        body: Stack(
+          children: [
+            IndexedStack(
+              index: _tab.index,
+              children: [
+                // Rebuilt on each visit, so what was seen last time is gone
+                if (_tab == HomeTab.home)
+                  HomeScreen(
+                    onOpenAlbum: _openAlbumById,
+                    onRefresh: () => _refresh(context.read<AppState>()),
+                  )
+                else
+                  const SizedBox.shrink(),
+                ShelfScreen(
+                  docked: true,
+                  onOpenAlbum: _openAlbum,
+                  onCreateAlbum: _create,
+                  onOpenPeople: (album) => openAlbumPeople(context, album),
+                ),
+                // Rebuilt on each visit, so rosters and unread rows are fresh
+                if (_tab == HomeTab.people)
+                  const EveryoneTab()
+                else
+                  const SizedBox.shrink(),
+                if (_tab == HomeTab.notifications)
+                  NotificationsScreen(asTab: true, onOpenAlbum: _openAlbumById)
+                else
+                  const SizedBox.shrink(),
+                ProfileScreen(
+                  asTab: true,
+                  onSafetyNumbers: () => _select(HomeTab.people),
+                ),
+              ],
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: TabDock(current: _tab, onSelect: _select, onMake: _make),
+            ),
+          ],
+        ),
       ),
     );
   }

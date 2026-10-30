@@ -30,6 +30,7 @@ import 'package:miuchio/ui/widgets/tab_dock.dart';
 import 'package:miuchio/ui/widgets/upload_copy.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/widgets/warm_field.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 part 'profile_sheets.dart';
 
@@ -154,7 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _open(Widget page) =>
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+      Navigator.of(context).push(screenRoute<void>(page));
 
   Future<void> _openStorage() async {
     await _open(const StoragePage());

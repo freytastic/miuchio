@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -73,6 +74,11 @@ abstract class Warm {
         ),
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
+        // Back is the platform's own gesture, set once for every screen
+        pageTransitionsTheme: const PageTransitionsTheme(builders: {
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+        }),
       );
 
   // Form
@@ -265,8 +271,8 @@ abstract class Warm {
       _t(16, 400, letterSpacing: -0.16, height: 1.45, color: inkSoft);
   static TextStyle get pageSoft => _t(13, 400, height: 1.5, color: inkFaint);
   static TextStyle get pageFact => _t(14.5, 400, height: 1.45);
-  static TextStyle get storageTotal => _t(40, 640, letterSpacing: -1.2,
-      features: const [FontFeature.tabularFigures()]);
+  static TextStyle get storageTotal => _t(40, 640,
+      letterSpacing: -1.2, features: const [FontFeature.tabularFigures()]);
 
   static TextStyle get pageSubhead => _t(13, 600);
   static TextStyle get holdLabel => _t(15.5, 600, color: warn);

@@ -52,6 +52,7 @@ import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/decrypted_image_preview.dart';
 import 'package:miuchio/ui/widgets/encrypted_image.dart';
 import 'package:miuchio/ui/widgets/safety_number_sheet.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 Future<List<XFile>> _systemPicker({int limit = 0}) =>
     ImagePicker().pickMultiImage(limit: limit);
@@ -244,8 +245,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         .firstOrNull
         ?.coverMediaId;
     final exit =
-        await Navigator.of(context).push(MaterialPageRoute<AlbumInfoExit>(
-      builder: (_) => AlbumSettingsScreen(
+        await Navigator.of(context).push(screenRoute<AlbumInfoExit>(
+      AlbumSettingsScreen(
         name: () => state.albumDisplayName(widget.album.id) ?? 'Album',
         photos: _visible,
         coverId: current,
@@ -363,8 +364,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final owner = _owner;
     if (!mounted) return;
     final exit =
-        await Navigator.of(context).push(MaterialPageRoute<AlbumInfoExit>(
-      builder: (_) => AlbumInfoScreen(
+        await Navigator.of(context).push(screenRoute<AlbumInfoExit>(
+      AlbumInfoScreen(
         albumId: widget.album.id,
         albumName: _appState?.albumDisplayName(widget.album.id) ?? 'Album',
         createdAt: widget.album.createdAt,
@@ -475,8 +476,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final records = _shown;
     final index = records.indexWhere((r) => r.id == record.id);
     if (index < 0) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => PhotoViewerScreen(
+    await Navigator.of(context).push(screenRoute<void>(
+      PhotoViewerScreen(
         records: records,
         initialIndex: index,
         cache: context.read<MediaCacheManager>(),

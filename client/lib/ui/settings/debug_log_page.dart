@@ -8,6 +8,7 @@ import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/settings/debug_log_copy.dart';
 import 'package:miuchio/ui/settings/settings_page.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 
 const String _mono = 'monospace';
 
@@ -52,8 +53,8 @@ class _DebugLogPageState extends State<DebugLogPage> {
     await DebugLog.clear();
   }
 
-  void _review() => Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => DebugLogPreviewPage(entries: DebugLog.entries)));
+  void _review() => Navigator.of(context).push(
+      screenRoute<void>(DebugLogPreviewPage(entries: DebugLog.entries)));
 
   @override
   Widget build(BuildContext context) {

@@ -10,6 +10,7 @@ import 'package:miuchio/ui/shelf/album_print.dart';
 import 'package:miuchio/ui/shelf/shelf_data.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
+import 'package:miuchio/ui/navigation/screen_route.dart';
 import 'package:provider/provider.dart';
 
 const _holdFor = Duration(milliseconds: 1800);
@@ -64,9 +65,8 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     final rootNav = Navigator.of(context, rootNavigator: true);
     setState(() => _deleting = true);
     // The deletion screen owns the outcome from here, including a lost response
-    final result = await rootNav.push<DeletionResult>(MaterialPageRoute(
-      builder: (_) =>
-          AccountDeletionScreen(deletion: widget.deletion, plan: plan),
+    final result = await rootNav.push<DeletionResult>(screenRoute(
+      AccountDeletionScreen(deletion: widget.deletion, plan: plan),
     ));
     if (!mounted) return;
     setState(() => _deleting = false);
