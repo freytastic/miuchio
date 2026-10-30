@@ -42,6 +42,7 @@ import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/media_catalog.dart';
 import 'package:miuchio/data/storage/media_plaintext_cache.dart';
 import 'package:miuchio/data/storage/media_sealed_cache.dart';
+import 'package:miuchio/data/storage/known_people_store.dart';
 import 'package:miuchio/data/storage/name_cache.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
 import 'package:miuchio/data/storage/secure_storage.dart';
@@ -173,6 +174,7 @@ void main() async {
   final cacheRootKey = await loadOrCreateCacheRootKey(secureKeyStore);
   unawaited(DebugLog.attach(cacheRootKey));
   final nameCache = await NameCache.open(cacheRootKey: cacheRootKey);
+  final knownPeople = await KnownPeopleStore.open(cacheRootKey: cacheRootKey);
   final ownAvatar = await OwnAvatarStore.open(cacheRootKey: cacheRootKey);
   final avatarApi = AvatarApi(apiClient);
   final avatarCache = await AvatarCache.open(
@@ -235,6 +237,12 @@ void main() async {
         await identityPinStore.flush();
       },
     ),
+    onInvited: (miuchioId, albumId, token, ik) => unawaited(
+        knownPeople.remember(
+            handle: miuchioId,
+            ikPub: ik,
+            albumId: uuidFromBytes(albumId),
+            memberToken: base64.encode(token))),
   );
   final mediaSealedCache =
       await MediaSealedCache.open(cacheRootKey: cacheRootKey);
@@ -415,9 +423,9 @@ void main() async {
   late final AlbumWipe wipeLocalAlbum;
 
   final memberRemoval = MemberRemovalCoordinator(
-    revoke: (albumId, token, {deleteMedia = false}) => albumService.removeMember(
-        uuidFromBytes(albumId), base64.encode(token),
-        deleteMedia: deleteMedia),
+    revoke: (albumId, token, {deleteMedia = false}) =>
+        albumService.removeMember(uuidFromBytes(albumId), base64.encode(token),
+            deleteMedia: deleteMedia),
     activeTokens: (albumId) async {
       final members = await albumService.listMembers(uuidFromBytes(albumId));
       return [
@@ -585,6 +593,7 @@ void main() async {
       (name: 'activity sync', run: activitySync.stop),
       (name: 'activity', run: activityStore.clearAll),
       (name: 'names', run: nameCache.clear),
+      (name: 'known people', run: knownPeople.clear),
       (name: 'avatars', run: avatarCache.clearAll),
       (name: 'own avatar', run: ownAvatar.wipe),
       (name: 'pins', run: identityPinStore.clear),
@@ -650,6 +659,7 @@ void main() async {
         Provider<RotationRecoveryScheduler>.value(value: rotationRecovery),
         Provider<DisplayNamePublisher>.value(value: displayNamePublisher),
         Provider<NameCache>.value(value: nameCache),
+        ChangeNotifierProvider<KnownPeopleStore>.value(value: knownPeople),
         ChangeNotifierProvider<OwnAvatarStore>.value(value: ownAvatar),
         ChangeNotifierProvider<AvatarCache>.value(value: avatarCache),
         Provider<AvatarPublisher>.value(value: avatarPublisher),

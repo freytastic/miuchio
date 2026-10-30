@@ -46,6 +46,9 @@ class InviteInitiator {
   final IdentityService _identity;
   final AlbumKeyStore _aks;
   final InviteIdentityPinner? _pinner;
+  // Told after a delivered invite, so the phone can offer this person again
+  final void Function(String miuchioId, Uint8List albumId,
+      Uint8List memberToken, Uint8List ikPub)? _onInvited;
   final Now _now;
 
   InviteInitiator({
@@ -54,12 +57,16 @@ class InviteInitiator {
     required IdentityService identity,
     required AlbumKeyStore aks,
     InviteIdentityPinner? pinner,
+    void Function(String miuchioId, Uint8List albumId, Uint8List memberToken,
+            Uint8List ikPub)?
+        onInvited,
     Now? now,
   })  : _prekeys = prekeys,
         _invites = invites,
         _identity = identity,
         _aks = aks,
         _pinner = pinner,
+        _onInvited = onInvited,
         _now = now ?? DateTime.now;
 
   // Returns the new member_token minted by the server
@@ -128,6 +135,11 @@ class InviteInitiator {
         envelopes: envelopes,
       );
       await _pinner?.anchor(albumId, token, bundle.ikPub);
+      try {
+        _onInvited?.call(miuchioId, albumId, token, bundle.ikPub);
+      } catch (_) {
+        // Remembering is a convenience; the invite itself went through
+      }
       return token;
     } finally {
       init.sharedSecret.fillRange(0, init.sharedSecret.length, 0);
