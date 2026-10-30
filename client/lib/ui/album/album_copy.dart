@@ -79,6 +79,16 @@ abstract final class AlbumCopy {
   static const invitedPending = "Invited, hasn't opened it yet";
   static const invitedShort = 'Invited';
   static const addShort = 'Add';
+  static const editPeople = 'Edit people';
+  static const editShort = 'Edit';
+  static String peopleOf(int count, int capacity) =>
+      '$count of $capacity people';
+  static const addByIdShort = 'With their Miuchio ID';
+  static const ownerYou = 'You made this album';
+  static const cancelShort = 'Cancel';
+  static const manageNote =
+      "Someone you remove loses the album on their phone and can't see "
+      'anything added after. Photos they already added stay.';
   static const you = 'You';
   static String showEveryone(int people) =>
       'Show everyone in this album, $people ${people == 1 ? 'person' : 'people'}';
@@ -98,10 +108,7 @@ abstract final class AlbumCopy {
       ? 'Nothing from them in here yet.'
       : 'Nothing from $name in here yet.';
 
-  static const infoTitle = 'Album info';
-  static const infoCreated = 'Created';
   static const infoPhotos = 'Photos';
-  static const infoSize = 'Size';
   static const infoPeople = 'People';
   static const infoLast = 'Last photo';
   static const infoNone = 'None yet';
@@ -175,7 +182,6 @@ abstract final class AlbumCopy {
   static const cancelInviteBody = "They won't be able to join with it.";
   static const cancelInvite = 'Cancel invite';
 
-  static const madeBy = 'Made by';
   static const madeByYou = 'You';
   static const ownerNote =
       'You made this album, so you can add and remove people.';

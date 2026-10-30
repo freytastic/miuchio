@@ -84,6 +84,7 @@ class AlbumHeader extends StatelessWidget {
               selectedToken: filterToken,
               onTap: onTapMember,
               onAdd: onAdd,
+              editsPeople: true,
               folded: folded,
             ),
           ],

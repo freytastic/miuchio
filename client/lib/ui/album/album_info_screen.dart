@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 
 import 'album_copy.dart';
@@ -35,54 +37,102 @@ class AlbumInfoScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Warm.ground,
-      appBar: AppBar(
+    final made = madeBy;
+    // One sentence instead of "Made by" and "Created" rows
+    final origin = made == null
+        ? 'Started on ${_formatDate(createdAt)}'
+        : made == AlbumCopy.madeByYou
+            ? 'You started it on ${_formatDate(createdAt)}'
+            : '$made started it on ${_formatDate(createdAt)}';
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: Warm.overlayOnGround,
+      child: Scaffold(
         backgroundColor: Warm.ground,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Warm.ink),
-        title: const Text(AlbumCopy.infoTitle,
-            style: TextStyle(
-                color: Warm.ink, fontSize: 18, fontWeight: FontWeight.w700)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-        children: [
-          Text(albumName, style: _title),
-          const SizedBox(height: 22),
-          if (madeBy != null) _Fact(label: AlbumCopy.madeBy, value: madeBy!),
-          _Fact(label: AlbumCopy.infoCreated, value: _formatDate(createdAt)),
-          _Fact(label: AlbumCopy.infoPhotos, value: '${stats.photoCount}'),
-          _Fact(
-              label: AlbumCopy.infoSize,
-              value: AlbumStats.formatBytes(stats.totalBytes)),
-          _Fact(label: AlbumCopy.infoPeople, value: '${stats.peopleCount}'),
-          const SizedBox(height: 30),
-          Text(AlbumCopy.infoStorage, style: _section),
-          const SizedBox(height: 12),
-          if (stats.perUploader.isEmpty)
-            Text(AlbumCopy.infoStorageEmpty, style: _note)
-          else
-            for (final entry in stats.byWeight)
-              _UploaderRow(
-                albumId: albumId,
-                token: entry.key,
-                name: nameOf(entry.key),
-                tally: entry.value,
-                share: stats.totalBytes == 0
-                    ? 0
-                    : entry.value.bytes / stats.totalBytes,
+        body: SafeArea(
+          bottom: false,
+          child: ListView(
+            physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics()),
+            padding: const EdgeInsets.fromLTRB(
+                Warm.pagePad - 8, 16, Warm.pagePad - 8, 56),
+            children: [
+              const Align(alignment: Alignment.centerLeft, child: WarmBack()),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 22, 8, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(albumName, style: Warm.pageTitle),
+                    const SizedBox(height: 6),
+                    Text(origin, style: Warm.rowValue),
+                  ],
+                ),
               ),
-          // The way out sits at the end of the facts, a step past the album
-          // itself, so it is never a stray tap away
-          if (exit != null) ...[
-            const SizedBox(height: 36),
-            _ExitRow(
-              exit: exit!,
-              onTap: () => Navigator.of(context).pop(exit),
-            ),
-          ],
-        ],
+              const SizedBox(height: 24),
+              _Totals(stats: stats),
+              const SizedBox(height: 32),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(AlbumCopy.infoStorage.toUpperCase(),
+                    style: Warm.sectionLabel),
+              ),
+              const SizedBox(height: 12),
+              if (stats.perUploader.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(AlbumCopy.infoStorageEmpty, style: Warm.note),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                  decoration: BoxDecoration(
+                    color: Warm.groundLift,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    children: [
+                      for (final entry in stats.byWeight)
+                        _UploaderRow(
+                          albumId: albumId,
+                          token: entry.key,
+                          name: nameOf(entry.key),
+                          tally: entry.value,
+                          share: stats.totalBytes == 0
+                              ? 0
+                              : entry.value.bytes / stats.totalBytes,
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 18),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(Icons.lock_outline_rounded,
+                          size: 14, color: Warm.inkFaint),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: Text('${AlbumCopy.infoKey}.', style: Warm.note)),
+                  ],
+                ),
+              ),
+              // The way out sits at the end of the facts, a step past the
+              // album itself, so it is never a stray tap away
+              if (exit != null) ...[
+                const SizedBox(height: 36),
+                _ExitRow(
+                  exit: exit!,
+                  onTap: () => Navigator.of(context).pop(exit),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -94,24 +144,86 @@ class AlbumInfoScreen extends StatelessWidget {
     ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
+}
 
-  static const _title = TextStyle(
-    fontSize: 25,
-    fontWeight: FontWeight.w600,
-    letterSpacing: -0.65,
-    height: 1.14,
-    color: Warm.ink,
-  );
+// The numbers lead and their units sit quietly under them, so nothing
+// needs a "Photos:" label in front
+class _Totals extends StatelessWidget {
+  final AlbumStats stats;
 
-  static const _section = TextStyle(
-    fontSize: 13,
-    fontWeight: FontWeight.w700,
-    letterSpacing: 0.2,
-    color: Warm.ink,
-  );
+  const _Totals({required this.stats});
 
-  static const _note =
-      TextStyle(fontSize: 12.5, height: 1.45, color: Warm.inkSoft);
+  @override
+  Widget build(BuildContext context) {
+    final photos = stats.photoCount;
+    final people = stats.peopleCount;
+    final size = AlbumStats.formatBytes(stats.totalBytes);
+    return Container(
+      decoration: BoxDecoration(
+        color: Warm.groundLift,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            _Total(value: '$photos', unit: photos == 1 ? 'photo' : 'photos'),
+            const VerticalDivider(
+                width: 1,
+                thickness: 1,
+                indent: 16,
+                endIndent: 16,
+                color: Warm.inkGhost),
+            _Total(value: size, unit: 'stored'),
+            const VerticalDivider(
+                width: 1,
+                thickness: 1,
+                indent: 16,
+                endIndent: 16,
+                color: Warm.inkGhost),
+            _Total(value: '$people', unit: people == 1 ? 'person' : 'people'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Total extends StatelessWidget {
+  final String value;
+  final String unit;
+
+  const _Total({required this.value, required this.unit});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Semantics(
+        label: '$value $unit',
+        excludeSemantics: true,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          child: Column(
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.6,
+                  height: 1.1,
+                  color: Warm.ink,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(unit,
+                  style: const TextStyle(fontSize: 12.5, color: Warm.inkSoft)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ExitRow extends StatelessWidget {
@@ -140,7 +252,9 @@ class _ExitRow extends StatelessWidget {
               Text(
                 leave ? AlbumCopy.leaveAlbum : AlbumCopy.deleteAlbum,
                 style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600, color: Warm.warn),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Warm.warn),
               ),
             ],
           ),
@@ -150,30 +264,8 @@ class _ExitRow extends StatelessWidget {
   }
 }
 
-class _Fact extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _Fact({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: const TextStyle(fontSize: 14, color: Warm.inkSoft)),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w600, color: Warm.ink)),
-        ],
-      ),
-    );
-  }
-}
-
+// Who the space belongs to, said as "4 photos · 1.2 MB" rather than a bare
+// count, with each person's share drawn in their own colour
 class _UploaderRow extends StatelessWidget {
   final String? albumId;
   final String token;
@@ -191,50 +283,56 @@ class _UploaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final photos = '${tally.photos} ${tally.photos == 1 ? 'photo' : 'photos'}';
+    final percent = '${(share * 100).round()}%';
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
         children: [
-          Row(
-            children: [
-              MemberFace(
-                albumId: albumId,
-                token: token,
-                name: name,
-                size: 28,
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Warm.inkSoft,
-                    height: 1),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  // Never show member tokens as names
-                  name ?? AlbumCopy.unknownMember,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Warm.ink),
-                ),
-              ),
-              Text(
-                '${tally.photos} · ${AlbumStats.formatBytes(tally.bytes)}',
-                style: const TextStyle(fontSize: 12.5, color: Warm.inkSoft),
-              ),
-            ],
+          MemberFace(
+            albumId: albumId,
+            token: token,
+            name: name,
+            size: 36,
+            style: Warm.acFace.copyWith(fontSize: 13),
           ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: share.clamp(0.0, 1.0),
-              minHeight: 3,
-              backgroundColor: Warm.wellEmpty,
-              valueColor: AlwaysStoppedAnimation<Color>(faceHue(token, name)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        // Never show member tokens as names
+                        name ?? AlbumCopy.unknownMember,
+                        overflow: TextOverflow.ellipsis,
+                        style: Warm.rowTitle,
+                      ),
+                    ),
+                    Text(
+                      percent,
+                      style: Warm.rowValue.copyWith(
+                          fontFeatures: const [FontFeature.tabularFigures()]),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text('$photos · ${AlbumStats.formatBytes(tally.bytes)}',
+                    style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: share.clamp(0.0, 1.0),
+                    minHeight: 4,
+                    backgroundColor: Warm.wellEmpty,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(faceHue(token, name)),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

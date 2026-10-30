@@ -132,7 +132,7 @@ void main() {
   });
 
   for (final (me, admin) in [('alicetoken123', true), ('bobtoken456', false)]) {
-    testWidgets('add someone is offered only to the admin ($me)',
+    testWidgets('editing people is offered only to the admin ($me)',
         (tester) async {
       final aks = await _emptyAks();
       await tester.pumpWidget(_wrap(
@@ -148,7 +148,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('add-someone')),
+      expect(find.byKey(const ValueKey('edit-people')),
           admin ? findsOneWidget : findsNothing);
     });
   }

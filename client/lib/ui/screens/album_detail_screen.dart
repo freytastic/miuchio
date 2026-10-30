@@ -20,6 +20,7 @@ import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_foot.dart';
 import 'package:miuchio/ui/album/album_header.dart';
 import 'package:miuchio/ui/album/album_info_screen.dart';
+import 'package:miuchio/ui/album/manage_people_screen.dart';
 import 'package:miuchio/ui/album/album_rename.dart';
 import 'package:miuchio/ui/album/album_stats.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
@@ -225,6 +226,48 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       // Revoked already, rotation recovery finishes the key change
     }
     if (mounted) await _loadMembers();
+  }
+
+  Future<void> _openManagePeople() async {
+    final state = context.read<AppState>();
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ManagePeopleScreen(
+        albumTitle: state.albumDisplayName(widget.album.id) ?? 'This album',
+        load: () async => _managed(),
+        onAdd: _openAddMember,
+        onRemove: (p) async {
+          final m = _members.where((m) => m.memberToken == p.id).firstOrNull;
+          if (m != null) await _removeMember(m, invited: p.invited);
+        },
+      ),
+    ));
+  }
+
+  List<ManagedPerson> _managed() {
+    final names = _resolvedNames();
+    final self = widget.album.memberToken;
+    final me = context.read<AppState>().profileName.trim();
+    return [
+      for (final m in _members)
+        if (!m.revoked)
+          if (m.memberToken != self && m.profile.nameCt == null)
+            ManagedPerson(
+              id: m.memberToken,
+              name: AlbumCopy.invitedShort,
+              face: const SizedBox(),
+              invited: true,
+            )
+          else
+            ManagedPerson(
+              id: m.memberToken,
+              name: m.memberToken == self
+                  ? (me.isEmpty ? AlbumCopy.you : me)
+                  : names[m.memberToken] ?? AlbumCopy.unknownMember,
+              face: _face(m.memberToken, names[m.memberToken], 40),
+              owner: m.role == 'admin',
+              self: m.memberToken == self,
+            ),
+    ];
   }
 
   Future<void> _openPeople() async {
@@ -1205,7 +1248,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           onTapMember: _toggleFilter,
                           onClearFilter: () =>
                               setState(() => _filterToken = null),
-                          onAdd: _viewerIsAdmin ? _openAddMember : null,
+                          onAdd: _viewerIsAdmin ? _openManagePeople : null,
                           onPeople: _openPeople,
                           onRename: _viewerIsAdmin ? _rename : null,
                           folded: _collapsed,
