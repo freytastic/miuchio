@@ -108,10 +108,7 @@ abstract final class AlbumCopy {
       ? 'Nothing from them in here yet.'
       : 'Nothing from $name in here yet.';
 
-  static const infoPhotos = 'Photos';
-  static const infoPeople = 'People';
-  static const infoLast = 'Last photo';
-  static const infoNone = 'None yet';
+  static const noPhotosYet = 'No photos yet';
   static const infoKey =
       'Only its members hold the key, so the server stores it without being '
       'able to open it';

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:provider/provider.dart';
 
 import 'package:miuchio/data/models/album_model.dart';
@@ -127,8 +128,13 @@ void main() {
 
     await tester.tap(find.text('Album info'));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Last photo'), findsOneWidget);
     expect(find.text('7'), findsOneWidget);
+    expect(find.text('people'), findsOneWidget);
+    expect(find.text(AlbumCopy.noPhotosYet), findsNothing,
+        reason: 'an undated listing of 7 photos is not empty');
+    expect(find.text('photos'), findsOneWidget);
+    expect(find.textContaining(':'), findsNothing,
+        reason: 'facts read as phrases, not label: value rows');
     expect(opened, isEmpty);
 
     await tester.tap(find.byIcon(Icons.chevron_left_rounded));

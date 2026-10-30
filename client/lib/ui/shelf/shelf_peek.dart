@@ -233,15 +233,51 @@ class _ShelfPeekState extends State<ShelfPeek> {
             ),
           ),
         ),
-        _Fact(AlbumCopy.infoPhotos, '${a.mediaCount}'),
-        _Fact(AlbumCopy.infoPeople, '${a.activeMemberCount}'),
-        _Fact(AlbumCopy.infoLast,
-            relativeTime(a.latestActivityAt) ?? AlbumCopy.infoNone),
+        // Numbers lead with quiet units, rather than "Photos: 7" rows
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: Warm.inkGhost)),
+          ),
+          child: Row(
+            children: [
+              _Count(
+                  value: a.mediaCount,
+                  unit: a.mediaCount == 1 ? 'photo' : 'photos'),
+              const SizedBox(width: 22),
+              _Count(
+                  value: a.activeMemberCount,
+                  unit: a.activeMemberCount == 1 ? 'person' : 'people'),
+            ],
+          ),
+        ),
+        if (_lastPhoto(a.mediaCount, a.latestActivityAt) case final line?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Text(
+              line,
+              style: const TextStyle(fontSize: 13, color: Warm.inkSoft),
+            ),
+          ),
         const Padding(
           padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Text(
-            AlbumCopy.infoKey,
-            style: TextStyle(fontSize: 12, height: 1.45, color: Warm.inkSoft),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(Icons.lock_outline_rounded,
+                    size: 13, color: Warm.inkFaint),
+              ),
+              SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  AlbumCopy.infoKey,
+                  style: TextStyle(
+                      fontSize: 12, height: 1.45, color: Warm.inkSoft),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -249,38 +285,41 @@ class _ShelfPeekState extends State<ShelfPeek> {
   }
 }
 
-class _Fact extends StatelessWidget {
-  final String label;
-  final String value;
+// "Last photo yesterday" reads as one fact; a label and value split it in two
+// A listing without a date says nothing rather than "no photos"
+String? _lastPhoto(int count, DateTime? at) {
+  if (count == 0) return AlbumCopy.noPhotosYet;
+  final when = relativeTime(at);
+  return when == null ? null : 'Last photo $when';
+}
 
-  const _Fact(this.label, this.value);
+class _Count extends StatelessWidget {
+  final int value;
+  final String unit;
+
+  const _Count({required this.value, required this.unit});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Warm.inkGhost)),
-      ),
+    return Semantics(
+      label: '$value $unit',
+      excludeSemantics: true,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
         children: [
-          Text(label,
-              style: const TextStyle(fontSize: 13.5, color: Warm.inkSoft)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: Warm.ink,
-                fontFeatures: [FontFeature.tabularFigures()],
-              ),
+          Text(
+            '$value',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.5,
+              color: Warm.ink,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
+          const SizedBox(width: 5),
+          Text(unit, style: const TextStyle(fontSize: 13, color: Warm.inkSoft)),
         ],
       ),
     );
