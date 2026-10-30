@@ -234,7 +234,36 @@ func (h *AlbumHandler) UpdateAlbum(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, r, apierr.Internal("failed to update album").WithCause(err))
 		return
 	}
+	h.notifyRenamed(r.Context(), albumID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Carries only the album id: members fetch the new name_ct and open it
+// themselves. A failed notice cannot undo the committed rename
+func (h *AlbumHandler) notifyRenamed(ctx context.Context, albumID uuid.UUID) {
+	if h.notifier == nil || h.resolver == nil {
+		return
+	}
+	members, err := h.albumService.ListMembers(ctx, albumID)
+	if err != nil {
+		return
+	}
+	var tokens [][]byte
+	for _, m := range members {
+		if !m.Revoked {
+			tokens = append(tokens, m.MemberToken)
+		}
+	}
+	if len(tokens) == 0 {
+		return
+	}
+	users, err := h.resolver.UserIDsByMemberTokens(ctx, tokens)
+	if err != nil || len(users) == 0 {
+		return
+	}
+	_ = h.notifier.EmitToUsers(ctx, users, ws.EventAlbumRenamed, map[string]any{
+		"album_id": albumID.String(),
+	})
 }
 
 func (h *AlbumHandler) DeleteAlbum(w http.ResponseWriter, r *http.Request) {

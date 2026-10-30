@@ -563,6 +563,7 @@ String? _personToken(ActivityEvent e) => switch (e) {
       MemberJoined() => e.memberToken,
       MemberLeft() => e.memberToken,
       PhotosAdded() => e.uploaderToken,
+      AlbumRenamed() => e.ownerToken,
       _ => null,
     };
 

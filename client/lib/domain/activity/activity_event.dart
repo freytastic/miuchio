@@ -143,3 +143,39 @@ class PhotosAdded extends ActivityEvent {
   @override
   ActivityLane get lane => ActivityLane.albums;
 }
+
+// Only the owner can rename, so the row speaks for them. The listing carries
+// sealed titles alone: the recorder opens both on this phone and names the
+// owner from the roster, and the row is sealed with the rest of the feed
+class AlbumRenamed extends ActivityEvent {
+  final String? fromCt;
+  final String toCt;
+  final String? from;
+  final String? to;
+  final String? ownerToken;
+  const AlbumRenamed({
+    required super.id,
+    required super.albumId,
+    required super.at,
+    required this.fromCt,
+    required this.toCt,
+    this.from,
+    this.to,
+    this.ownerToken,
+  });
+
+  AlbumRenamed opened({String? from, String? to, String? ownerToken}) =>
+      AlbumRenamed(
+        id: id,
+        albumId: albumId,
+        at: at,
+        fromCt: fromCt,
+        toCt: toCt,
+        from: from ?? this.from,
+        to: to ?? this.to,
+        ownerToken: ownerToken ?? this.ownerToken,
+      );
+
+  @override
+  ActivityLane get lane => ActivityLane.albums;
+}

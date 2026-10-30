@@ -53,6 +53,10 @@ class RealtimeRouter {
         if (albumStr != null) onAlbumDeleted(albumStr);
       case 'e2ee.media_deleted':
         _mediaDeleted(ev.payload);
+      // The event names only the album: the fresh listing brings the new
+      // sealed title, opened on this phone, and its activity row
+      case 'e2ee.album_renamed':
+        if (ev.payload['album_id'] is String) appState.refreshSummarySoon();
       case 'e2ee.member_added' || 'e2ee.member_updated':
         final albumStr = ev.payload['album_id'] as String?;
         if (albumStr == null) return;

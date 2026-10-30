@@ -13,11 +13,13 @@ void main() {
     String role = 'member',
     bool rotationRequired = false,
     String? self,
+    String? name,
     DateTime? last,
   }) =>
       AlbumSnapshot(
         albumId: id,
         selfToken: self,
+        nameCt: name,
         mediaCount: media,
         mediaGeneration: generation,
         memberTokens: members,
@@ -300,6 +302,39 @@ void main() {
           .single;
 
       expect(first.id, isNot(again.id));
+    });
+  });
+
+  group('renames', () {
+    test('a new sealed title reaches a member as a rename', () {
+      final events =
+          derive([snap('a', name: 'ct-old')], [snap('a', name: 'ct-new')]);
+
+      final e = events.single as AlbumRenamed;
+      expect(e.fromCt, 'ct-old');
+      expect(e.toCt, 'ct-new');
+      expect(e.lane, ActivityLane.albums);
+    });
+
+    test('the owner made the rename, so it is not news to them', () {
+      final events = derive(
+        [snap('a', role: 'admin', name: 'ct-old')],
+        [snap('a', role: 'admin', name: 'ct-new')],
+      );
+
+      expect(events.whereType<AlbumRenamed>(), isEmpty);
+    });
+
+    test('a snapshot from before titles were tracked proves nothing', () {
+      final events = derive([snap('a')], [snap('a', name: 'ct-new')]);
+
+      expect(events, isEmpty);
+    });
+
+    test('an unchanged title is quiet', () {
+      final events = derive([snap('a', name: 'ct')], [snap('a', name: 'ct')]);
+
+      expect(events, isEmpty);
     });
   });
 }

@@ -14,6 +14,8 @@ typedef CommitObservation = Future<void> Function(
     List<ActivityEvent> events, Map<String, dynamic> snapshot,
     {List<String> settleAlbums});
 typedef SettleRotation = Future<void> Function(String albumId);
+typedef OpenAlbumName = Future<String?> Function(String albumId, String nameCt);
+typedef FetchOwner = Future<String?> Function(String albumId);
 
 // Reconstructs changes between authoritative listings because realtime is live only
 class ActivityRecorder {
@@ -25,6 +27,8 @@ class ActivityRecorder {
   final SelfTokenFor? _selfTokenFor;
   final SettleRotation? _settleRotation;
   final CommitObservation? _commit;
+  final OpenAlbumName? _openName;
+  final FetchOwner? _fetchOwner;
 
   ActivityRecorder({
     required RecordEvents record,
@@ -34,6 +38,8 @@ class ActivityRecorder {
     SelfTokenFor? selfTokenFor,
     SettleRotation? settleRotation,
     CommitObservation? commit,
+    OpenAlbumName? openName,
+    FetchOwner? fetchOwner,
     DateTime Function()? now,
   })  : _record = record,
         _readSnapshot = readSnapshot,
@@ -42,6 +48,8 @@ class ActivityRecorder {
         _selfTokenFor = selfTokenFor,
         _settleRotation = settleRotation,
         _commit = commit,
+        _openName = openName,
+        _fetchOwner = fetchOwner,
         _now = now ?? DateTime.now;
 
   Future<void> observe(List<AlbumModel> albums) async {
@@ -66,16 +74,17 @@ class ActivityRecorder {
         memberTokens: [for (final m in a.memberPreviews) m.memberToken],
         myRole: a.myRole,
         selfToken: a.memberToken,
+        nameCt: a.nameCt,
         rotationRequired: a.rotationRequired,
         membersComplete: a.memberPreviews.length >= a.activeMemberCount,
         latestActivityAt: a.latestActivityAt,
       );
     }
 
-    final events = await _attribute(
+    final events = await _openRenames(await _attribute(
       deriveActivity(previous: previous, current: current, now: _now()),
       current,
-    );
+    ));
     final settle = <String>[
       if (previous != null)
         for (final a in current.values)
@@ -134,6 +143,40 @@ class ActivityRecorder {
     return out;
   }
 
+  // A title that will not open still leaves a row that reads without it
+  Future<List<ActivityEvent>> _openRenames(List<ActivityEvent> events) async {
+    if (!events.any((e) => e is AlbumRenamed)) return events;
+    final out = <ActivityEvent>[];
+    for (final e in events) {
+      if (e is! AlbumRenamed) {
+        out.add(e);
+        continue;
+      }
+      Future<String?> open(String? ct) async {
+        final o = _openName;
+        if (o == null || ct == null) return null;
+        try {
+          return await o(e.albumId, ct);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      String? owner;
+      try {
+        owner = await _fetchOwner?.call(e.albumId);
+      } catch (_) {
+        owner = null;
+      }
+      final from = await open(e.fromCt);
+      final to = await open(e.toCt);
+      // A key change reseals the same title; that is not a rename
+      if (from != null && from == to) continue;
+      out.add(e.opened(from: from, to: to, ownerToken: owner));
+    }
+    return out;
+  }
+
   Map<String, AlbumSnapshot> _decode(Map<String, dynamic>? raw) {
     if (raw == null) return const {};
     final out = <String, AlbumSnapshot>{};
@@ -149,6 +192,7 @@ class ActivityRecorder {
         ],
         myRole: v['my_role'] as String?,
         selfToken: v['self'] as String?,
+        nameCt: v['name_ct'] as String?,
         membersComplete: v['partial'] != true,
         rotationRequired: v['rotation_required'] == true,
         latestActivityAt: v['latest_activity_at'] == null
@@ -169,6 +213,7 @@ class ActivityRecorder {
             'members': s.memberTokens,
             if (s.myRole != null) 'my_role': s.myRole,
             if (s.selfToken != null) 'self': s.selfToken,
+            if (s.nameCt != null) 'name_ct': s.nameCt,
             if (!s.membersComplete) 'partial': true,
             if (s.rotationRequired) 'rotation_required': true,
             if (s.latestActivityAt != null)

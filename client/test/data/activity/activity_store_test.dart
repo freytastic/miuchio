@@ -404,4 +404,25 @@ void main() {
 
     store = await ActivityStore.open(cacheRootKey: key, dir: dir);
   });
+
+  test('a rename reads back with both titles and the owner', () async {
+    await store.record([
+      AlbumRenamed(
+        id: 'renamed:1',
+        albumId: 'album-1',
+        at: at,
+        fromCt: 'ct-old',
+        toCt: 'ct-new',
+        from: 'Spring break',
+        to: 'Greece trip',
+        ownerToken: 'alice',
+      ),
+    ]);
+
+    final e = (await store.read()).single.event as AlbumRenamed;
+    expect(e.from, 'Spring break');
+    expect(e.to, 'Greece trip');
+    expect(e.ownerToken, 'alice');
+    expect(e.lane, ActivityLane.albums);
+  });
 }

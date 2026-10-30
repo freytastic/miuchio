@@ -163,4 +163,34 @@ void main() {
           'Added a while ago');
     });
   });
+
+  group('renames', () {
+    AlbumRenamed renamed({String? from, String? to, String? owner}) =>
+        AlbumRenamed(
+          id: 'x',
+          albumId: 'a',
+          at: at,
+          fromCt: 'ct-old',
+          toCt: 'ct-new',
+          from: from,
+          to: to,
+          ownerToken: owner,
+        );
+
+    test('says who renamed it, from what, to what', () {
+      final line = lineFor(
+          renamed(from: 'Spring break', to: 'Greece trip', owner: 'noor'),
+          names);
+
+      expect('${line.lead}${line.rest}', 'Noor renamed Spring break');
+      expect(line.where, 'Now Greece trip');
+    });
+
+    test('reads without the titles or the owner', () {
+      final line = lineFor(renamed(), names);
+
+      expect('${line.lead}${line.rest}', 'The owner renamed an album');
+      expect(line.where, 'Now Birthday');
+    });
+  });
 }

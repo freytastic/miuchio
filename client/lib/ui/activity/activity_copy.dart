@@ -108,7 +108,21 @@ LineCopy lineFor(ActivityEvent e, ActivityNames names) {
         rest: "'re no longer in $where",
         where: 'No longer on your shelf',
       ),
+    AlbumRenamed() => _renamed(e, names, where),
   };
+}
+
+// Names the titles from the moment of the rename, so a later rename does not
+// rewrite this row, and still reads if a title could not be opened
+LineCopy _renamed(AlbumRenamed e, ActivityNames names, String where) {
+  final owner = e.ownerToken;
+  final from = e.from;
+  final to = e.to ?? where;
+  return LineCopy(
+    lead: owner == null ? 'The owner' : names.memberName(e.albumId, owner),
+    rest: from == null ? ' renamed an album' : ' renamed $from',
+    where: 'Now $to',
+  );
 }
 
 // The shelf summary counts without attributing, so the row has to read

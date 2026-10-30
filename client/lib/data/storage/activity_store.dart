@@ -329,6 +329,14 @@ Map<String, dynamic> _toJson(ActivityEvent e) => {
           },
         InvitedToAlbum() => {'kind': 'invited'},
         RemovedFromAlbum() => {'kind': 'removed'},
+        AlbumRenamed() => {
+            'kind': 'renamed',
+            if (e.fromCt != null) 'from_ct': e.fromCt,
+            'to_ct': e.toCt,
+            if (e.from != null) 'from': e.from,
+            if (e.to != null) 'to': e.to,
+            if (e.ownerToken != null) 'owner': e.ownerToken,
+          },
       },
     };
 
@@ -364,6 +372,16 @@ ActivityEvent? _fromJson(Map<String, dynamic> j) {
       ),
     'invited' => InvitedToAlbum(id: id, albumId: albumId, at: at),
     'removed' => RemovedFromAlbum(id: id, albumId: albumId, at: at),
+    'renamed' => AlbumRenamed(
+        id: id,
+        albumId: albumId,
+        at: at,
+        fromCt: j['from_ct'] as String?,
+        toCt: j['to_ct'] as String,
+        from: j['from'] as String?,
+        to: j['to'] as String?,
+        ownerToken: j['owner'] as String?,
+      ),
     _ => null,
   };
 }

@@ -20,6 +20,7 @@ import 'package:miuchio/app/realtime_router.dart';
 import 'package:miuchio/app/sign_in_wiring.dart';
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/uuid_bytes.dart';
+import 'package:miuchio/e2ee/sealed_name.dart';
 import 'package:miuchio/data/api/account_api.dart';
 import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/api/api_client.dart';
@@ -279,6 +280,19 @@ void main() async {
     selfTokenFor: appState.selfMemberToken,
     settleRotation: activityStore.settleRotation,
     commit: activityStore.commit,
+    openName: (albumId, nameCt) async {
+      final b = uuidToBytes(albumId);
+      if (b == null) return null;
+      return SealedName.openAlbumName(albumKeyStore, b, nameCt);
+    },
+    // Only the owner can rename, so the roster names who did
+    fetchOwner: (albumId) async {
+      final members = await albumService.listMembers(albumId);
+      return members
+          .where((m) => m.role == 'admin' && !m.revoked)
+          .firstOrNull
+          ?.memberToken;
+    },
   );
   activitySync = ActivitySync(
     observe: activityRecorder.observe,

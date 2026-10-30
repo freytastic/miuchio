@@ -8,6 +8,8 @@ class AlbumSnapshot {
   final List<String> memberTokens;
   final String? myRole;
   final String? selfToken;
+  // Sealed title; null in snapshots written before titles were tracked
+  final String? nameCt;
   final bool rotationRequired;
   // Partial member lists cannot prove joins or departures
   final bool membersComplete;
@@ -21,6 +23,7 @@ class AlbumSnapshot {
     required this.myRole,
     required this.latestActivityAt,
     this.selfToken,
+    this.nameCt,
     this.rotationRequired = false,
     this.membersComplete = true,
   });
@@ -68,8 +71,26 @@ List<ActivityEvent> deriveActivity({
             ? album.memberTokens
             : [self],
         myRole: album.myRole,
+        nameCt: album.nameCt,
         latestActivityAt: null,
       );
+    }
+
+    // A changed sealed title is a rename. The owner made it, so it is not
+    // news to them, and an untracked old title proves nothing
+    final fromCt = before.nameCt;
+    final toCt = album.nameCt;
+    if (album.myRole != 'admin' &&
+        fromCt != null &&
+        toCt != null &&
+        fromCt != toCt) {
+      out.add(AlbumRenamed(
+        id: 'renamed:${album.albumId}:$seen',
+        albumId: album.albumId,
+        at: now,
+        fromCt: fromCt,
+        toCt: toCt,
+      ));
     }
 
     // media_generation counts uploads while mediaCount is net of deletions

@@ -22,13 +22,14 @@ void main() {
     String? self,
     bool rotation = false,
     int? active,
+    String? name,
   }) =>
       AlbumModel(
         id: id,
         activeMemberCount: active ?? members.length,
         memberToken: self,
         rotationRequired: rotation,
-        nameCt: null,
+        nameCt: name,
         createdAt: DateTime.utc(2026, 1, 1),
         updatedAt: DateTime.utc(2026, 1, 1),
         myRole: role,
@@ -335,5 +336,49 @@ void main() {
     await r.observe([album('a')]);
 
     expect(settledInCommit.last, ['a']);
+  });
+
+  group('renames', () {
+    final titles = {'ct-old': 'Spring break', 'ct-new': 'Greece trip'};
+
+    ActivityRecorder renames(
+            {String? owner = 'alice', Map<String, String>? open}) =>
+        ActivityRecorder(
+          record: (events) async => sink.recorded.addAll(events),
+          readSnapshot: () async => sink.snapshot,
+          writeSnapshot: (s) async => sink.snapshot = s,
+          openName: (_, ct) async => (open ?? titles)[ct],
+          fetchOwner: (_) async => owner,
+          now: () => DateTime.utc(2026, 9, 21),
+        );
+
+    test('opens both titles on the phone and names the owner', () async {
+      final r = renames();
+      await r.observe([album('a', name: 'ct-old')]);
+      await r.observe([album('a', name: 'ct-new')]);
+
+      final e = sink.recorded.single as AlbumRenamed;
+      expect(e.from, 'Spring break');
+      expect(e.to, 'Greece trip');
+      expect(e.ownerToken, 'alice');
+    });
+
+    test('a title resealed under a new key is not a rename', () async {
+      final r = renames(open: {'ct-old': 'Lisbon', 'ct-new': 'Lisbon'});
+      await r.observe([album('a', name: 'ct-old')]);
+      await r.observe([album('a', name: 'ct-new')]);
+
+      expect(sink.recorded, isEmpty);
+    });
+
+    test('a title that will not open still leaves a row', () async {
+      final r = renames(owner: null, open: const {});
+      await r.observe([album('a', name: 'ct-old')]);
+      await r.observe([album('a', name: 'ct-new')]);
+
+      final e = sink.recorded.single as AlbumRenamed;
+      expect(e.from, isNull);
+      expect(e.ownerToken, isNull);
+    });
   });
 }
