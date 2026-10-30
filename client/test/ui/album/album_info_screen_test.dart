@@ -45,4 +45,44 @@ void main() {
     expect(find.textContaining('secret'), findsNothing);
     expect(find.text(AlbumCopy.unknownMember), findsOneWidget);
   });
+
+  testWidgets('leaving closes the screen and hands the choice back',
+      (tester) async {
+    AlbumInfoExit? chosen;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () async {
+            chosen = await Navigator.of(context)
+                .push(MaterialPageRoute<AlbumInfoExit>(
+              builder: (_) => AlbumInfoScreen(
+                albumName: 'Lisbon',
+                createdAt: DateTime(2026, 3, 14),
+                stats: AlbumStats.of(const [], peopleCount: 2),
+                nameOf: (_) => null,
+                exit: AlbumInfoExit.leave,
+              ),
+            ));
+          },
+          child: const Text('open'),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AlbumCopy.deleteAlbum), findsNothing);
+    await tester.tap(find.byKey(const Key('album-info-leave')));
+    await tester.pumpAndSettle();
+
+    expect(chosen, AlbumInfoExit.leave);
+    expect(find.byType(AlbumInfoScreen), findsNothing);
+  });
+
+  testWidgets('without an exit there is no way out offered', (tester) async {
+    await pump(tester, records: const []);
+
+    expect(find.text(AlbumCopy.leaveAlbum), findsNothing);
+    expect(find.text(AlbumCopy.deleteAlbum), findsNothing);
+  });
 }

@@ -84,8 +84,8 @@ void main() {
 
     expect(find.text('Open album'), findsOneWidget);
     expect(find.text('People'), findsOneWidget);
-    expect(find.text('Soon'), findsOneWidget,
-        reason: 'download is still unbuilt and must not look actionable');
+    expect(find.textContaining('Download'), findsNothing,
+        reason: 'download is unbuilt, so the menu does not offer it');
     expect(shelfOpacity(tester), 0,
         reason: 'the lifted print leaves its space on the shelf');
   });

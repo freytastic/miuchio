@@ -11,12 +11,7 @@ void main() {
         body: Stack(
           children: [
             const SizedBox.expand(child: ColoredBox(color: Colors.white)),
-            AlbumFoot(
-              onSelect: () {},
-              onAdd: () {},
-              onDownload: () {},
-              pill: const Text('pill'),
-            ),
+            AlbumFoot(onAdd: () {}, pill: const Text('pill')),
           ],
         ),
       ),
@@ -24,12 +19,18 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('the upload pill sits clear of the add button', (tester) async {
+  testWidgets('the add button sits bottom right, as on Home', (tester) async {
     await pump(tester);
 
-    expect(find.text(AlbumCopy.select), findsOneWidget);
-    expect(find.byType(MakeButton), findsOneWidget);
-    expect(find.text(AlbumCopy.download), findsOneWidget);
+    final add = tester.getRect(find.byType(MakeButton));
+    final screen = tester.getRect(find.byType(Scaffold));
+    expect(screen.right - add.right, 18);
+    expect(find.text(AlbumCopy.select), findsNothing);
+    expect(find.text('Download'), findsNothing);
+  });
+
+  testWidgets('the upload pill sits clear of the add button', (tester) async {
+    await pump(tester);
 
     expect(tester.getRect(find.text('pill')).bottom,
         lessThanOrEqualTo(tester.getRect(find.byType(MakeButton)).top));

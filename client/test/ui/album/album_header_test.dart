@@ -67,12 +67,12 @@ void main() {
             title: 'Lisbon',
             visible: false,
             onBack: () {},
-            onMore: () => more++,
+            onInfo: () => more++,
           ),
         ),
       ));
 
-      await tester.tap(find.byTooltip(AlbumCopy.more), warnIfMissed: false);
+      await tester.tap(find.byTooltip(AlbumCopy.albumInfo), warnIfMissed: false);
       await tester.pump();
 
       expect(more, 0, reason: 'a hidden bar must not swallow taps');
@@ -88,7 +88,7 @@ void main() {
               title: 'Lisbon',
               visible: true,
               onBack: _noop,
-              onMore: _noop,
+              onInfo: _noop,
             ),
           ),
         ),

@@ -189,7 +189,6 @@ class _ShelfPeekState extends State<ShelfPeek> {
             icon: Icons.arrow_outward_rounded,
             onTap: _open,
           ),
-          const MenuItem(label: AlbumCopy.downloadAlbum, onTap: null),
           MenuItem(
             label: AlbumCopy.people,
             onTap: () => _leave(ShelfPeekAction.people),

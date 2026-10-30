@@ -20,7 +20,6 @@ import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_foot.dart';
 import 'package:miuchio/ui/album/album_header.dart';
 import 'package:miuchio/ui/album/album_info_screen.dart';
-import 'package:miuchio/ui/album/album_menu.dart';
 import 'package:miuchio/ui/album/album_rename.dart';
 import 'package:miuchio/ui/album/album_stats.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
@@ -135,18 +134,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   void _toggleFilter(String token) =>
       setState(() => _filterToken = _filterToken == token ? null : token);
-
-  Future<void> _openMenu() => AlbumMenu.show(
-        context,
-        onSelectPhotos: _startSelect,
-        onDownloadAlbum: _notYet,
-        onAlbumInfo: _openAlbumInfo,
-        onPeople: _openPeople,
-        onAddSomeone: _viewerIsAdmin ? _openAddMember : null,
-        onRename: _viewerIsAdmin ? _rename : null,
-        onLeave: _me == null || _viewerIsAdmin ? null : _leave,
-        onDeleteAlbum: _viewerIsAdmin ? _deleteAlbum : null,
-      );
 
   AlbumMember? get _owner =>
       _members.where((m) => m.role == 'admin' && !m.revoked).firstOrNull;
@@ -331,11 +318,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     if (done == false) messenger.showSnackBar(_note(AlbumCopy.renameFailed));
   }
 
-  void _notYet() {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(_note('Coming soon.'));
-  }
-
   Future<void> _openAlbumInfo() async {
     final names = <String, String>{};
     for (final m in _members) {
@@ -345,7 +327,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final people = _members.where((m) => !m.revoked).length;
     final owner = _owner;
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
+    final exit = await Navigator.of(context).push(MaterialPageRoute<AlbumInfoExit>(
       builder: (_) => AlbumInfoScreen(
         albumId: widget.album.id,
         albumName: _appState?.albumDisplayName(widget.album.id) ?? 'Album',
@@ -357,8 +339,22 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             : owner.memberToken == widget.album.memberToken
                 ? AlbumCopy.madeByYou
                 : names[owner.memberToken],
+        exit: _viewerIsAdmin
+            ? AlbumInfoExit.delete
+            : _me == null
+                ? null
+                : AlbumInfoExit.leave,
       ),
     ));
+    if (!mounted) return;
+    switch (exit) {
+      case AlbumInfoExit.leave:
+        await _leave();
+      case AlbumInfoExit.delete:
+        await _deleteAlbum();
+      case null:
+        break;
+    }
   }
 
   Future<void> _openPeek(
@@ -458,10 +454,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         if (_selection.contains(r.id)) r
     ];
     return (picked, picked.where(_isMine).toList());
-  }
-
-  void _startSelect() {
-    if (_shown.isNotEmpty) _selection.start();
   }
 
   // Others' photos in the selection are skipped, never sent to the server
@@ -1197,7 +1189,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       children: [
                         _AlbumTopRow(
                           onBack: () => Navigator.of(context).maybePop(),
-                          onMore: _openMenu,
+                          onSelect: shown.isEmpty ? null : _selection.start,
+                          onInfo: _openAlbumInfo,
                         ),
                         AlbumHeader(
                           albumId: widget.album.id,
@@ -1282,9 +1275,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             builder: (context, _) {
               if (!_selection.active) {
                 return AlbumFoot(
-                  onSelect: shown.isEmpty ? null : _selection.start,
                   onAdd: (syncing || keyBlock != null) ? null : _pickAndUpload,
-                  onDownload: _notYet,
                   pill: const UploadPill(),
                 );
               }
@@ -1293,7 +1284,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 count: picked.length,
                 mine: mine.length,
                 onDelete: () => _deleteSelected(mine, picked.length),
-                onDownload: _notYet,
               );
             },
           ),
@@ -1301,7 +1291,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             title: title,
             visible: _collapsed,
             onBack: () => Navigator.of(context).maybePop(),
-            onMore: _openMenu,
+            onSelect: shown.isEmpty ? null : _selection.start,
+            onInfo: _openAlbumInfo,
           ),
           ListenableBuilder(
             listenable: _selection,
@@ -1347,26 +1338,31 @@ SnackBar _note(String text, {bool brief = false}) => SnackBar(
 
 class _AlbumTopRow extends StatelessWidget {
   final VoidCallback onBack;
-  final VoidCallback onMore;
+  // Null while there is nothing to pick
+  final VoidCallback? onSelect;
+  final VoidCallback onInfo;
 
-  const _AlbumTopRow({required this.onBack, required this.onMore});
+  const _AlbumTopRow(
+      {required this.onBack, required this.onSelect, required this.onInfo});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           AlbumIconButton(
             icon: Icons.chevron_left_rounded,
             tooltip: AlbumCopy.back,
             onTap: onBack,
           ),
+          const Spacer(),
+          SelectPill(key: const Key('album-select'), onTap: onSelect),
+          const SizedBox(width: 6),
           AlbumIconButton(
-            icon: Icons.more_horiz_rounded,
-            tooltip: AlbumCopy.more,
-            onTap: onMore,
+            icon: Icons.info_outline_rounded,
+            tooltip: AlbumCopy.albumInfo,
+            onTap: onInfo,
           ),
         ],
       ),

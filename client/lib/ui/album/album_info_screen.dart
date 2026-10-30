@@ -8,6 +8,9 @@ import 'album_stats.dart';
 // Returns null until the member name is decrypted
 typedef MemberNameLookup = String? Function(String memberToken);
 
+// What the album should do once this screen closes
+enum AlbumInfoExit { leave, delete }
+
 class AlbumInfoScreen extends StatelessWidget {
   final String? albumId;
   final String albumName;
@@ -15,6 +18,9 @@ class AlbumInfoScreen extends StatelessWidget {
   final AlbumStats stats;
   final MemberNameLookup nameOf;
   final String? madeBy;
+  // The ending this viewer may choose: owners delete, everyone else leaves.
+  // Null shows neither
+  final AlbumInfoExit? exit;
 
   const AlbumInfoScreen({
     super.key,
@@ -24,6 +30,7 @@ class AlbumInfoScreen extends StatelessWidget {
     required this.stats,
     required this.nameOf,
     this.madeBy,
+    this.exit,
   });
 
   @override
@@ -66,6 +73,15 @@ class AlbumInfoScreen extends StatelessWidget {
                     ? 0
                     : entry.value.bytes / stats.totalBytes,
               ),
+          // The way out sits at the end of the facts, a step past the album
+          // itself, so it is never a stray tap away
+          if (exit != null) ...[
+            const SizedBox(height: 36),
+            _ExitRow(
+              exit: exit!,
+              onTap: () => Navigator.of(context).pop(exit),
+            ),
+          ],
         ],
       ),
     );
@@ -96,6 +112,42 @@ class AlbumInfoScreen extends StatelessWidget {
 
   static const _note =
       TextStyle(fontSize: 12.5, height: 1.45, color: Warm.inkSoft);
+}
+
+class _ExitRow extends StatelessWidget {
+  final AlbumInfoExit exit;
+  final VoidCallback onTap;
+
+  const _ExitRow({required this.exit, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final leave = exit == AlbumInfoExit.leave;
+    return Material(
+      color: Warm.paper,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        key: Key(leave ? 'album-info-leave' : 'album-info-delete'),
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          child: Row(
+            children: [
+              Icon(leave ? Icons.logout_rounded : Icons.delete_outline_rounded,
+                  size: 20, color: Warm.warn),
+              const SizedBox(width: 12),
+              Text(
+                leave ? AlbumCopy.leaveAlbum : AlbumCopy.deleteAlbum,
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w600, color: Warm.warn),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Fact extends StatelessWidget {

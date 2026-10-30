@@ -169,9 +169,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip(AlbumCopy.more).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(AlbumCopy.people));
+    await tester.tap(find.byKey(const Key('album-people')));
     await tester.pumpAndSettle();
 
     expect(find.byType(PeopleScreen), findsOneWidget);
@@ -333,9 +331,7 @@ void main() {
         names: await names(tester),
       ));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip(AlbumCopy.more).first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(AlbumCopy.people));
+      await tester.tap(find.byKey(const Key('album-people')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('person-caroltoken789')));
@@ -364,9 +360,7 @@ void main() {
       names: await names(tester),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip(AlbumCopy.more).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(AlbumCopy.people));
+    await tester.tap(find.byKey(const Key('album-people')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('person-bobtoken456')));
     await tester.pumpAndSettle();

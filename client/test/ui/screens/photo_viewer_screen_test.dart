@@ -64,6 +64,8 @@ void main() {
                     },
                 imageBuilder: (r, _) =>
                     ColoredBox(key: Key('photo-${r.id}'), color: Colors.grey),
+                thumbBuilder: (r) =>
+                    ColoredBox(key: Key('thumb-${r.id}'), color: Colors.grey),
               ),
             )),
             child: const Text('open'),
@@ -255,16 +257,35 @@ void main() {
     expect(asked, ['m1', 'm2']);
   });
 
-  testWidgets('heart and save say they are not here yet', (tester) async {
+  testWidgets('heart says it is not here yet, and there is no save',
+      (tester) async {
     await open(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-heart')));
     await tester.pump();
     expect(find.text(AlbumCopy.heartSoon), findsOneWidget);
-
-    await tester.tap(find.text(AlbumCopy.saveToPhone));
-    await tester.pump();
-    expect(find.text(AlbumCopy.saveSoon), findsOneWidget);
+    expect(find.byIcon(Icons.download_rounded), findsNothing);
     await tester.pumpAndSettle(const Duration(seconds: 3));
+  });
+
+  testWidgets('the strip shows where you are and jumps to a photo',
+      (tester) async {
+    await open(tester);
+
+    expect(find.text(AlbumCopy.photoOf(1, 3)), findsOneWidget);
+    await tester.tap(find.byKey(const Key('thumb-m3')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('photo-m3')), findsOneWidget);
+    expect(find.text(AlbumCopy.photoOf(3, 3)), findsOneWidget);
+  });
+
+  testWidgets('details open from the bottom actions', (tester) async {
+    await open(tester);
+
+    await tester.tap(find.byKey(const Key('photo-peek-details')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('photo-details')), findsOneWidget);
   });
 }

@@ -9,43 +9,46 @@ import 'album_copy.dart';
 class PeekDock extends StatelessWidget {
   final bool owner;
   final VoidCallback onHeart;
-  final VoidCallback onSave;
   final VoidCallback onDelete;
+  // Null where the details already show, as in the peek
+  final VoidCallback? onDetails;
 
   const PeekDock({
     super.key,
     required this.owner,
     required this.onHeart,
-    required this.onSave,
     required this.onDelete,
+    this.onDetails,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 320),
-      child: Row(
-        children: [
+    final details = onDetails;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        PeekRoundButton(
+          key: const Key('photo-peek-heart'),
+          label: AlbumCopy.heart,
+          icon: Icons.favorite_border_rounded,
+          onTap: onHeart,
+        ),
+        if (details != null)
           PeekRoundButton(
-            key: const Key('photo-peek-heart'),
-            label: AlbumCopy.heart,
-            icon: Icons.favorite_border_rounded,
-            onTap: onHeart,
+            key: const Key('photo-peek-details'),
+            label: AlbumCopy.details,
+            icon: Icons.info_outline_rounded,
+            onTap: details,
           ),
-          const SizedBox(width: 10),
-          Expanded(child: _SaveStone(onTap: onSave)),
-          if (owner) ...[
-            const SizedBox(width: 10),
-            PeekRoundButton(
-              key: const Key('photo-peek-delete'),
-              label: AlbumCopy.delete,
-              icon: Icons.delete_outline_rounded,
-              quiet: true,
-              onTap: onDelete,
-            ),
-          ],
-        ],
-      ),
+        if (owner)
+          PeekRoundButton(
+            key: const Key('photo-peek-delete'),
+            label: AlbumCopy.delete,
+            icon: Icons.delete_outline_rounded,
+            quiet: true,
+            onTap: onDelete,
+          ),
+      ],
     );
   }
 }
@@ -82,78 +85,6 @@ class PeekRoundButton extends StatelessWidget {
           child: Icon(icon,
               size: 21,
               color: quiet ? const Color(0x9EFFFFFF) : const Color(0xD9FFFFFF)),
-        ),
-      ),
-    );
-  }
-}
-
-class _SaveStone extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _SaveStone({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: onTap,
-      child: Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          gradient: Warm.stoneFill,
-          borderRadius: BorderRadius.circular(25),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x40000000),
-              offset: Offset(0, 6),
-              blurRadius: 18,
-            ),
-          ],
-        ),
-        child: const FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.download_rounded, size: 18, color: Warm.ink),
-              SizedBox(width: 8),
-              Text(
-                AlbumCopy.saveToPhone,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w600,
-                  color: Warm.ink,
-                ),
-              ),
-              SizedBox(width: 8),
-              _StoneChip(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StoneChip extends StatelessWidget {
-  const _StoneChip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: Warm.inkGhost,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Text(
-        AlbumCopy.laterBadge,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
-          color: Warm.inkSoft,
         ),
       ),
     );

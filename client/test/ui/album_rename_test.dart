@@ -12,7 +12,6 @@ import 'package:miuchio/data/models/member_model.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/e2ee/sealed_name.dart';
-import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
 
@@ -131,8 +130,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('album-title')), findsNothing);
-    await tester.tap(find.byTooltip(AlbumCopy.more).first);
-    await tester.pumpAndSettle();
-    expect(find.text(AlbumCopy.renameAlbum), findsNothing);
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
   });
 }

@@ -49,13 +49,29 @@ class AlbumHeader extends StatelessWidget {
           if (onRename == null)
             Text(title, style: titleStyle)
           else
+            // The pencil rides on the title's last line, so a long name
+            // still shows that tapping it renames
             GestureDetector(
               key: const Key('album-title'),
+              behavior: HitTestBehavior.opaque,
               onTap: onRename,
               child: Semantics(
                 button: true,
                 hint: AlbumCopy.renameAlbum,
-                child: Text(title, style: titleStyle),
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: title),
+                    const WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: Padding(
+                        padding: EdgeInsets.only(left: 10),
+                        child: Icon(Icons.edit_outlined,
+                            size: 18, color: Warm.inkFaint),
+                      ),
+                    ),
+                  ]),
+                  style: titleStyle,
+                ),
               ),
             ),
           const SizedBox(height: 7),
@@ -112,6 +128,7 @@ class _Summary extends StatelessWidget {
       button: true,
       label: tail,
       child: GestureDetector(
+        key: const Key('album-people'),
         behavior: HitTestBehavior.opaque,
         onTap: people,
         child: Text.rich(
@@ -171,14 +188,16 @@ class AlbumTopBar extends StatelessWidget {
   final String title;
   final bool visible;
   final VoidCallback onBack;
-  final VoidCallback onMore;
+  final VoidCallback? onSelect;
+  final VoidCallback onInfo;
 
   const AlbumTopBar({
     super.key,
     required this.title,
     required this.visible,
     required this.onBack,
-    required this.onMore,
+    required this.onInfo,
+    this.onSelect,
   });
 
   static const barHeight = 62.0;
@@ -226,10 +245,12 @@ class AlbumTopBar extends StatelessWidget {
                       color: Warm.ink),
                 ),
               ),
+              SelectPill(key: const Key('album-select-bar'), onTap: onSelect),
+              const SizedBox(width: 6),
               AlbumIconButton(
-                icon: Icons.more_horiz_rounded,
-                tooltip: AlbumCopy.more,
-                onTap: onMore,
+                icon: Icons.info_outline_rounded,
+                tooltip: AlbumCopy.albumInfo,
+                onTap: onInfo,
               ),
             ],
           ),
@@ -305,6 +326,54 @@ class SelectTopBar extends StatelessWidget {
                     allSelected ? AlbumCopy.selectNone : AlbumCopy.selectAll,
                     style: Warm.acBtnQuiet.copyWith(color: Warm.cta),
                   ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Picking photos starts from the top right, where photo apps keep it, so
+// the album's own controls stay in one place
+class SelectPill extends StatelessWidget {
+  // Null while there is nothing to pick
+  final VoidCallback? onTap;
+
+  const SelectPill({super.key, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: AlbumCopy.selectPhotos,
+      excludeSemantics: true,
+      child: PressableScale(
+        onTap: onTap,
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.only(left: 11, right: 14),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Warm.wellEmpty,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_outline_rounded,
+                  size: 16, color: enabled ? Warm.ink : Warm.inkFaint),
+              const SizedBox(width: 6),
+              Text(
+                AlbumCopy.select,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: enabled ? Warm.ink : Warm.inkFaint,
                 ),
               ),
             ],

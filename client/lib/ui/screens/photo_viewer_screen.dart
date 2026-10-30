@@ -20,6 +20,8 @@ class PhotoViewerScreen extends StatefulWidget {
   // The page goes at once, false brings it back
   final Future<bool> Function(MediaRecord record) onDelete;
   final Widget Function(MediaRecord record, int cacheWidth)? imageBuilder;
+  // Test seam for the strip of thumbnails along the bottom
+  final Widget Function(MediaRecord record)? thumbBuilder;
 
   const PhotoViewerScreen({
     super.key,
@@ -31,6 +33,7 @@ class PhotoViewerScreen extends StatefulWidget {
     required this.isOwner,
     required this.onDelete,
     this.imageBuilder,
+    this.thumbBuilder,
   });
 
   @override
@@ -191,14 +194,30 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
           _Chrome(
             visible: _chrome,
             top: _TopBar(
-              face: widget.faceOf(record.uploaderToken, 28),
+              face: widget.faceOf(record.uploaderToken, 34),
               name: _nameOf(record) ?? AlbumCopy.unknownMember,
               day: formatPhotoDay(record.createdAt),
+              position: _records.length < 2
+                  ? null
+                  : AlbumCopy.photoOf(_index + 1, _records.length),
             ),
             bottom: _BottomBar(
+              strip: _records.length < 2
+                  ? null
+                  : _Strip(
+                      records: _records,
+                      index: _index,
+                      thumb: (r) =>
+                          widget.thumbBuilder?.call(r) ??
+                          (r.hasThumb
+                              ? EncryptedThumbnail(
+                                  record: r, cache: widget.cache)
+                              : const SizedBox.shrink()),
+                      onPick: (i) => _pages.jumpToPage(i),
+                    ),
               owner: widget.isOwner(record),
               onHeart: () => _say(AlbumCopy.heartSoon),
-              onSave: () => _say(AlbumCopy.saveSoon),
+              onDetails: _details,
               onDelete: _delete,
             ),
           ),
@@ -403,17 +422,25 @@ class _Chrome extends StatelessWidget {
   }
 }
 
+// Who shared it and when, like a post header, with the place in the album
 class _TopBar extends StatelessWidget {
   final Widget face;
   final String name;
   final String day;
+  final String? position;
 
-  const _TopBar({required this.face, required this.name, required this.day});
+  const _TopBar({
+    required this.face,
+    required this.name,
+    required this.day,
+    this.position,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final at = position;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 6, 16, 18),
+      padding: const EdgeInsets.fromLTRB(4, 6, 18, 22),
       child: Row(
         children: [
           IconButton(
@@ -423,31 +450,49 @@ class _TopBar extends StatelessWidget {
           ),
           face,
           const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  day,
+                  style:
+                      const TextStyle(fontSize: 12.5, color: Color(0xB3FFFFFF)),
+                ),
+              ],
+            ),
+          ),
+          if (at != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Warm.glassFill,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Warm.glassHairline),
+              ),
+              child: Text(
+                at,
+                key: const Key('photo-viewer-position'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xD9FFFFFF),
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
               ),
             ),
-          ),
-          Container(
-            width: 2.5,
-            height: 2.5,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: const BoxDecoration(
-              color: Color(0x80FFFFFF),
-              shape: BoxShape.circle,
-            ),
-          ),
-          Text(
-            day,
-            style: const TextStyle(fontSize: 13, color: Color(0xB3FFFFFF)),
-          ),
         ],
       ),
     );
@@ -455,29 +500,136 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BottomBar extends StatelessWidget {
+  final Widget? strip;
   final bool owner;
   final VoidCallback onHeart;
-  final VoidCallback onSave;
+  final VoidCallback onDetails;
   final VoidCallback onDelete;
 
   const _BottomBar({
+    required this.strip,
     required this.owner,
     required this.onHeart,
-    required this.onSave,
+    required this.onDetails,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 14),
-      child: Center(
-        child: PeekDock(
-          owner: owner,
-          onHeart: onHeart,
-          onSave: onSave,
-          onDelete: onDelete,
-        ),
+      padding: const EdgeInsets.fromLTRB(0, 28, 0, 10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (strip != null) ...[strip!, const SizedBox(height: 16)],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: PeekDock(
+              owner: owner,
+              onHeart: onHeart,
+              onDetails: onDetails,
+              onDelete: onDelete,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Every photo in the album as a small frame, the current one lifted and
+// centred. Thumbnails come from the same on-device cache as the grid
+class _Strip extends StatefulWidget {
+  final List<MediaRecord> records;
+  final int index;
+  final Widget Function(MediaRecord record) thumb;
+  final ValueChanged<int> onPick;
+
+  const _Strip({
+    required this.records,
+    required this.index,
+    required this.thumb,
+    required this.onPick,
+  });
+
+  static const double _w = 34;
+  static const double _h = 46;
+  static const double _gap = 3;
+  static const double _step = _w + _gap;
+
+  @override
+  State<_Strip> createState() => _StripState();
+}
+
+class _StripState extends State<_Strip> {
+  late final ScrollController _scroll =
+      ScrollController(initialScrollOffset: widget.index * _Strip._step);
+
+  @override
+  void didUpdateWidget(_Strip old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index && _scroll.hasClients) {
+      _scroll.animateTo(widget.index * _Strip._step,
+          duration: Warm.quick, curve: Warm.easeOut);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      key: const Key('photo-viewer-strip'),
+      height: _Strip._h + 6,
+      child: LayoutBuilder(
+        builder: (context, box) {
+          // Side room lets the first and last frames reach the centre
+          final side = (box.maxWidth - _Strip._w) / 2;
+          return ListView.builder(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.symmetric(horizontal: side),
+            itemExtent: _Strip._step,
+            itemCount: widget.records.length,
+            itemBuilder: (context, i) {
+              final on = i == widget.index;
+              return Center(
+                child: GestureDetector(
+                  onTap: () => widget.onPick(i),
+                  child: AnimatedContainer(
+                    duration: Warm.quick,
+                    curve: Warm.easeOut,
+                    width: _Strip._w,
+                    height: on ? _Strip._h + 6 : _Strip._h,
+                    decoration: BoxDecoration(
+                      color: const Color(0x26FFFFFF),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: on ? Colors.white : Colors.transparent,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: AnimatedOpacity(
+                        opacity: on ? 1 : 0.55,
+                        duration: Warm.quick,
+                        child: SizedBox.expand(
+                          child: widget.thumb(widget.records[i]),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

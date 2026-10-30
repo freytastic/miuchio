@@ -1,9 +1,7 @@
 abstract final class AlbumCopy {
   static const back = 'Back to albums';
-  static const more = 'More';
 
   static const select = 'Select';
-  static const download = 'Download';
   static const addPhotos = 'Add photos';
 
   static const selectPhotos = 'Select photos';
@@ -48,7 +46,6 @@ abstract final class AlbumCopy {
       n == 1 ? deletingPhoto : 'Deleting $n photos for everyone';
   static String deleteManyFailed(int n) =>
       n == 1 ? deleteFailed : "Couldn't delete $n photos.";
-  static const downloadAlbum = 'Download album';
   static const people = 'People';
   static const albumInfo = 'Album info';
   static const openAlbum = 'Open album';
@@ -128,10 +125,10 @@ abstract final class AlbumCopy {
   static const deletingPhoto = 'Deleting the photo for everyone';
   static const unknownMember = 'Someone';
 
-  static const saveToPhone = 'Save to phone';
-  static const saveSoon = 'Saving to your phone is coming soon.';
   static const heartSoon = 'Hearts are coming soon.';
   static const heart = 'Heart';
+  static const details = 'Details';
+  static String photoOf(int at, int count) => '$at of $count';
   static const deleteForEveryone = 'Delete for everyone';
   static const betaV2 = 'Soon';
   static const hearts = 'Hearts';

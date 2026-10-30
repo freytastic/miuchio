@@ -142,7 +142,7 @@ void main() {
     expect(deletes, 1);
   });
 
-  testWidgets('one heart, and heart and save say they are not here yet',
+  testWidgets('one heart, which says it is not here yet, and no save',
       (tester) async {
     await pump(tester);
     expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
@@ -152,9 +152,7 @@ void main() {
     await tester.pump();
     expect(find.text(AlbumCopy.heartSoon), findsOneWidget);
 
-    await tester.tap(find.text(AlbumCopy.saveToPhone));
-    await tester.pump();
-    expect(find.text(AlbumCopy.saveSoon), findsOneWidget);
+    expect(find.byIcon(Icons.download_rounded), findsNothing);
     await tester.pumpAndSettle(const Duration(seconds: 3));
   });
 

@@ -128,7 +128,7 @@ void main() {
     await tester.pumpWidget(wrap(api));
     await settle(tester);
 
-    await tester.tap(find.text(AlbumCopy.select));
+    await tester.tap(find.byKey(const Key('album-select')));
     await tester.pump();
     await tester.tap(tile(0));
     await tester.tap(tile(1));
@@ -179,7 +179,7 @@ void main() {
     await tester.pumpWidget(wrap(api));
     await settle(tester);
 
-    await tester.tap(find.text(AlbumCopy.select));
+    await tester.tap(find.byKey(const Key('album-select')));
     await tester.pump();
     await tester.tap(tile(0));
     await tester.pump();
@@ -199,7 +199,7 @@ void main() {
     await tester.pumpWidget(wrap(api));
     await settle(tester);
 
-    await tester.tap(find.text(AlbumCopy.select));
+    await tester.tap(find.byKey(const Key('album-select')));
     await settle(tester); // the bar slides in
     await tester.tap(find.byKey(const Key('select-all')));
     await tester.pump();
@@ -209,6 +209,6 @@ void main() {
     await tester.tap(find.byKey(const Key('select-close')));
     await settle(tester);
     expect(find.byKey(const Key('select-delete')), findsNothing);
-    expect(find.text(AlbumCopy.select), findsOneWidget);
+    expect(find.byKey(const Key('album-select')), findsOneWidget);
   });
 }

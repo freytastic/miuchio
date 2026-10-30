@@ -1,87 +1,70 @@
 import 'package:flutter/material.dart';
-import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
-import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 import 'album_copy.dart';
 
+// The add button sits bottom right, where Home keeps its own, so it never
+// moves between screens. Everything else lives in the album's action row
 class AlbumFoot extends StatelessWidget {
-  final VoidCallback? onSelect;
   final VoidCallback? onAdd;
-  final VoidCallback? onDownload;
 
   final Widget? pill;
 
-  // Keeps content above the actions
-  static const clearance = 136.0;
+  // Keeps content above the add button
+  static const clearance = 104.0;
+  static const _right = 18.0;
+  static const _make = 56.0;
 
   const AlbumFoot({
     super.key,
-    required this.onSelect,
     required this.onAdd,
-    required this.onDownload,
     this.pill,
   });
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final base = 18 + bottom;
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
-      child: Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          FootScrim(height: clearance + bottom),
-          Padding(
-            padding: EdgeInsets.only(left: 44, right: 44, bottom: 18 + bottom),
-            // Equal sides keep the add button centred whatever the labels
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: _Act(label: AlbumCopy.select, onTap: onSelect),
-                  ),
-                ),
-                MakeButton(onTap: onAdd, tooltip: AlbumCopy.addPhotos),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: _Act(label: AlbumCopy.download, onTap: onDownload),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (pill != null)
+      child: SizedBox(
+        height: clearance + bottom,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
             Positioned(
-              right: 16,
-              bottom: 96 + bottom,
-              child: pill!,
+              right: _right,
+              bottom: base,
+              child: MakeButton(
+                  onTap: onAdd, tooltip: AlbumCopy.addPhotos, size: _make),
             ),
-        ],
+            if (pill != null)
+              Positioned(
+                right: 16,
+                bottom: base + _make + 12,
+                child: pill!,
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// Replaces the foot while photos are being picked
+// Replaces the add button while photos are being picked
 class SelectFoot extends StatelessWidget {
   final int count;
   final int mine;
   final VoidCallback onDelete;
-  final VoidCallback onDownload;
 
   const SelectFoot({
     super.key,
     required this.count,
     required this.mine,
     required this.onDelete,
-    required this.onDownload,
   });
 
   @override
@@ -97,96 +80,14 @@ class SelectFoot extends StatelessWidget {
           FootScrim(height: AlbumFoot.clearance + bottom),
           Padding(
             padding: EdgeInsets.fromLTRB(20, 0, 20, 18 + bottom),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: WarmButton(
-                        key: const Key('select-delete'),
-                        label: AlbumCopy.deleteSelected(count, mine),
-                        small: true,
-                        onTap: mine == 0 ? null : onDelete,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(child: _SoonPill(onTap: onDownload)),
-                  ],
-                ),
-              ],
+            child: WarmButton(
+              key: const Key('select-delete'),
+              label: AlbumCopy.deleteSelected(count, mine),
+              small: true,
+              onTap: mine == 0 ? null : onDelete,
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SoonPill extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _SoonPill({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return PressableScale(
-      key: const Key('select-download'),
-      onTap: onTap,
-      child: Container(
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Warm.wellEmpty,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(AlbumCopy.download,
-                style: Warm.acBtnQuiet.copyWith(color: Warm.inkFaint)),
-            const SizedBox(width: 7),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: Warm.ground,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                AlbumCopy.laterBadge,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                  color: Warm.inkFaint,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Act extends StatelessWidget {
-  final String label;
-  final VoidCallback? onTap;
-
-  const _Act({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
-        child: Text(
-          label,
-          style: Warm.tab.copyWith(
-            color: onTap == null ? Warm.inkGhost : Warm.inkFaint,
-          ),
-        ),
       ),
     );
   }

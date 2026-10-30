@@ -243,7 +243,6 @@ class _PhotoPeekState extends State<PhotoPeek> with TickerProviderStateMixin {
                                   child: PeekDock(
                                     owner: widget.isOwner,
                                     onHeart: () => _say(AlbumCopy.heartSoon),
-                                    onSave: () => _say(AlbumCopy.saveSoon),
                                     onDelete: _confirmDelete,
                                   ),
                                 ),
@@ -480,7 +479,6 @@ class _Caption extends StatelessWidget {
 
   static String formatWhen(DateTime at, {DateTime? now}) =>
       formatPhotoDay(at, now: now);
-
 }
 
 class _CaptionDot extends StatelessWidget {
