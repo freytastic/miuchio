@@ -17,8 +17,10 @@ const String _kProbeAsset = 'lib/assets/onboarding/camera_stage_probe.webp';
 const int _kMasterWidth = 1400;
 const int _kLiteWidth = 720;
 
-// Build override: full, lite or still
-const String _kForcedTier = String.fromEnvironment('MIUCHIO_STAGE_TIER');
+// The opening is a still by default. Build override: full, lite, or auto to
+// play the clip at the tier the phone can keep up with
+const String _kForcedTier =
+    String.fromEnvironment('MIUCHIO_STAGE_TIER', defaultValue: 'still');
 
 // Measured late frames cost about 1.45x the average
 // A 1.25x budget limit leaves average decode time near 0.85x the budget
@@ -51,6 +53,9 @@ class CameraStage extends StatefulWidget {
 
   // When the last polaroid lands in the clip's own timeline
   static const Duration printsSettled = Duration(milliseconds: 2540);
+
+  // True when the stage shows only the still, so nothing should wait on it
+  static const bool still = _kForcedTier == 'still';
 
   // Fires once, when the first clip frame or the still is on screen, with the
   // tier playing or null for the still
@@ -134,7 +139,7 @@ class CameraStage extends StatefulWidget {
 
   static void prewarm() {
     final view = ui.PlatformDispatcher.instance.implicitView;
-    if (view == null) return;
+    if (view == null || still) return;
     if (ui.PlatformDispatcher.instance.accessibilityFeatures.disableAnimations) {
       return;
     }
@@ -175,7 +180,8 @@ class _CameraStageState extends State<CameraStage>
 
   Future<void> _load(int width) async {
     _decodeWidth = width;
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+    if (CameraStage.still ||
+        (MediaQuery.maybeDisableAnimationsOf(context) ?? false)) {
       _StagePrep.discard();
       await _settle();
       return;
@@ -455,12 +461,7 @@ Future<_Clip?> _prepare(int paintWidth) async {
   final span = Trace.start('onboarding.load', fields: {'w': paintWidth});
   _Clip? clip;
   try {
-    final forced = _forcedTier();
-    if (_kForcedTier == 'still') {
-      span.end(fields: {'tier': 'still'});
-      return null;
-    }
-    var tier = forced;
+    var tier = _forcedTier();
     if (tier == null) {
       final probe = await _probeLate(paintWidth);
       tier = chooseStageTier(probe.decodeUs, probe.budget);

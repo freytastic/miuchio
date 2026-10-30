@@ -131,6 +131,7 @@ class _IntroCopy extends StatelessWidget {
             color: Warm.cta,
             duration: CameraStage.printsSettled,
             cue: wordCue,
+            written: CameraStage.still,
             semanticsLabel: 'Miuchio',
           ),
         ),

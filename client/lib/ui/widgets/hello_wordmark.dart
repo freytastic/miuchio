@@ -115,6 +115,7 @@ class HelloWordmark extends StatefulWidget {
     required this.duration,
     required this.semanticsLabel,
     this.cue,
+    this.written = false,
   });
 
   final WordmarkGlyphs glyphs;
@@ -125,6 +126,9 @@ class HelloWordmark extends StatefulWidget {
 
   // Null starts writing as soon as the texture is ready
   final WordmarkCue? cue;
+
+  // Shows the finished word instead of writing it
+  final bool written;
 
   @override
   State<HelloWordmark> createState() => _HelloWordmarkState();
@@ -153,7 +157,8 @@ class _HelloWordmarkState extends State<HelloWordmark>
     super.didChangeDependencies();
     if (_requested) return;
     _requested = true;
-    if (_kMode == 'off' ||
+    if (widget.written ||
+        _kMode == 'off' ||
         (MediaQuery.maybeDisableAnimationsOf(context) ?? false)) {
       _write.value = 1;
     }
