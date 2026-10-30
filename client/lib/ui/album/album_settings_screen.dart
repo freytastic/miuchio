@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:miuchio/domain/albums/known_invitees.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
+import 'package:miuchio/ui/widgets/grouped_list.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/navigation/screen_route.dart';
@@ -48,9 +50,6 @@ class AlbumSettingsScreen extends StatefulWidget {
   final Future<void> Function(ManagedPerson person)? onOpen;
   final VoidCallback onInfo;
   final VoidCallback onDelete;
-
-  // Matches the server's cap on members per album
-  static const capacity = 10;
 
   const AlbumSettingsScreen({
     super.key,
@@ -140,7 +139,7 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
   Widget build(BuildContext context) {
     final people = _people;
     final count = people?.length ?? 0;
-    final full = count >= AlbumSettingsScreen.capacity;
+    final full = count >= albumMemberCap;
     final cover = _coverRecord;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Warm.overlayOnGround,
@@ -167,7 +166,7 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
                     widget.photos.any((r) => r.hasThumb) ? _changeCover : null,
               ),
               const SizedBox(height: 12),
-              _Card(children: [
+              GroupCard(children: [
                 _LinkRow(
                   key: const Key('settings-rename'),
                   icon: Icons.edit_outlined,
@@ -177,11 +176,11 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
                 ),
               ]),
               const SizedBox(height: 28),
-              _SectionLabel(
+              SectionLabel(
                 AlbumCopy.people,
                 trailing: people == null
                     ? null
-                    : AlbumCopy.peopleOf(count, AlbumSettingsScreen.capacity),
+                    : AlbumCopy.peopleOf(count, albumMemberCap),
               ),
               const SizedBox(height: 10),
               if (_failed)
@@ -210,7 +209,7 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
                   ),
                 )
               else
-                _Card(children: [
+                GroupCard(children: [
                   _AddRow(full: full, onTap: full ? null : _add),
                   for (final p in people)
                     _PersonRow(
@@ -227,7 +226,7 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
                 child: Text(AlbumCopy.manageNote, style: Warm.note),
               ),
               const SizedBox(height: 28),
-              _Card(children: [
+              GroupCard(children: [
                 _LinkRow(
                   key: const Key('settings-info'),
                   icon: Icons.info_outline_rounded,
@@ -237,7 +236,7 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
                 ),
               ]),
               const SizedBox(height: 12),
-              _Card(children: [
+              GroupCard(children: [
                 _LinkRow(
                   key: const Key('album-info-delete'),
                   icon: Icons.delete_outline_rounded,
@@ -343,27 +342,6 @@ class _CoverHero extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  final String? trailing;
-
-  const _SectionLabel(this.text, {this.trailing});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        children: [
-          Expanded(child: Text(text.toUpperCase(), style: Warm.sectionLabel)),
-          if (trailing != null)
-            Text(trailing!, style: Warm.rowValue.copyWith(fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
-
 class _LinkRow extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -382,50 +360,19 @@ class _LinkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ink = warn ? Warm.warn : Warm.ink;
-    return Semantics(
-      button: true,
-      label: title,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 40,
-                child: Icon(icon,
-                    size: 20, color: warn ? Warm.warn : Warm.inkSoft),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Warm.rowTitle.copyWith(color: ink)),
-                    if (detail != null) ...[
-                      const SizedBox(height: 1),
-                      Text(detail!,
-                          style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
-                    ],
-                  ],
-                ),
-              ),
-              if (!warn)
-                const Icon(Icons.chevron_right_rounded,
-                    size: 18, color: Warm.inkGhost),
-            ],
-          ),
-        ),
-      ),
+    return ListRow(
+      lead: ListRow.icon(icon, color: warn ? Warm.warn : Warm.inkSoft),
+      title: title,
+      detail: detail,
+      titleColor: warn ? Warm.warn : Warm.ink,
+      trailing: warn
+          ? null
+          : const Icon(Icons.chevron_right_rounded,
+              size: 18, color: Warm.inkGhost),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
     );
   }
 }
@@ -480,7 +427,7 @@ class CoverPickerScreen extends StatelessWidget {
                       child:
                           Text(AlbumCopy.chooseCoverLead, style: Warm.rowValue),
                     ),
-                    _Card(children: [
+                    GroupCard(children: [
                       _LinkRow(
                         key: const Key('cover-newest'),
                         icon: current == null
@@ -547,35 +494,6 @@ class CoverPickerScreen extends StatelessWidget {
   }
 }
 
-// One soft card, divided by hairlines that start after the faces
-class _Card extends StatelessWidget {
-  final List<Widget> children;
-
-  const _Card({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Warm.groundLift,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            if (i > 0)
-              const Padding(
-                padding: EdgeInsets.only(left: 70),
-                child: Divider(height: 1, thickness: 1, color: Warm.inkGhost),
-              ),
-            children[i],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _AddRow extends StatelessWidget {
   final bool full;
   final VoidCallback? onTap;
@@ -584,40 +502,14 @@ class _AddRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      enabled: onTap != null,
-      label: full ? AlbumCopy.addFull : AlbumCopy.addSomeone,
-      excludeSemantics: true,
-      child: GestureDetector(
-        key: const Key('manage-add'),
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Row(
-            children: [
-              MakeButton(size: 40, onTap: onTap),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(AlbumCopy.addSomeone,
-                        style: Warm.rowTitle
-                            .copyWith(color: full ? Warm.inkFaint : Warm.ink)),
-                    const SizedBox(height: 1),
-                    Text(
-                      full ? AlbumCopy.addFull : AlbumCopy.addByIdShort,
-                      style: Warm.rowValue.copyWith(color: Warm.inkFaint),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return ListRow(
+      key: const Key('manage-add'),
+      lead: MakeButton(size: 40, onTap: onTap),
+      title: AlbumCopy.addSomeone,
+      detail: full ? AlbumCopy.addFull : AlbumCopy.addByIdShort,
+      titleColor: full ? Warm.inkFaint : Warm.ink,
+      semanticsLabel: full ? AlbumCopy.addFull : AlbumCopy.addSomeone,
+      onTap: onTap,
     );
   }
 }
@@ -634,39 +526,19 @@ class _PersonRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = person;
-    final status = p.invited
-        ? AlbumCopy.invitedPending
-        : p.owner
-            ? (p.self ? AlbumCopy.ownerYou : AlbumCopy.madeThisAlbum)
-            : (p.self ? AlbumCopy.you : null);
     final remove = onRemove;
-    final row = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      child: Row(
-        children: [
-          SizedBox.square(
-            dimension: 40,
-            child: p.invited ? const DashedCircle(size: 40) : p.face,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(p.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Warm.rowTitle),
-                if (status != null) ...[
-                  const SizedBox(height: 1),
-                  Text(status,
-                      style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
-                ],
-              ],
-            ),
-          ),
-          if (remove != null)
-            _RemovePill(
+    return ListRow(
+      key: onOpen == null ? null : Key('manage-open-${p.id}'),
+      lead: p.invited ? const DashedCircle(size: 40) : p.face,
+      title: p.name,
+      detail: p.invited
+          ? AlbumCopy.invitedPending
+          : p.owner
+              ? (p.self ? AlbumCopy.ownerYou : AlbumCopy.madeThisAlbum)
+              : (p.self ? AlbumCopy.you : null),
+      trailing: remove == null
+          ? null
+          : _RemovePill(
               key: Key('manage-remove-${p.id}'),
               label: p.invited ? AlbumCopy.cancelShort : AlbumCopy.remove,
               semantics: p.invited
@@ -674,15 +546,7 @@ class _PersonRow extends StatelessWidget {
                   : AlbumCopy.removeTitle(p.name),
               onTap: remove,
             ),
-        ],
-      ),
-    );
-    if (onOpen == null) return row;
-    return GestureDetector(
-      key: Key('manage-open-${p.id}'),
-      behavior: HitTestBehavior.opaque,
       onTap: onOpen,
-      child: row,
     );
   }
 }

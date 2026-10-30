@@ -1,19 +1,18 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:miuchio/app/album_setup.dart';
-import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/data/storage/identity_pin_store.dart';
 import 'package:miuchio/data/storage/known_people_store.dart';
+import 'package:miuchio/domain/albums/known_invitees.dart';
 import 'package:miuchio/e2ee/handle.dart';
-import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
+import 'package:miuchio/ui/widgets/grouped_list.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
@@ -23,30 +22,11 @@ import 'create_copy.dart';
 import 'id_dash_formatter.dart';
 
 // Creates the album before finishing encryption and invites in background
-
-// Someone who can be ticked: a person this phone invited before, or an ID
-// typed in just now
-class _Pick {
-  final String handle;
-  final String? name;
-  final String? albumId;
-  final String? token;
-  final bool isNew;
-
-  const _Pick({
-    required this.handle,
-    this.name,
-    this.albumId,
-    this.token,
-    this.isNew = false,
-  });
-}
-
 class CreateAlbumScreen extends StatefulWidget {
   const CreateAlbumScreen({super.key});
 
-  // An album holds 10 people, so 9 besides you
-  static const maxInvites = 9;
+  // Everyone but you
+  static const maxInvites = albumMemberCap - 1;
 
   @override
   State<CreateAlbumScreen> createState() => _CreateAlbumScreenState();
@@ -90,46 +70,25 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen> {
     super.dispose();
   }
 
-  // People this phone invited before, named from whichever album they show
-  // up in. Nothing here leaves the phone
-  List<_Pick> _known() {
+  // People this phone invited before, besides you and anyone typed in
+  List<KnownInvitee> _known() {
     final state = context.watch<AppState>();
-    final store = context.watch<KnownPeopleStore?>();
-    IdentityPinStore? pins;
-    try {
-      pins = context.read<IdentityPinStore>();
-    } catch (_) {
-      pins = null;
-    }
     final mine = state.miuchioId;
-    final out = <_Pick>[];
-    for (final p in store?.people ?? const <KnownPerson>[]) {
-      if (p.handle == mine || _typed.contains(p.handle)) continue;
-      String? album = p.albumId;
-      String? token = p.memberToken;
-      var name = state.memberDisplayName(album, token);
-      if (name == null && pins != null) {
-        for (final a in state.albums) {
-          final bytes = uuidToBytes(a.id);
-          if (bytes == null) continue;
-          for (final m in a.memberPreviews) {
-            final ik = pins.pinnedIk(hexAlbumId(bytes), m.memberToken);
-            if (ik == null || base64.encode(ik) != p.ikPub) continue;
-            final found = state.memberDisplayName(a.id, m.memberToken);
-            if (found != null) {
-              name = found;
-              album = a.id;
-              token = m.memberToken;
-              break;
-            }
-          }
-          if (name != null) break;
-        }
-      }
-      out.add(
-          _Pick(handle: p.handle, name: name, albumId: album, token: token));
+    return findKnownInvitees(
+      people: context.watch<KnownPeopleStore?>()?.people ?? const [],
+      albums: state.albums,
+      nameOf: state.memberDisplayName,
+      pinnedIk: _pins?.pinnedIk,
+      skip: {if (mine != null) mine, ..._typed},
+    );
+  }
+
+  IdentityPinStore? get _pins {
+    try {
+      return context.read<IdentityPinStore>();
+    } catch (_) {
+      return null;
     }
-    return out;
   }
 
   void _toggle(String handle) {
@@ -154,7 +113,7 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen> {
     _idFocus.requestFocus();
   }
 
-  void _addTyped(List<_Pick> known) {
+  void _addTyped(List<KnownInvitee> known) {
     final String handle;
     try {
       handle = normalizeHandle(_idCtrl.text);
@@ -253,7 +212,7 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen> {
   Widget build(BuildContext context) {
     final known = _known();
     final picks = [
-      for (final h in _typed) _Pick(handle: h, isNew: true),
+      for (final h in _typed) KnownInvitee(handle: h),
       ...known,
     ];
     final bottom = MediaQuery.paddingOf(context).bottom;
@@ -297,26 +256,19 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen> {
                             style: Warm.note.copyWith(color: Warm.warn)),
                       ),
                     const SizedBox(height: 30),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(CreateCopy.invitePeople.toUpperCase(),
-                                style: Warm.sectionLabel),
-                          ),
-                          if (_chosen.isNotEmpty)
-                            Text(CreateCopy.chosen(_chosen.length),
-                                style: Warm.rowValue.copyWith(fontSize: 12)),
-                        ],
-                      ),
+                    SectionLabel(
+                      CreateCopy.invitePeople,
+                      trailing: _chosen.isEmpty
+                          ? null
+                          : CreateCopy.chosen(_chosen.length),
                     ),
                     const SizedBox(height: 10),
-                    _Card(children: [
+                    GroupCard(children: [
                       for (final p in picks)
                         _PersonRow(
                           key: ValueKey('pick-${p.handle}'),
-                          pick: p,
+                          person: p,
+                          isNew: _typed.contains(p.handle),
                           chosen: _chosen.contains(p.handle),
                           enabled: !_busy,
                           onTap: () => _toggle(p.handle),
@@ -362,44 +314,18 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen> {
   }
 }
 
-// One soft card, divided by hairlines that start after the faces
-class _Card extends StatelessWidget {
-  final List<Widget> children;
-
-  const _Card({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Warm.groundLift,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            if (i > 0)
-              const Padding(
-                padding: EdgeInsets.only(left: 70),
-                child: Divider(height: 1, thickness: 1, color: Warm.inkGhost),
-              ),
-            children[i],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _PersonRow extends StatelessWidget {
-  final _Pick pick;
+  final KnownInvitee person;
+  // Typed in just now rather than invited before
+  final bool isNew;
   final bool chosen;
   final bool enabled;
   final VoidCallback onTap;
 
   const _PersonRow({
     super.key,
-    required this.pick,
+    required this.person,
+    required this.isNew,
     required this.chosen,
     required this.enabled,
     required this.onTap,
@@ -407,58 +333,27 @@ class _PersonRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = pick;
+    final p = person;
     final id = formatHandle(p.handle);
-    final title = p.name ?? id;
-    final detail = p.isNew
-        ? CreateCopy.newPerson
-        : p.name == null
-            ? CreateCopy.notJoinedYet
-            : id;
-    return Semantics(
-      button: true,
+    return ListRow(
+      lead: p.hasFace
+          ? MemberFace(
+              albumId: p.albumId,
+              token: p.memberToken!,
+              name: p.name,
+              size: 40,
+              style: Warm.acFace.copyWith(fontSize: 14),
+            )
+          : const DashedCircle(size: 40),
+      title: p.name ?? id,
+      detail: isNew
+          ? CreateCopy.newPerson
+          : p.name == null
+              ? CreateCopy.notJoinedYet
+              : id,
+      trailing: _Check(on: chosen),
       selected: chosen,
-      label: title,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Row(
-            children: [
-              SizedBox.square(
-                dimension: 40,
-                child: p.name == null || p.albumId == null || p.token == null
-                    ? const DashedCircle(size: 40)
-                    : MemberFace(
-                        albumId: p.albumId,
-                        token: p.token!,
-                        name: p.name,
-                        size: 40,
-                        style: Warm.acFace.copyWith(fontSize: 14),
-                      ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Warm.rowTitle),
-                    const SizedBox(height: 1),
-                    Text(detail,
-                        style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
-                  ],
-                ),
-              ),
-              _Check(on: chosen),
-            ],
-          ),
-        ),
-      ),
+      onTap: enabled ? onTap : null,
     );
   }
 }
@@ -509,35 +404,13 @@ class _AddRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!entering) {
-      return Semantics(
-        button: true,
-        label: CreateCopy.addSomeoneNew,
-        excludeSemantics: true,
-        child: GestureDetector(
-          key: const Key('create-add-new'),
-          behavior: HitTestBehavior.opaque,
-          onTap: enabled ? onOpen : null,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Row(
-              children: [
-                MakeButton(size: 40, onTap: enabled ? onOpen : null),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(CreateCopy.addSomeoneNew, style: Warm.rowTitle),
-                      const SizedBox(height: 1),
-                      Text(CreateCopy.withTheirId,
-                          style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      final open = enabled ? onOpen : null;
+      return ListRow(
+        key: const Key('create-add-new'),
+        lead: MakeButton(size: 40, onTap: open),
+        title: CreateCopy.addSomeoneNew,
+        detail: CreateCopy.withTheirId,
+        onTap: open,
       );
     }
     return Padding(
