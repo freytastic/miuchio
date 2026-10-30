@@ -62,24 +62,6 @@ class MemberAvatars extends StatefulWidget {
   static const double _nameGap = 7;
   static const double _rowHeight = rowSize + _nameGap + 16;
 
-  static const List<Color> palette = [
-    Color(0xFFF4C7BF),
-    Color(0xFFF6D2AB),
-    Color(0xFFF0DFA9),
-    Color(0xFFCFE0C6),
-    Color(0xFFC6D4EC),
-    Color(0xFFE9CDBE),
-  ];
-
-  // Token hashing keeps member colors stable across devices
-  static Color hueFor(String token) {
-    var hash = 0;
-    for (final unit in token.codeUnits) {
-      hash = (hash * 31 + unit) & 0x7FFFFFFF;
-    }
-    return palette[hash % palette.length];
-  }
-
   static String initialFor(String? name) {
     final trimmed = name?.trim() ?? '';
     if (trimmed.isEmpty) return '·';

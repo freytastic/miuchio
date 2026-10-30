@@ -1,8 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
-import 'package:miuchio/ui/theme/warm_tokens.dart';
-
 // Stable hashing keeps card tilt fixed across launches
 int fnv1a32(String s) {
   var h = 0x811c9dc5;
@@ -23,6 +20,3 @@ int edgesFor(int mediaCount) =>
 
 // Holding fans every preview behind the cover, even where no edge rests
 int fanFor(int mediaCount) => (mediaCount - 1).clamp(0, 2);
-
-Color hueFor(String memberToken) =>
-    Warm.orbPalette[fnv1a32(memberToken) % Warm.orbPalette.length];

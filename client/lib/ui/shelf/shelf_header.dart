@@ -36,7 +36,7 @@ class _Header extends StatelessWidget {
               onTap: onOpenProfile,
               child: FaceCircle(
                 size: 34,
-                color: photo == null ? Warm.orbPeach : Colors.transparent,
+                color: photo == null ? faceHue('', name) : Colors.transparent,
                 photo: photo,
                 child: Text(initial, style: Warm.avatarInitial),
               ),

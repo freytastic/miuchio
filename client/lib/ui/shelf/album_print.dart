@@ -321,7 +321,7 @@ class PrintFaces extends StatelessWidget {
                   child: _Face(
                     albumId: albumId,
                     token: shown[i].memberToken,
-                    initial: _initial(nameOf(shown[i])),
+                    name: nameOf(shown[i]),
                     ring: ring,
                   ),
                 ),
@@ -348,27 +348,28 @@ class PrintFaces extends StatelessWidget {
 class _Face extends StatelessWidget {
   final String albumId;
   final String token;
-  final String? initial;
+  final String? name;
   final Color ring;
 
   const _Face({
     required this.albumId,
     required this.token,
     required this.ring,
-    this.initial,
+    this.name,
   });
 
   @override
   Widget build(BuildContext context) {
+    final initial = PrintFaces._initial(name);
     return FaceCircle(
       size: PrintFaces._size,
-      color: hueFor(token).withValues(alpha: 0.62),
+      color: faceHue(token, name).withValues(alpha: 0.62),
       // The ring is the paper, so the faces read as printed on the chin
       shadow: [BoxShadow(color: ring, spreadRadius: 2)],
       photo: memberPhoto(context, albumId, token),
       child: initial == null
           ? const SizedBox.shrink()
-          : Text(initial!, style: Warm.faceInitial),
+          : Text(initial, style: Warm.faceInitial),
     );
   }
 }

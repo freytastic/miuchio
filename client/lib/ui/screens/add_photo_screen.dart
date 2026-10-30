@@ -10,6 +10,7 @@ import 'package:miuchio/domain/avatar/avatar_publisher.dart';
 import 'package:miuchio/e2ee/avatar_image.dart';
 import 'package:miuchio/ui/shelf/avatar_pick.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/profile_face.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 // The last step of onboarding. Choosing a photo is optional: whoever skips
@@ -109,7 +110,7 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
                   label: chosen == null ? 'Choose a photo' : 'Choose another',
                   child: GestureDetector(
                     onTap: _choose,
-                    child: _Face(photo: face, busy: _preparing),
+                    child: ProfileFace(photo: face, busy: _preparing),
                   ),
                 ),
                 const Spacer(flex: 3),
@@ -135,79 +136,6 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _Face extends StatelessWidget {
-  final Uint8List? photo;
-  final bool busy;
-
-  const _Face({required this.photo, required this.busy});
-
-  static const double _size = 176;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = photo;
-    return SizedBox.square(
-      dimension: _size,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            width: _size,
-            height: _size,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Warm.wellEmpty,
-              border: Border.all(color: Warm.paper, width: 5),
-              boxShadow: [
-                BoxShadow(
-                    color: Warm.shadow(0.10),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8)),
-              ],
-            ),
-            child: ClipOval(
-              child: AnimatedSwitcher(
-                duration: Warm.quick,
-                child: p == null
-                    ? const SizedBox.expand()
-                    : Image.memory(p,
-                        key: ObjectKey(p),
-                        fit: BoxFit.cover,
-                        width: _size,
-                        height: _size,
-                        gaplessPlayback: true),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 6,
-            bottom: 6,
-            child: Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Warm.cta,
-                border: Border.all(color: Warm.ground, width: 3),
-              ),
-              child: busy
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 1.8, color: Warm.ctaInk),
-                    )
-                  : const Icon(Icons.photo_camera_outlined,
-                      size: 18, color: Warm.ctaInk),
-            ),
-          ),
-        ],
       ),
     );
   }

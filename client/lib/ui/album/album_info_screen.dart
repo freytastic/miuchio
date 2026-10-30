@@ -4,7 +4,6 @@ import 'package:miuchio/ui/widgets/member_face.dart';
 
 import 'album_copy.dart';
 import 'album_stats.dart';
-import 'member_avatars.dart';
 
 // Returns null until the member name is decrypted
 typedef MemberNameLookup = String? Function(String memberToken);
@@ -183,8 +182,7 @@ class _UploaderRow extends StatelessWidget {
               value: share.clamp(0.0, 1.0),
               minHeight: 3,
               backgroundColor: Warm.wellEmpty,
-              valueColor:
-                  AlwaysStoppedAnimation<Color>(MemberAvatars.hueFor(token)),
+              valueColor: AlwaysStoppedAnimation<Color>(faceHue(token, name)),
             ),
           ),
         ],

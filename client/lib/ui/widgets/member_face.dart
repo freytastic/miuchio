@@ -9,6 +9,7 @@ import 'package:miuchio/data/storage/own_avatar_store.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
+import 'package:miuchio/ui/shelf/print_style.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 
 // A member's face in one album: their decrypted avatar once it has loaded,
@@ -40,13 +41,22 @@ class MemberFace extends StatelessWidget {
   Widget build(BuildContext context) {
     return FaceCircle(
       size: size,
-      color: color ?? MemberAvatars.hueFor(token),
+      color: color ?? faceHue(token, name),
       border: border,
       shadow: shadow,
       photo: memberPhoto(context, albumId, token),
       child: Text(MemberAvatars.initialFor(name), style: style),
     );
   }
+}
+
+// Tokens differ in every album, but a person publishes one name everywhere,
+// so the name keeps their colour the same across albums, devices and the
+// security codes. The token only stands in until the name decrypts
+Color faceHue(String token, String? name) {
+  final key = name?.trim().toLowerCase() ?? '';
+  return Warm
+      .orbPalette[fnv1a32(key.isEmpty ? token : key) % Warm.orbPalette.length];
 }
 
 // The member's decrypted avatar, or null until one has loaded. Every select

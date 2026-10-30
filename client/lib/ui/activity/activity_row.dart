@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:miuchio/e2ee/media_record.dart';
-import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 
@@ -168,7 +167,7 @@ class ActivityFace extends StatelessWidget {
             size: 32,
             color: t == null
                 ? const Color(0x0F1C1917)
-                : MemberAvatars.hueFor(t).withValues(alpha: 0.95),
+                : faceHue(t, name).withValues(alpha: 0.95),
             // A changed key may be an impostor, so its card never shows a face
             photo: alarm ? null : photo,
             child: Text(initial, style: Warm.acFace),

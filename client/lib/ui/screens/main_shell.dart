@@ -1,16 +1,19 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/models/album_model.dart';
+import 'package:miuchio/data/models/album_summary.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/people/everyone.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
 import 'package:miuchio/ui/create/create_album_screen.dart';
 import 'package:miuchio/ui/home/home_screen.dart';
 import 'package:miuchio/ui/screens/notifications_screen.dart';
+import 'package:miuchio/ui/shelf/album_print.dart';
 import 'package:miuchio/ui/shelf/profile_screen.dart';
 import 'package:miuchio/ui/shelf/shelf_screen.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
@@ -208,7 +211,8 @@ class _AlbumChooser extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.read<AppState>();
+    // Watched so names and faces fill in as they decrypt
+    final state = context.watch<AppState>();
     return ConstrainedBox(
       constraints:
           BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.7),
@@ -222,18 +226,53 @@ class _AlbumChooser extends StatelessWidget {
             Text('Add photos to', style: Warm.pageTitle),
             const SizedBox(height: 18),
             for (final a in albums) ...[
-              _Choice(
-                leading: _Thumb(albumId: a.id),
-                title: state.albumDisplayName(a.id) ?? 'Album',
-                detail: '${a.mediaCount} photo${a.mediaCount == 1 ? '' : 's'}',
-                onTap: () => Navigator.of(context).pop(a),
-              ),
+              _albumChoice(context, state, a),
               const SizedBox(height: 10),
             ],
           ],
         ),
       ),
     );
+  }
+
+  // Who will see the photos matters as much as which album, so each card
+  // carries the faces of the people it is shared with
+  Widget _albumChoice(BuildContext context, AppState state, AlbumModel a) {
+    final self = state.selfMemberToken(a.id) ?? a.memberToken;
+    final others = [
+      for (final m in a.memberPreviews)
+        if (m.memberToken != self) m,
+    ];
+    final total = math.max(others.length, a.activeMemberCount - 1);
+    String? nameOf(MemberPreview m) =>
+        state.memberDisplayName(a.id, m.memberToken);
+    final photos = '${a.mediaCount} photo${a.mediaCount == 1 ? '' : 's'}';
+    return _Choice(
+      leading: _Thumb(albumId: a.id),
+      title: state.albumDisplayName(a.id) ?? 'Album',
+      detail: '$photos · ${_sharedWith(others.map(nameOf).toList(), total)}',
+      trailing: total == 0
+          ? null
+          : PrintFaces(
+              albumId: a.id,
+              members: others,
+              total: total,
+              nameOf: nameOf,
+              ring: Warm.groundLift,
+            ),
+      onTap: () => Navigator.of(context).pop(a),
+    );
+  }
+
+  // Names until they run long, then a count; never a token
+  static String _sharedWith(List<String?> names, int total) {
+    if (total == 0) return 'Only you';
+    final known = names.nonNulls.toList();
+    if (known.length == total && total == 1) return 'With ${known[0]}';
+    if (known.length == total && total == 2) {
+      return 'With ${known[0]} and ${known[1]}';
+    }
+    return 'With $total people';
   }
 }
 
@@ -243,6 +282,8 @@ class _Choice extends StatelessWidget {
   final Widget? leading;
   final String title;
   final String detail;
+  // Takes the chevron's place
+  final Widget? trailing;
   final VoidCallback onTap;
 
   const _Choice({
@@ -250,6 +291,7 @@ class _Choice extends StatelessWidget {
     this.leading,
     required this.title,
     required this.detail,
+    this.trailing,
     required this.onTap,
   });
 
@@ -279,12 +321,21 @@ class _Choice extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: Warm.rowTitle),
                     const SizedBox(height: 3),
-                    Text(detail, style: Warm.rowValue),
+                    Text(detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Warm.rowValue),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  size: 22, color: Warm.inkFaint),
+              if (trailing != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: trailing,
+                )
+              else
+                const Icon(Icons.chevron_right_rounded,
+                    size: 22, color: Warm.inkFaint),
             ],
           ),
         ),

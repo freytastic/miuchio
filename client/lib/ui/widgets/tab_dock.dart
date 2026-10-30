@@ -194,7 +194,7 @@ class _Me extends StatelessWidget {
         (o) => o?.state == OwnAvatarState.set ? o?.jpeg : null);
     return FaceCircle(
       size: 28,
-      color: photo == null ? Warm.orbPeach : Colors.transparent,
+      color: photo == null ? faceHue('', name) : Colors.transparent,
       photo: photo,
       border: Border.all(
         color: on ? Warm.ink : Colors.transparent,

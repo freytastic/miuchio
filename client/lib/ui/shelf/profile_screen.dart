@@ -24,7 +24,8 @@ import 'package:miuchio/ui/settings/debug_log_copy.dart';
 import 'package:miuchio/ui/settings/debug_log_page.dart';
 import 'package:miuchio/ui/settings/settings_page.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
-import 'package:miuchio/ui/widgets/print_card.dart';
+import 'package:miuchio/ui/widgets/member_face.dart';
+import 'package:miuchio/ui/widgets/profile_face.dart';
 import 'package:miuchio/ui/widgets/tab_dock.dart';
 import 'package:miuchio/ui/widgets/upload_copy.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
@@ -311,111 +312,72 @@ class _You extends StatelessWidget {
     required this.onName,
   });
 
-  bool get _hasPhoto => photo != null;
-
   @override
   Widget build(BuildContext context) {
     final empty = name.trim().isEmpty;
+    final nameStyle = Warm.h1.copyWith(fontSize: 24);
     return Padding(
       padding: const EdgeInsets.fromLTRB(Warm.pagePad, 18, Warm.pagePad, 0),
-      child: Center(
-        child: Transform.rotate(
-          angle: -1.6 * 3.141592653589793 / 180,
-          child: SizedBox(
-            width: 188,
-            child: PrintCard(
-              frame: true,
-              blank: !_hasPhoto,
-              well: Semantics(
-                button: true,
-                label: _hasPhoto ? 'Change photo' : 'Add photo',
-                child: GestureDetector(
-                  onTap: busy ? null : onPhoto,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _hasPhoto ? _photo() : const _NoFace(),
-                      Positioned(
-                        right: 8,
-                        bottom: 8,
-                        child: _CameraBadge(busy: busy),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              chin: Center(
-                child: Semantics(
-                  button: true,
-                  label: 'Edit name',
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onName,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
+      child: Column(
+        children: [
+          Semantics(
+            button: true,
+            label: photo != null ? 'Change photo' : 'Add photo',
+            child: GestureDetector(
+              onTap: busy ? null : onPhoto,
+              child: ProfileFace(
+                photo: photo,
+                busy: busy,
+                size: 132,
+                // The same initial and colour the tab bar and albums show
+                placeholder: empty
+                    ? const _NoFace()
+                    : ColoredBox(
+                        color: faceHue('', name),
+                        child: Center(
                           child: Text(
-                            empty ? 'Add your name' : name,
-                            style: empty
-                                ? Warm.printName.copyWith(color: Warm.inkFaint)
-                                : Warm.printName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            name.trim().characters.first.toUpperCase(),
+                            style: Warm.avatarInitial.copyWith(fontSize: 52),
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.edit_outlined,
-                            size: 13, color: Warm.inkFaint),
-                      ],
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Semantics(
+            button: true,
+            label: 'Edit name',
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onName,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Balances the pencil so the name centres under the face
+                    const SizedBox(width: 22),
+                    Flexible(
+                      child: Text(
+                        empty ? 'Add your name' : name,
+                        style: empty
+                            ? nameStyle.copyWith(color: Warm.inkFaint)
+                            : nameStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.edit_outlined,
+                        size: 14, color: Warm.inkFaint),
+                  ],
                 ),
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _photo() => Image.memory(
-        photo!,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => const _NoFace(),
-      );
-}
-
-class _CameraBadge extends StatelessWidget {
-  final bool busy;
-
-  const _CameraBadge({required this.busy});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 28,
-      height: 28,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xDBFDFCFA),
-        boxShadow: [
-          BoxShadow(
-              color: Warm.shadow(0.18),
-              blurRadius: 3,
-              offset: const Offset(0, 1)),
         ],
       ),
-      child: busy
-          ? const SizedBox(
-              width: 12,
-              height: 12,
-              child:
-                  CircularProgressIndicator(strokeWidth: 1.6, color: Warm.ink),
-            )
-          : const Icon(Icons.photo_camera_outlined, size: 14, color: Warm.ink),
     );
   }
 }
@@ -426,7 +388,7 @@ class _NoFace extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Center(
         child:
-            Icon(Icons.person_outline_rounded, size: 26, color: Warm.inkGhost),
+            Icon(Icons.person_outline_rounded, size: 52, color: Warm.inkGhost),
       );
 }
 
