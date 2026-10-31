@@ -519,6 +519,7 @@ List<Widget> _grouped(
 String? _personToken(ActivityEvent e) => switch (e) {
       SafetyNumberChanged() => e.peerToken,
       MemberJoined() => e.memberToken,
+      CoverChanged() => e.setBy,
       MemberLeft() => e.memberToken,
       PhotosAdded() => e.uploaderToken,
       _ => null,

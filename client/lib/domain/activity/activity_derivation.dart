@@ -12,6 +12,9 @@ class AlbumSnapshot {
   // Partial member lists cannot prove joins or departures
   final bool membersComplete;
   final DateTime? latestActivityAt;
+  // The chosen cover and who set it, null while the newest photo leads
+  final String? coverId;
+  final String? coverSetBy;
 
   const AlbumSnapshot({
     required this.albumId,
@@ -23,6 +26,8 @@ class AlbumSnapshot {
     this.selfToken,
     this.rotationRequired = false,
     this.membersComplete = true,
+    this.coverId,
+    this.coverSetBy,
   });
 }
 
@@ -80,6 +85,20 @@ List<ActivityEvent> deriveActivity({
         albumId: album.albumId,
         at: photoAt,
         count: added,
+      ));
+    }
+
+    final cover = album.coverId;
+    final setBy = album.coverSetBy;
+    if (cover != null &&
+        setBy != null &&
+        cover != before.coverId &&
+        setBy != album.selfToken) {
+      out.add(CoverChanged(
+        id: 'cover:${album.albumId}:$cover',
+        albumId: album.albumId,
+        at: now,
+        setBy: setBy,
       ));
     }
 

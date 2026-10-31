@@ -93,6 +93,11 @@ LineCopy lineFor(ActivityEvent e, ActivityNames names) {
         rest: ' joined',
         where: where,
       ),
+    CoverChanged() => LineCopy(
+        lead: names.memberName(e.albumId, e.setBy),
+        rest: ' changed the cover photo',
+        where: where,
+      ),
     MemberLeft() => LineCopy(
         lead: names.memberName(e.albumId, e.memberToken),
         rest: ' left',

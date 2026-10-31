@@ -69,6 +69,8 @@ class ActivityRecorder {
         rotationRequired: a.rotationRequired,
         membersComplete: a.memberPreviews.length >= a.activeMemberCount,
         latestActivityAt: a.latestActivityAt,
+        coverId: a.cover?.coverId,
+        coverSetBy: a.cover?.setBy,
       );
     }
 
@@ -156,6 +158,8 @@ class ActivityRecorder {
             : DateTime.fromMillisecondsSinceEpoch(
                 (v['latest_activity_at'] as num).toInt(),
                 isUtc: true),
+        coverId: v['cover'] as String?,
+        coverSetBy: v['cover_by'] as String?,
       );
     }
     return out;
@@ -173,6 +177,8 @@ class ActivityRecorder {
             if (s.rotationRequired) 'rotation_required': true,
             if (s.latestActivityAt != null)
               'latest_activity_at': s.latestActivityAt!.millisecondsSinceEpoch,
+            if (s.coverId != null) 'cover': s.coverId,
+            if (s.coverSetBy != null) 'cover_by': s.coverSetBy,
           },
       };
 }
