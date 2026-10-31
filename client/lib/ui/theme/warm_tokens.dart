@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -73,6 +74,12 @@ abstract class Warm {
         ),
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
+        // Every MaterialPageRoute goes back the platform's way: the edge
+        // swipe on iOS, the predictive back gesture on Android
+        pageTransitionsTheme: const PageTransitionsTheme(builders: {
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+        }),
       );
 
   // Form
