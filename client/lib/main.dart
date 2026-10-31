@@ -13,6 +13,7 @@ import 'package:sodium/sodium_sumo.dart' show SodiumSumo, SodiumSumoInit;
 import 'package:miuchio/app/album_wipe.dart';
 import 'package:miuchio/app/app.dart';
 import 'package:miuchio/app/avatar_wiring.dart';
+import 'package:miuchio/app/cover_wiring.dart';
 import 'package:miuchio/app/device_wipe.dart';
 import 'package:miuchio/app/key_recovery.dart';
 import 'package:miuchio/app/name_resolvers.dart';
@@ -24,6 +25,7 @@ import 'package:miuchio/data/api/account_api.dart';
 import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/api/api_client.dart';
 import 'package:miuchio/data/api/avatar_api.dart';
+import 'package:miuchio/data/api/cover_api.dart';
 import 'package:miuchio/data/api/epoch_api.dart' as data_epoch;
 import 'package:miuchio/data/api/invite_json_client.dart';
 import 'package:miuchio/data/api/media_api.dart';
@@ -34,6 +36,7 @@ import 'package:miuchio/data/storage/account_owner.dart';
 import 'package:miuchio/data/storage/activity_store.dart';
 import 'package:miuchio/data/storage/avatar_cache.dart';
 import 'package:miuchio/data/storage/cache_root_key.dart';
+import 'package:miuchio/data/storage/cover_cache.dart';
 import 'package:miuchio/data/storage/deletion_marker.dart';
 import 'package:miuchio/data/storage/identity_pin_store.dart';
 import 'package:miuchio/data/storage/install_guard.dart';
@@ -59,6 +62,7 @@ import 'package:miuchio/domain/activity/activity_recorder.dart';
 import 'package:miuchio/domain/activity/activity_sync.dart';
 import 'package:miuchio/domain/activity/trust_alarm.dart';
 import 'package:miuchio/domain/albums/album_cleanup.dart';
+import 'package:miuchio/domain/albums/cover_setter.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
 import 'package:miuchio/domain/upload/upload_coordinator.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
@@ -176,6 +180,11 @@ void main() async {
   final avatarCache = await AvatarCache.open(
     cacheRootKey: cacheRootKey,
     fetch: avatarFetcher(albumKeyStore, avatarApi),
+  );
+  final coverApi = CoverApi(apiClient);
+  final coverCache = await CoverCache.open(
+    cacheRootKey: cacheRootKey,
+    fetch: coverFetcher(albumKeyStore, coverApi),
   );
   final avatarPublisher = AvatarPublisher(
     own: ownAvatar,
@@ -528,6 +537,7 @@ void main() async {
     appState: appState,
     nameCache: nameCache,
     avatarCache: avatarCache,
+    coverCache: coverCache,
     ownAvatar: ownAvatar,
     identityTrust: identityTrust,
     identityPins: identityPinStore,
@@ -571,6 +581,7 @@ void main() async {
       (name: 'activity', run: activityStore.clearAll),
       (name: 'names', run: nameCache.clear),
       (name: 'avatars', run: avatarCache.clearAll),
+      (name: 'album covers', run: coverCache.clearAll),
       (name: 'own avatar', run: ownAvatar.wipe),
       (name: 'pins', run: identityPinStore.clear),
       (name: 'seen', run: seenStore.clear),
@@ -636,6 +647,9 @@ void main() async {
         Provider<NameCache>.value(value: nameCache),
         ChangeNotifierProvider<OwnAvatarStore>.value(value: ownAvatar),
         ChangeNotifierProvider<AvatarCache>.value(value: avatarCache),
+        ChangeNotifierProvider<CoverCache>.value(value: coverCache),
+        Provider<CoverSetter>.value(
+            value: coverSetter(albumKeyStore, coverApi, coverCache)),
         Provider<AvatarPublisher>.value(value: avatarPublisher),
         Provider<IdentityTrust>.value(value: identityTrust),
         Provider<IdentityPinStore>.value(value: identityPinStore),
