@@ -20,9 +20,9 @@ import 'package:miuchio/e2ee/identity.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
-import 'package:miuchio/ui/widgets/camera_stage.dart';
 import 'package:miuchio/ui/widgets/caret_blink.dart';
 import 'package:miuchio/ui/widgets/hello_wordmark.dart';
+import 'package:miuchio/ui/widgets/polaroid_stage.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'package:miuchio/ui/widgets/warm_field.dart';
 
@@ -43,9 +43,14 @@ const double _kDotsExtent = 6;
 const double _kDotsGap = 22;
 // Space kept between the last line of copy and the dots
 const double _kFootClearance = 16;
+const double _kHeroTopAir = 0.085;
+const double _kHeroToCopy = 22;
+// With the keyboard up the print shrinks to the top
+const double _kCompactHeroTopAir = 0.012;
+const double _kCompactHeroMaxScale = 0.5;
+const Duration _kHeroShift = Duration(milliseconds: 280);
 
-const String _kIntroLead =
-    'Shared photo albums for the people who were actually there.';
+const String _kIntroLead = 'Photo albums only your people can open.';
 const String _kEmailLead = 'We’ll send a one-time sign-in code to your email.';
 const String _kPreviewEmail = 'your.name@example.com';
 
@@ -78,7 +83,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   _Phase _phase = _Phase.intro;
   bool _busy = false;
-  // The wordmark writes with the camera clip, not with the screen
+  // The pen follows the print's clock, so both finish together
   final _wordCue = WordmarkCue();
 
   @override
@@ -399,22 +404,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         size.height - compactFootBottom - _kCompactFootExtent;
     final compactHeroMaxBottom =
         compactFootTop - compactCopyExtent - 2 * _kCompactContentGap;
-    final compactStageScale = CameraStage.shrunkScaleToFit(
-      context,
-      maxVisualBottom: compactHeroMaxBottom,
-    );
-    final compactHeroBottom = CameraStage.shrunkVisualBottom(
-      context,
-      scale: compactStageScale,
-    );
-    final rawCompactSlack = compactFootTop -
-        compactHeroBottom -
-        compactCopyExtent -
-        2 * _kCompactContentGap;
-    final compactSlack = rawCompactSlack > 0 ? rawCompactSlack : 0.0;
-    final compactCopyTop =
-        compactHeroBottom + _kCompactContentGap + compactSlack / 2;
-
     // Fractions alone let the foot land on the copy on shorter screens
     final copyBody = _copyBody(context, size.width - Warm.pagePad * 2);
     final footExtent = _kDotsExtent +
@@ -423,17 +412,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         Warm.ctaHeight;
     final footTop =
         size.height - size.height * Warm.ctaBottomInset - footExtent;
-    final copyTop = math.min(
-      topInset + size.height * Warm.topAir,
-      footTop -
-          _kFootClearance -
-          _kCopyLead -
-          copyBody,
-    );
-    final stageScale = CameraStage.scaleToFit(
-      context,
-      maxVisualBottom: copyTop - _kFootClearance,
-    );
+    final copyFloor = footTop - _kFootClearance - _kCopyLead - copyBody;
+    final heroTop = topInset + size.height * _kHeroTopAir;
+    final heroWidth = math.max(
+        0.0,
+        math.min(
+          size.width * kPolaroidWidthShare,
+          (copyFloor - _kHeroToCopy - heroTop) * PolaroidStage.aspect,
+        ));
+    final heroHeight = heroWidth / PolaroidStage.aspect;
+    final copyTop = math.min(heroTop + heroHeight + _kHeroToCopy, copyFloor);
+
+    final compactHeroTop = topInset + size.height * _kCompactHeroTopAir;
+    final compactScale = heroHeight <= 0
+        ? 0.0
+        : ((compactHeroMaxBottom - compactHeroTop) / heroHeight)
+            .clamp(0.0, _kCompactHeroMaxScale)
+            .toDouble();
+    final compactHeroBottom = compactHeroTop + heroHeight * compactScale;
+    final rawCompactSlack = compactFootTop -
+        compactHeroBottom -
+        compactCopyExtent -
+        2 * _kCompactContentGap;
+    final compactSlack = rawCompactSlack > 0 ? rawCompactSlack : 0.0;
+    final compactCopyTop =
+        compactHeroBottom + _kCompactContentGap + compactSlack / 2;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Warm.overlayOnGround,
@@ -447,19 +450,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             children: [
               const Positioned.fill(child: _Ground()),
 
-              // Keep the scrim behind the camera so its colours stay unchanged
+              // Keep the scrim behind the print so its colours stay unchanged
               const Positioned.fill(child: IgnorePointer(child: _Scrim())),
 
-              CameraStage.positioned(
-                context,
-                // The lite clip runs at 30 fps, so the pen follows its frames
-                onStart: (tier) =>
-                    _wordCue.start(followClip: tier == StageTier.lite),
-                onFrame: _wordCue.clip,
-                onComplete: _wordCue.hurry,
-                shrink: keyboardOpen,
-                shrunkScale: compactStageScale,
-                scale: stageScale,
+              AnimatedPositioned(
+                duration: _kHeroShift,
+                curve: Curves.easeOutCubic,
+                top: keyboardOpen ? compactHeroTop : heroTop,
+                left: (size.width - heroWidth) / 2,
+                width: heroWidth,
+                height: heroHeight,
+                // Scaled rather than resized, so the prints keep their layers
+                child: AnimatedScale(
+                  duration: _kHeroShift,
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  scale: keyboardOpen ? compactScale : 1,
+                  child: PolaroidStage(
+                    width: heroWidth,
+                    onStart: () => _wordCue.start(followClock: true),
+                    onTick: _wordCue.tick,
+                  ),
+                ),
               ),
 
               AnimatedPositioned(

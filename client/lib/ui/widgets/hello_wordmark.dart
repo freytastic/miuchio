@@ -19,9 +19,6 @@ const String _kShaderAsset = 'shaders/wordmark.frag';
 // Soft pen front as a share of the whole word
 const double _kFront = 0.02;
 
-// How fast an unfinished word completes once its clip gives up
-const Duration _kHurry = Duration(milliseconds: 300);
-
 class WordmarkGlyphs {
   const WordmarkGlyphs({
     required this.word,
@@ -73,35 +70,26 @@ abstract class WordmarkPrep {
       });
 }
 
-// When to write: start, optionally follow a clip's clock instead of the
-// screen's, and finish quickly if the clip gives up
+// Starts the pen, optionally on another animation's clock so it never drifts
 class WordmarkCue extends ChangeNotifier {
   bool _started = false;
-  bool _followClip = false;
-  bool _hurry = false;
-  Duration _clip = Duration.zero;
+  bool _followClock = false;
+  Duration _clock = Duration.zero;
 
   bool get started => _started;
-  bool get followsClip => _followClip;
-  bool get hurrying => _hurry;
-  Duration get clipTime => _clip;
+  bool get followsClock => _followClock;
+  Duration get clockTime => _clock;
 
-  void start({bool followClip = false}) {
+  void start({bool followClock = false}) {
     if (_started) return;
     _started = true;
-    _followClip = followClip;
+    _followClock = followClock;
     notifyListeners();
   }
 
-  void clip(Duration time) {
-    if (!_followClip || _hurry) return;
-    _clip = time;
-    notifyListeners();
-  }
-
-  void hurry() {
-    if (_hurry) return;
-    _hurry = true;
+  void tick(Duration time) {
+    if (!_followClock) return;
+    _clock = time;
     notifyListeners();
   }
 }
@@ -138,7 +126,6 @@ class _HelloWordmarkState extends State<HelloWordmark>
   ui.FragmentShader? _shader;
   ui.Image? _map;
   bool _ready = false;
-  bool _hurried = false;
   bool _requested = false;
 
   @override
@@ -188,15 +175,9 @@ class _HelloWordmarkState extends State<HelloWordmark>
       return;
     }
     if (!cue.started) return;
-    if (cue.hurrying) {
-      if (_hurried) return;
-      _hurried = true;
-      _write.animateTo(1, duration: _kHurry);
-      return;
-    }
-    if (cue.followsClip) {
+    if (cue.followsClock) {
       _write.value =
-          (cue.clipTime.inMicroseconds / widget.duration.inMicroseconds)
+          (cue.clockTime.inMicroseconds / widget.duration.inMicroseconds)
               .clamp(0.0, 1.0);
       return;
     }
