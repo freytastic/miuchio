@@ -36,6 +36,28 @@ class PrintCard extends StatelessWidget {
   // Live blurs cost slow phones frames, so only the crisp edge stays live
   static const double _bakeFromBlur = 4;
   static const BorderRadius _radius = BorderRadius.all(Radius.circular(8));
+  static const double _bakeMaxScale = 2;
+
+  // Bakes the soft part of a print's shadow for a card of this size
+  static Future<void> warmShadow(
+      List<BoxShadow> shadow, Size size, double devicePixelRatio) {
+    final soft = [
+      for (final s in shadow)
+        if (s.blurRadius >= _bakeFromBlur) s
+    ];
+    if (soft.isEmpty || Fx.noShadow) return Future.value();
+    return BakedPaint.warm(
+      id: _shadowId(soft),
+      size: size,
+      devicePixelRatio: devicePixelRatio,
+      overflow: _reach(soft),
+      maxScale: _bakeMaxScale,
+      painter: (canvas, size) => _paintShadows(canvas, size, soft),
+    );
+  }
+
+  static String _shadowId(List<BoxShadow> soft) =>
+      'print-shadow:${soft.join(',')}';
 
   @override
   Widget build(BuildContext context) {
@@ -88,9 +110,9 @@ class PrintCard extends StatelessWidget {
         children: [
           Positioned.fill(
             child: BakedPaint(
-              id: 'print-shadow:${soft.join(',')}',
+              id: _shadowId(soft),
               overflow: _reach(soft),
-              maxScale: 2,
+              maxScale: _bakeMaxScale,
               painter: (canvas, size) => _paintShadows(canvas, size, soft),
             ),
           ),
@@ -160,7 +182,6 @@ class _Well extends StatelessWidget {
   }
 }
 
-// Matches the camera canvas develop wash
 class _Emulsion extends StatelessWidget {
   final Animation<double> develop;
 
