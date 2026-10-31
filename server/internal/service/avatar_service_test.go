@@ -37,13 +37,13 @@ func (f *fakeAvatarRepo) Get(_ context.Context, albumID, avatarID uuid.UUID) (*m
 	return &cp, nil
 }
 
-func (f *fakeAvatarRepo) Confirm(_ context.Context, _ uuid.UUID, _ []byte, avatarID uuid.UUID) ([]string, error) {
+func (f *fakeAvatarRepo) Confirm(_ context.Context, _ uuid.UUID, _ []byte, avatarID uuid.UUID, _ string) ([]string, error) {
 	f.confirmed = append(f.confirmed, avatarID)
 	f.rows[avatarID].Confirmed = true
 	return f.replaced, nil
 }
 
-func (f *fakeAvatarRepo) DropPending(_ context.Context, _ uuid.UUID, _ []byte, avatarID uuid.UUID) ([]string, error) {
+func (f *fakeAvatarRepo) DropPending(_ context.Context, _ uuid.UUID, _ []byte, avatarID uuid.UUID, _ string) ([]string, error) {
 	f.dropped = append(f.dropped, avatarID)
 	key := f.rows[avatarID].StorageKey
 	delete(f.rows, avatarID)

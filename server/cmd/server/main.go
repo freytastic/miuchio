@@ -84,6 +84,7 @@ func main() {
 	quota := repository.StorageQuota{PerUser: cfg.UserStorageQuota, Total: cfg.TotalStorageLimit}
 	mediaRepo := repository.NewMediaRepository(dbPool, quota)
 	avatarRepo := repository.NewAvatarRepository(dbPool, quota)
+	coverRepo := repository.NewCoverRepository(dbPool, quota)
 
 	s3Client, err := storage.NewS3Client(cfg.S3Endpoint, cfg.S3PublicEndpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3Region, cfg.UsePathStyle)
 	if err != nil {
@@ -126,6 +127,7 @@ func main() {
 	// Deletions queue their objects transactionally, this only deletes them sooner
 	albumService.SetObjectCleaner(mediaService)
 	avatarService := service.NewAvatarService(avatarRepo, &s3Adapter{s3Client}, mediaService, hub, inviteRepo)
+	coverService := service.NewCoverService(coverRepo, &s3Adapter{s3Client}, mediaService, hub, inviteRepo)
 	accountDeletions := service.NewAccountDeletionService(
 		repository.NewAccountDeletionRepository(dbPool, linker), mediaService, hub)
 
@@ -136,6 +138,7 @@ func main() {
 	albumHandler := handler.NewAlbumHandler(albumService, hub, epochRepo)
 	mediaHandler := handler.NewMediaHandler(mediaService)
 	avatarHandler := handler.NewAvatarHandler(avatarService)
+	coverHandler := handler.NewCoverHandler(coverService)
 	inviteHandler := handler.NewInviteHandler()
 	accountHandler := handler.NewAccountHandler(accountDeletions)
 	wsHandler := handler.NewWSHandler(hub, ticketStore)
@@ -209,6 +212,10 @@ func main() {
 	scoped.HandleFunc("/members/me/avatar/confirm", avatarHandler.Confirm).Methods(http.MethodPost)
 	scoped.HandleFunc("/members/me/avatar", avatarHandler.Remove).Methods(http.MethodDelete)
 	scoped.HandleFunc("/avatars/{aid}/download-url", avatarHandler.DownloadURL).Methods(http.MethodPost)
+	scoped.HandleFunc("/cover", coverHandler.SetCover).Methods(http.MethodPut)
+	scoped.HandleFunc("/cover/upload-url", coverHandler.RequestUploadURL).Methods(http.MethodPost)
+	scoped.HandleFunc("/cover/confirm", coverHandler.Confirm).Methods(http.MethodPost)
+	scoped.HandleFunc("/covers/{cid}/download-url", coverHandler.DownloadURL).Methods(http.MethodPost)
 	scoped.HandleFunc("/members/{token}", albumHandler.RemoveAlbumMember).Methods(http.MethodDelete)
 	// Member token bundle fetch keeps rotation targets pseudonymous
 	scoped.Handle(
@@ -271,6 +278,11 @@ func main() {
 		defer close(avatarCleanupDone)
 		avatarService.RunPendingCleanup(cleanupCtx)
 	}()
+	coverCleanupDone := make(chan struct{})
+	go func() {
+		defer close(coverCleanupDone)
+		coverService.RunPendingCleanup(cleanupCtx)
+	}()
 	accountDeletionsDone := make(chan struct{})
 	go func() {
 		defer close(accountDeletionsDone)
@@ -302,7 +314,7 @@ func main() {
 		// Cleanup gets a fresh budget if HTTP shutdown consumed its deadline
 		drainCtx, cancelDrain := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelDrain()
-		for _, done := range []chan struct{}{pendingCleanupDone, avatarCleanupDone, accountDeletionsDone} {
+		for _, done := range []chan struct{}{pendingCleanupDone, avatarCleanupDone, coverCleanupDone, accountDeletionsDone} {
 			select {
 			case <-done:
 			case <-drainCtx.Done():

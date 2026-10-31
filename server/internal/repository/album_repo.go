@@ -131,10 +131,13 @@ func (r *AlbumRepository) ListForUser(ctx context.Context, userID uuid.UUID) ([]
 		       COALESCE(stats.media_count, 0),
 		       stats.latest_activity_at,
 		       COALESCE(members.active_count, 0),
-		       `+RotationRequiredExpr("a.id")+`
+		       `+RotationRequiredExpr("a.id")+`,
+		       cov.cover_id, cov.set_by, cov.media_id,
+		       cov.blob_size, cov.blob_sha256, cov.key_ct
 		FROM albums a
 		JOIN album_member_identities ami ON ami.album_id = a.id
 		JOIN album_members am ON am.album_id = a.id AND am.member_token = ami.member_token
+		LEFT JOIN album_covers cov ON cov.album_id = a.id AND cov.confirmed = TRUE
 		LEFT JOIN LATERAL (
 		    SELECT COUNT(*) AS media_count,
 		           MAX(m.created_at) AS latest_activity_at
@@ -159,12 +162,15 @@ func (r *AlbumRepository) ListForUser(ctx context.Context, userID uuid.UUID) ([]
 	ids := []uuid.UUID{}
 	for rows.Next() {
 		var a model.AlbumWithMemberInfo
+		var cov coverColumns
 		if err := rows.Scan(&a.ID, &a.NameCT, &a.CreatedAt, &a.UpdatedAt,
 			&a.Summary.MediaGeneration, &a.UserRole, &a.MemberToken,
 			&a.Summary.MediaCount, &a.Summary.LatestActivityAt,
-			&a.Summary.ActiveMemberCount, &a.Summary.RotationRequired); err != nil {
+			&a.Summary.ActiveMemberCount, &a.Summary.RotationRequired,
+			&cov.id, &cov.setBy, &cov.mediaID, &cov.size, &cov.sha, &cov.keyCT); err != nil {
 			return nil, err
 		}
+		a.Cover = cov.ref()
 		out = append(out, a)
 		ids = append(ids, a.ID)
 	}
@@ -198,11 +204,14 @@ func (r *AlbumRepository) previewMediaFor(ctx context.Context, handle []byte, id
 		FROM albums a
 		JOIN album_member_identities ami ON ami.album_id = a.id
 		JOIN album_members am ON am.album_id = a.id AND am.member_token = ami.member_token
+		LEFT JOIN album_covers cov ON cov.album_id = a.id AND cov.confirmed = TRUE
 		JOIN LATERAL (
 		    SELECT * FROM media mm
 		    WHERE mm.album_id = a.id AND mm.confirmed = TRUE
 		      AND mm.thumb_wrap_nonce IS NOT NULL
-		    ORDER BY mm.album_seq DESC NULLS LAST, mm.id DESC
+		    -- A chosen photo leads, the newest follow it
+		    ORDER BY mm.id = cov.media_id DESC NULLS LAST,
+		             mm.album_seq DESC NULLS LAST, mm.id DESC
 		    LIMIT 3
 		) m ON TRUE
 		WHERE ami.user_handle = $1 AND am.revoked_at IS NULL AND a.id = ANY($2)`,
@@ -525,7 +534,7 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 		return Revocation{}, err
 	}
 	// The periodic sweep deletes the queued object
-	if _, err := removeAvatars(ctx, tx,
+	if _, err := removeStoredObjects(ctx, tx,
 		`DELETE FROM member_avatars WHERE album_id = $1 AND member_token = $2
 		 RETURNING storage_key`, albumID, targetToken,
 	); err != nil {

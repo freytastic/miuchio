@@ -23,8 +23,8 @@ const avatarKeyCTLen = 4 + 1 + wrapNonceLen + wrapTagCTLen
 type AvatarStore interface {
 	Reserve(ctx context.Context, a *model.MemberAvatar) error
 	Get(ctx context.Context, albumID, avatarID uuid.UUID) (*model.MemberAvatar, error)
-	Confirm(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID) ([]string, error)
-	DropPending(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID) ([]string, error)
+	Confirm(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID, storageKey string) ([]string, error)
+	DropPending(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID, storageKey string) ([]string, error)
 	Remove(ctx context.Context, albumID uuid.UUID, memberToken []byte) ([]string, error)
 	QueueStalePending(ctx context.Context, before time.Time, limit int) ([]string, error)
 }
@@ -75,6 +75,9 @@ func (s *AvatarService) RequestUploadURL(ctx context.Context, albumID uuid.UUID,
 		KeyCT:       in.KeyCT,
 	}
 	if err := s.repo.Reserve(ctx, row); err != nil {
+		if e := epochErr(err); e != nil {
+			return nil, e
+		}
 		switch {
 		case errors.Is(err, repository.ErrCallerRevoked), errors.Is(err, repository.ErrAlbumNotFound):
 			return nil, apierr.MemberRevoked("your access to this album has been revoked")
@@ -117,12 +120,15 @@ func (s *AvatarService) Confirm(ctx context.Context, albumID uuid.UUID, callerUs
 		}
 		want := base64.StdEncoding.EncodeToString(row.BlobSHA256)
 		if size != row.BlobSize || (sha != "" && sha != want) {
-			s.drop(ctx, albumID, memberToken, avatarID)
+			s.drop(ctx, albumID, memberToken, avatarID, row.StorageKey)
 			return apierr.Validation("uploaded avatar does not match its reservation ; pending row dropped")
 		}
 	}
-	replaced, err := s.repo.Confirm(ctx, albumID, memberToken, avatarID)
+	replaced, err := s.repo.Confirm(ctx, albumID, memberToken, avatarID, row.StorageKey)
 	if err != nil {
+		if e := epochErr(err); e != nil {
+			return e
+		}
 		switch {
 		case errors.Is(err, repository.ErrCallerRevoked), errors.Is(err, repository.ErrAlbumNotFound):
 			return apierr.MemberRevoked("your access to this album has been revoked")
@@ -194,8 +200,8 @@ func (s *AvatarService) RunPendingCleanup(ctx context.Context) {
 	}
 }
 
-func (s *AvatarService) drop(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID) {
-	keys, err := s.repo.DropPending(ctx, albumID, memberToken, avatarID)
+func (s *AvatarService) drop(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID, storageKey string) {
+	keys, err := s.repo.DropPending(ctx, albumID, memberToken, avatarID, storageKey)
 	if err != nil {
 		slog.WarnContext(ctx, "avatar: drop pending failed", "err", err)
 		return
@@ -209,32 +215,9 @@ func (s *AvatarService) cleanup(ctx context.Context, keys []string) {
 	}
 }
 
-// Offline members converge on their next listing
 func (s *AvatarService) emitUpdated(albumID, callerUserID uuid.UUID, memberToken []byte) {
-	if s.notifier == nil || s.lookup == nil {
-		return
-	}
-	go func() {
-		bg := context.Background()
-		members, err := s.lookup.ActiveMemberUserIDs(bg, albumID)
-		if err != nil {
-			slog.Warn("member_updated: lookup failed", "err", err, "album_id", albumID)
-			return
-		}
-		ids := make([]uuid.UUID, 0, len(members))
-		for _, m := range members {
-			if m != callerUserID {
-				ids = append(ids, m)
-			}
-		}
-		if len(ids) == 0 {
-			return
-		}
-		if err := s.notifier.EmitToUsers(bg, ids, ws.EventMemberUpdated, map[string]any{
-			"album_id":     albumID.String(),
-			"member_token": base64.StdEncoding.EncodeToString(memberToken),
-		}); err != nil {
-			slog.Warn("member_updated: emit failed", "err", err, "album_id", albumID)
-		}
-	}()
+	emitToOthers(s.lookup, s.notifier, albumID, callerUserID, ws.EventMemberUpdated, map[string]any{
+		"album_id":     albumID.String(),
+		"member_token": base64.StdEncoding.EncodeToString(memberToken),
+	})
 }

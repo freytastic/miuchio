@@ -30,24 +30,8 @@ func (r *AlbumRepository) DeleteAlbumTx(ctx context.Context, albumID uuid.UUID, 
 	}
 	defer tx.Rollback(ctx)
 
-	if err := lockAlbum(ctx, tx, albumID); err != nil {
+	if err := lockAlbumAdmin(ctx, tx, albumID, callerToken); err != nil {
 		return AlbumRemoval{}, err
-	}
-	var role string
-	var revoked bool
-	err = tx.QueryRow(ctx,
-		`SELECT role, revoked_at IS NOT NULL FROM album_members
-		 WHERE album_id = $1 AND member_token = $2`,
-		albumID, callerToken,
-	).Scan(&role, &revoked)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && revoked) {
-		return AlbumRemoval{}, ErrCallerRevoked
-	}
-	if err != nil {
-		return AlbumRemoval{}, err
-	}
-	if role != "admin" {
-		return AlbumRemoval{}, ErrNotAlbumAdmin
 	}
 
 	out, err := removeAlbum(ctx, tx, r.linker, albumID, callerToken)
@@ -113,15 +97,22 @@ func removeAlbum(ctx context.Context, tx pgx.Tx, linker *userlink.Hasher, albumI
 	if err != nil {
 		return AlbumRemoval{}, err
 	}
-	avatars, err := removeAvatars(ctx, tx,
+	avatars, err := removeStoredObjects(ctx, tx,
 		`DELETE FROM member_avatars WHERE album_id = $1 RETURNING storage_key`, albumID)
+	if err != nil {
+		return AlbumRemoval{}, err
+	}
+	covers, err := removeStoredObjects(ctx, tx,
+		`DELETE FROM album_covers WHERE album_id = $1 AND storage_key IS NOT NULL
+		 RETURNING storage_key`, albumID)
 	if err != nil {
 		return AlbumRemoval{}, err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM albums WHERE id = $1`, albumID); err != nil {
 		return AlbumRemoval{}, err
 	}
-	return AlbumRemoval{MemberUserIDs: users, Keys: append(media.Keys, avatars...)}, nil
+	keys := append(append(media.Keys, avatars...), covers...)
+	return AlbumRemoval{MemberUserIDs: users, Keys: keys}, nil
 }
 
 // removeMedia runs a DELETE returning (id, storage_key, thumb_key) and queues
