@@ -26,8 +26,8 @@ import 'package:miuchio/ui/screens/start_deletion_flow.dart';
 import 'package:miuchio/ui/screens/onboarding_screen.dart';
 import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
-import 'package:miuchio/ui/widgets/camera_stage.dart';
 import 'package:miuchio/ui/widgets/hello_wordmark.dart';
+import 'package:miuchio/ui/widgets/polaroid_stage.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -108,9 +108,9 @@ class _LandingPageState extends State<LandingPage> {
 
     // Preview builds show the first page without signing out
     final intro = !valid || Fx.intro;
-    // Hide clip preparation behind the route fade
+    // Decode the photos and the pen behind the route fade
     if (intro) {
-      CameraStage.prewarm();
+      PolaroidStage.prewarm();
       WordmarkPrep.prewarm(kWordmarkMiuchio);
     }
     final destination =

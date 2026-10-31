@@ -22,6 +22,29 @@ class BakedPaint extends StatefulWidget {
     this.maxScale = 3,
   });
 
+  // Lets an animation start only once the blur is baked, never live
+  static Future<void> warm({
+    required String id,
+    required Size size,
+    required double devicePixelRatio,
+    required BakedPainter painter,
+    EdgeInsets overflow = EdgeInsets.zero,
+    double maxScale = 3,
+  }) async {
+    if (!size.isFinite || size.isEmpty) return;
+    final scale =
+        devicePixelRatio < maxScale ? devicePixelRatio : maxScale;
+    final key = _BakedPaintState._keyFor(id, size, scale);
+    if (_BakedPaintState._cache.containsKey(key)) return;
+    // Do not return the removed future or it would await itself
+    final image = await (_BakedPaintState._pending[key] ??=
+        _BakedPaintState._bake(painter, overflow, size, scale)
+            .whenComplete(() {
+      _BakedPaintState._pending.remove(key);
+    }));
+    _BakedPaintState._store(key, image);
+  }
+
   @override
   State<BakedPaint> createState() => _BakedPaintState();
 }
@@ -64,7 +87,8 @@ class _BakedPaintState extends State<BakedPaint> {
       try {
         // Do not return the removed future or it would await itself
         final image = await (_pending[key] ??=
-            _bake(size, scale).whenComplete(() {
+            _bake(widget.painter, widget.overflow, size, scale)
+                .whenComplete(() {
           _pending.remove(key);
         }));
         _store(key, image);
@@ -74,13 +98,13 @@ class _BakedPaintState extends State<BakedPaint> {
     });
   }
 
-  Future<ui.Image> _bake(Size size, double scale) {
-    final o = widget.overflow;
+  static Future<ui.Image> _bake(
+      BakedPainter painter, EdgeInsets o, Size size, double scale) {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder)
       ..scale(scale)
       ..translate(o.left, o.top);
-    widget.painter(canvas, size);
+    painter(canvas, size);
     final picture = recorder.endRecording();
     return picture
         .toImage(((size.width + o.horizontal) * scale).ceil(),

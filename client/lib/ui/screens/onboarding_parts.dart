@@ -129,7 +129,7 @@ class _IntroCopy extends StatelessWidget {
             glyphs: kWordmarkMiuchio,
             height: Warm.wordmarkHeight,
             color: Warm.cta,
-            duration: CameraStage.printsSettled,
+            duration: PolaroidStage.duration,
             cue: wordCue,
             semanticsLabel: 'Miuchio',
           ),
