@@ -26,6 +26,8 @@ import 'package:miuchio/ui/settings/debug_log_copy.dart';
 import 'package:miuchio/ui/settings/debug_log_page.dart';
 import 'package:miuchio/ui/settings/settings_page.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/grouped_list.dart';
+import 'package:miuchio/ui/widgets/miuchio_mark.dart';
 import 'package:miuchio/ui/widgets/print_card.dart';
 import 'package:miuchio/ui/widgets/upload_copy.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
@@ -214,48 +216,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   _Group(top: 30, children: [
                     _IdRow(handle: state.miuchioId),
-                    _Row(
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.verified_user_outlined),
                       title: 'Security codes',
                       value: _verified,
                       onTap: widget.onSafetyNumbers,
                     ),
-                    _Row(
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.logout_rounded),
                       title: 'When you leave',
                       value: state.deleteMediaOnLeave
                           ? 'Delete photos'
                           : 'Keep photos',
                       onTap: () => _open(const LeavingPage()),
                     ),
-                    _Row(
-                      title: 'Notifications',
-                      onTap: () => _open(const NotificationsPage()),
-                    ),
-                    _Row(
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.cloud_outlined),
                       title: 'Backup',
                       value: 'Not yet',
                       onTap: () => _open(const BackupPage()),
                     ),
-                    _Row(
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.storage_rounded),
                       title: 'Storage',
                       value: _stored == null ? null : formatBytes(_stored!),
                       onTap: _openStorage,
                     ),
                   ]),
                   _Group(children: [
-                    const _Row(
-                        title: 'Send feedback', href: '$_repoUrl/issues/new'),
-                    _Row(
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.chat_bubble_outline_rounded),
+                      title: 'Send feedback',
+                      external: true,
+                      onTap: () => _openLink(context, '$_repoUrl/issues/new'),
+                    ),
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.receipt_long_outlined),
                       title: DebugLogCopy.title,
                       onTap: () => _open(const DebugLogPage()),
                     ),
-                    const _Row(
-                        title: 'Privacy policy', href: '$_siteUrl/privacy'),
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.privacy_tip_outlined),
+                      title: 'Privacy policy',
+                      external: true,
+                      onTap: () => _openLink(context, '$_siteUrl/privacy'),
+                    ),
                   ]),
                   _Group(children: [
-                    _Row(
-                        title: 'Delete account',
-                        warn: true,
-                        onTap: _openDelete),
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.delete_outline_rounded,
+                          warn: true),
+                      title: 'Delete account',
+                      warn: true,
+                      onTap: _openDelete,
+                    ),
                   ]),
                   const _Foot(),
                 ],
@@ -429,7 +443,7 @@ class _Group extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.fromLTRB(Warm.pagePad - 8, top, Warm.pagePad - 8, 0),
-      child: Column(children: children),
+      child: GroupCard(children: children),
     );
   }
 }
@@ -484,10 +498,12 @@ class _IdRowState extends State<_IdRow> {
         h == null ? '••••-••••' : (_shown ? formatHandle(h) : '••••-••••');
 
     return SizedBox(
-      height: 48,
+      height: 52,
       child: Row(
         children: [
-          const SizedBox(width: 8),
+          const SizedBox(width: kRowPad),
+          const SizedBox(width: kRowLead, child: Center(child: MiuchioMark())),
+          const SizedBox(width: kRowGap),
           Expanded(
             child: Text(_copied ? 'Copied' : 'Miuchio ID', style: Warm.rowTitle),
           ),
@@ -505,6 +521,7 @@ class _IdRowState extends State<_IdRow> {
             label: 'Copy Miuchio ID',
             onTap: h == null ? null : _copy,
           ),
+          const SizedBox(width: 4),
         ],
       ),
     );
@@ -535,80 +552,24 @@ class _IconButton extends StatelessWidget {
       );
 }
 
-class _Row extends StatelessWidget {
-  final String title;
-  final String? value;
-  final String? href;
-  final bool warn;
-  final VoidCallback? onTap;
-
-  const _Row({
-    required this.title,
-    this.value,
-    this.href,
-    this.warn = false,
-    this.onTap,
-  });
-
-  Future<void> _open(BuildContext context) async {
-    final url = href;
-    if (url == null) return;
-    HapticFeedback.selectionClick();
-    final uri = Uri.tryParse(url);
-    if (uri != null) {
-      try {
-        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
-      } catch (_) {}
-    }
-    if (!context.mounted) return;
-    await Clipboard.setData(ClipboardData(text: url));
-    if (!context.mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(
-        content: Text('Link copied'),
-        duration: Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+Future<void> _openLink(BuildContext context, String url) async {
+  HapticFeedback.selectionClick();
+  final uri = Uri.tryParse(url);
+  if (uri != null) {
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {}
   }
-
-  @override
-  Widget build(BuildContext context) {
-    final tap = href != null ? () => _open(context) : onTap;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: tap,
-      child: SizedBox(
-        height: 48,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: warn
-                      ? Warm.rowTitle.copyWith(color: Warm.warn)
-                      : Warm.rowTitle,
-                ),
-              ),
-              if (value != null) ...[
-                Text(value!,
-                    style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
-                const SizedBox(width: 10),
-              ],
-              if (href != null)
-                const Icon(Icons.north_east_rounded,
-                    size: 14, color: Warm.inkGhost)
-              else if (tap != null)
-                const Icon(Icons.chevron_right_rounded,
-                    size: 17, color: Warm.inkGhost),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  if (!context.mounted) return;
+  await Clipboard.setData(ClipboardData(text: url));
+  if (!context.mounted) return;
+  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+    const SnackBar(
+      content: Text('Link copied'),
+      duration: Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
 }
 
 class _Foot extends StatelessWidget {
