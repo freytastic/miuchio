@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/verified_badge.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 // The out of band comparison. Nothing reassuring is shown until the user has
@@ -13,11 +15,13 @@ class SafetyNumberSheet extends StatefulWidget {
   final String displayName;
   final String digits;
   final TrustState state;
-  final String? subtitle;
+  // The code differs per album, so both people must open the same one
+  final String? albumName;
   final Widget? face;
   // Fired only after the user confirms every digit. There is no way to accept
-  // without comparing because verification also grants signer authority
-  final VoidCallback onVerify;
+  // without comparing because verification also grants signer authority. The
+  // sheet stays open until it completes, and says so if it throws
+  final FutureOr<void> Function() onVerify;
 
   const SafetyNumberSheet({
     super.key,
@@ -25,7 +29,7 @@ class SafetyNumberSheet extends StatefulWidget {
     required this.digits,
     required this.state,
     required this.onVerify,
-    this.subtitle,
+    this.albumName,
     this.face,
   });
 
@@ -49,6 +53,8 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
     duration: Duration(milliseconds: (_total * 1000).round()),
   );
   bool _why = false;
+  bool _saving = false;
+  bool _saveFailed = false;
 
   @override
   void didChangeDependencies() {
@@ -106,8 +112,28 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
       ),
     );
     if (ok != true || !mounted) return;
-    Navigator.of(context).maybePop();
-    widget.onVerify();
+    await _save();
+  }
+
+  // A failed write leaves only session trust, and the alarm returns after a
+  // restart, so the sheet must not close as if it had worked
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _saveFailed = false;
+    });
+    try {
+      await widget.onVerify();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _saveFailed = true;
+        });
+      }
+      return;
+    }
+    if (mounted) Navigator.of(context).maybePop();
   }
 
   @override
@@ -115,6 +141,7 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
     final changed = widget.state == TrustState.changed;
     final verified = widget.state == TrustState.verified;
     final name = widget.displayName;
+    final album = widget.albumName ?? 'this album';
 
     return SafeArea(
       child: Padding(
@@ -137,7 +164,7 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
             Row(
               children: [
                 if (widget.face != null) ...[
-                  widget.face!,
+                  BadgedFace(face: widget.face!, size: 46, verified: verified),
                   const SizedBox(width: 13),
                 ],
                 Expanded(
@@ -148,9 +175,10 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
                           style: Warm.sheetTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
-                      if (widget.subtitle != null) ...[
+                      if (widget.albumName != null) ...[
                         const SizedBox(height: 2),
-                        Text(widget.subtitle!,
+                        Text('Code for ${widget.albumName}',
+                            key: const Key('safety-album'),
                             style: Warm.rowValue,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis),
@@ -177,20 +205,32 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.check_rounded,
-                            size: 17, color: Warm.ink),
+                        const Icon(Icons.verified_rounded,
+                            size: 18, color: Warm.ink),
                         const SizedBox(width: 6),
                         Text('Verified', style: Warm.pageSubhead),
                       ],
                     )
-                  : Text(
-                      changed
-                          ? "$name's security code changed. Compare it with "
-                              'them in person before trusting new photos.'
-                          : "Compare this with $name's screen, in person.",
-                      textAlign: TextAlign.center,
-                      style: Warm.acCardBody
-                          .copyWith(color: changed ? Warm.warn : Warm.inkSoft),
+                  : Column(
+                      children: [
+                        Text(
+                          changed
+                              ? "$name's security code changed. Compare it "
+                                  'with them in person before trusting new '
+                                  'photos.'
+                              : "Compare this with $name's screen, in person.",
+                          textAlign: TextAlign.center,
+                          style: Warm.acCardBody.copyWith(
+                              color: changed ? Warm.warn : Warm.inkSoft),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'On their phone: open $album, tap Security codes, '
+                          'then your name.',
+                          textAlign: TextAlign.center,
+                          style: Warm.pageSoft,
+                        ),
+                      ],
                     ),
             ),
             AnimatedSize(
@@ -200,22 +240,37 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
                   ? Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: Text(
-                        'If the numbers match on both phones, no one else '
-                        "can see your photos. Miuchio isn't told when you "
-                        'check.',
+                        'Photos are encrypted either way. Matching codes '
+                        'show that no one has slipped another key in '
+                        "between you two. It's optional, saved on this "
+                        "phone only, and Miuchio isn't told when you check.",
                         textAlign: TextAlign.center,
                         style: Warm.pageSoft,
                       ),
                     )
                   : const SizedBox(width: double.infinity),
             ),
+            if (_saveFailed) ...[
+              const SizedBox(height: 14),
+              Text(
+                "It matched, but this phone couldn't save that. Try again, "
+                'or it will ask you to compare again after a restart.',
+                key: const Key('safety-save-failed'),
+                textAlign: TextAlign.center,
+                style: Warm.pageSoft.copyWith(color: Warm.ink),
+              ),
+            ],
             if (!verified) ...[
               const SizedBox(height: 22),
               AnimatedBuilder(
                 animation: _spin,
                 builder: (_, __) => WarmButton(
-                  label: 'They match',
-                  onTap: _spin.isCompleted ? _confirmThenVerify : null,
+                  label: _saveFailed ? 'Try saving again' : 'They match',
+                  onTap: !_spin.isCompleted || _saving
+                      ? null
+                      : _saveFailed
+                          ? _save
+                          : _confirmThenVerify,
                 ),
               ),
               const SizedBox(height: 6),

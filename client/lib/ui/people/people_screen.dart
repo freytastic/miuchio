@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
+import 'package:miuchio/ui/people/trust_summary.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
-import 'package:miuchio/ui/widgets/tab_dock.dart';
+import 'package:miuchio/ui/widgets/verified_badge.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 class PersonEntry {
@@ -33,14 +34,14 @@ class PersonEntry {
 class PeopleScreen extends StatefulWidget {
   final String title;
   final String subtitle;
+  // What comparing a code is for, above the list
+  final String? intro;
   final Future<List<PersonEntry>> Function() load;
   final Future<void> Function(PersonEntry entry) onOpen;
   final Future<void> Function()? onAdd;
   // Null leaves invited rows inert
   final Future<void> Function(PersonEntry entry)? onOpenInvited;
   final String? note;
-  // A home tab rather than a page: no back, and room for the dock
-  final bool asTab;
 
   const PeopleScreen({
     super.key,
@@ -48,10 +49,10 @@ class PeopleScreen extends StatefulWidget {
     required this.subtitle,
     required this.load,
     required this.onOpen,
+    this.intro,
     this.onAdd,
     this.onOpenInvited,
     this.note,
-    this.asTab = false,
   });
 
   @override
@@ -107,8 +108,10 @@ class _PeopleScreenState extends State<PeopleScreen> {
   @override
   Widget build(BuildContext context) {
     final people = _people;
-    final joined = people?.where((p) => !p.invited).toList() ?? const [];
-    final done = joined.where((p) => p.trust == TrustState.verified).length;
+    final summary = TrustSummary.of([
+      for (final p in people ?? const <PersonEntry>[])
+        if (!p.invited) (name: p.name, trust: p.trust)
+    ]);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Warm.overlayOnGround,
       child: Scaffold(
@@ -118,13 +121,10 @@ class _PeopleScreenState extends State<PeopleScreen> {
           child: ListView(
             physics: const BouncingScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics()),
-            padding: EdgeInsets.fromLTRB(Warm.pagePad - 8, 16, Warm.pagePad - 8,
-                widget.asTab ? TabDock.height + 56 : 56),
+            padding: const EdgeInsets.fromLTRB(
+                Warm.pagePad - 8, 16, Warm.pagePad - 8, 56),
             children: [
-              if (widget.asTab)
-                const SizedBox(height: 26)
-              else
-                const Align(alignment: Alignment.centerLeft, child: WarmBack()),
+              const Align(alignment: Alignment.centerLeft, child: WarmBack()),
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 22, 8, 0),
                 child: Column(
@@ -133,12 +133,19 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     Text(widget.title, style: Warm.pageTitle),
                     const SizedBox(height: 6),
                     Text(
-                      people == null
+                      people == null || summary.isEmpty
                           ? widget.subtitle
-                          : '${widget.subtitle} · $done of ${joined.length} '
-                              'verified',
-                      style: Warm.rowValue,
+                          : '${widget.subtitle} · ${summary.status}',
+                      key: const Key('people-summary'),
+                      // A changed code outranks the reassuring count
+                      style: summary.alarm
+                          ? Warm.rowValue.copyWith(color: Warm.warn)
+                          : Warm.rowValue,
                     ),
+                    if (widget.intro != null) ...[
+                      const SizedBox(height: 14),
+                      Text(widget.intro!, style: Warm.pageSoft),
+                    ],
                   ],
                 ),
               ),
@@ -182,9 +189,8 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     name: p.name,
                     owner: p.owner,
                     verified: p.trust == TrustState.verified,
-                    status: p.trust == TrustState.changed
-                        ? 'Security code changed'
-                        : p.detail,
+                    // An invite has no key yet, so no state to show
+                    status: p.detail ?? (p.invited ? null : _status(p.trust)),
                     alarm: p.trust == TrustState.changed,
                     onTap: p.invited && widget.onOpenInvited == null
                         ? null
@@ -202,6 +208,14 @@ class _PeopleScreenState extends State<PeopleScreen> {
     );
   }
 }
+
+// Every joined person carries a state, so "not verified" reads as a fact and
+// not as a missing label
+String _status(TrustState t) => switch (t) {
+      TrustState.changed => 'Security code changed',
+      TrustState.verified => 'Verified',
+      TrustState.unverified => 'Not verified',
+    };
 
 class _Row extends StatelessWidget {
   final Widget face;
@@ -230,7 +244,7 @@ class _Row extends StatelessWidget {
       label: [
         name,
         if (owner) 'owner',
-        if (verified) 'verified',
+        // The status already says verified
         if (status != null) status!,
       ].join(', '),
       excludeSemantics: true,
@@ -241,7 +255,7 @@ class _Row extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           child: Row(
             children: [
-              SizedBox(width: 40, height: 40, child: face),
+              BadgedFace(face: face, size: 40, verified: verified),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -255,11 +269,6 @@ class _Row extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis),
                         ),
-                        if (verified) ...[
-                          const SizedBox(width: 5),
-                          const Icon(Icons.check_rounded,
-                              size: 15, color: Warm.ink),
-                        ],
                         if (owner) ...[
                           const SizedBox(width: 8),
                           const _OwnerTag(),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:miuchio/ui/people/trust_summary.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 
@@ -20,6 +21,9 @@ class AlbumHeader extends StatelessWidget {
   final VoidCallback? onRename;
   // True once the header has scrolled away, which folds the people row
   final bool folded;
+  // Null until the roster is reconciled, and hidden with nobody to compare
+  final TrustSummary? trust;
+  final VoidCallback? onSecurity;
 
   const AlbumHeader({
     super.key,
@@ -35,6 +39,8 @@ class AlbumHeader extends StatelessWidget {
     this.onAdd,
     this.onRename,
     this.folded = false,
+    this.trust,
+    this.onSecurity,
   });
 
   @override
@@ -88,6 +94,10 @@ class AlbumHeader extends StatelessWidget {
               folded: folded,
             ),
           ],
+          if (trust case final t? when !t.isEmpty && onSecurity != null) ...[
+            const SizedBox(height: 6),
+            SecurityLine(summary: t, onTap: onSecurity!),
+          ],
           if (filterToken != null) ...[
             const SizedBox(height: 12),
             _FilterChip(
@@ -107,6 +117,61 @@ class AlbumHeader extends StatelessWidget {
     height: 1.14,
     color: Warm.ink,
   );
+}
+
+// Verification lives with the album's people, as one quiet line. Only a
+// changed code is allowed to be loud, and the check only appears once every
+// comparable person is verified
+class SecurityLine extends StatelessWidget {
+  final TrustSummary summary;
+  final VoidCallback onTap;
+
+  const SecurityLine({super.key, required this.summary, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final alarm = summary.alarm;
+    final ink = alarm ? Warm.warn : Warm.inkSoft;
+    final icon = alarm
+        ? Icons.error_outline_rounded
+        : summary.allVerified
+            ? Icons.verified_user_outlined
+            : Icons.shield_outlined;
+    return Semantics(
+      button: true,
+      label: '${summary.label}. ${AlbumCopy.securityHint}',
+      excludeSemantics: true,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: PressableScale(
+          key: const Key('album-security'),
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: ink),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    summary.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600, color: ink),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                const Icon(Icons.chevron_right_rounded,
+                    size: 16, color: Warm.inkFaint),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // The filter as a line of text with a way out

@@ -52,6 +52,8 @@ import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/decrypted_image_preview.dart';
 import 'package:miuchio/ui/widgets/encrypted_image.dart';
 import 'package:miuchio/ui/widgets/safety_number_sheet.dart';
+import 'package:miuchio/ui/people/album_people.dart';
+import 'package:miuchio/ui/people/trust_summary.dart';
 import 'package:miuchio/ui/navigation/screen_route.dart';
 
 Future<List<XFile>> _systemPicker({int limit = 0}) =>
@@ -724,6 +726,9 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   // Display trust is separate from epoch signing authority and install blocks
   Map<String, TrustState> _trust = {};
+  // Hides the header's security line until the first reconcile, so it never
+  // claims nobody is verified while trust is still loading
+  bool _trustReady = false;
 
   // Seen persistence must not fail a successful listing
   Future<void> _markSeen(int generation) async {
@@ -771,12 +776,20 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       if (ik == null) continue;
       peers.add(PeerIdentity(memberToken: m.memberToken, ikPub: ik));
     }
-    if (peers.isEmpty) return;
+    if (peers.isEmpty) {
+      if (mounted) setState(() => _trustReady = true);
+      return;
+    }
 
     try {
       final states = await trust.reconcile(albumIdBytes, peers,
           myMemberToken: widget.album.memberToken);
-      if (mounted && !_accessLost) setState(() => _trust = states);
+      if (mounted && !_accessLost) {
+        setState(() {
+          _trust = states;
+          _trustReady = true;
+        });
+      }
       // Fresh roster pins may be what a failed rotation was missing
       if (mounted &&
           _appState?.rotationFor(widget.album.id)?.failure ==
@@ -799,7 +812,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         await trust.safetyNumber(albumId: albumIdBytes, peerIkPub: ik);
     if (!mounted) return;
 
-    Future<void>? verifying;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Warm.ground,
@@ -810,26 +822,16 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         displayName: _memberName(m),
         digits: digits,
         state: state,
-        subtitle: _appState?.albumDisplayName(widget.album.id),
+        albumName: _appState?.albumDisplayName(widget.album.id),
         face: _face(m.memberToken, _resolvedNames()[m.memberToken], 46),
         // Bind verification to the displayed key even if the roster changes
-        onVerify: () {
-          verifying = () async {
-            try {
-              await trust.markVerified(
-                  albumId: albumIdBytes,
-                  memberToken: m.memberToken,
-                  peerIkPub: ik);
-            } on VerificationNotSaved {
-              // Session trust survives, but a restart restores the alarm
-            }
-            await _reconcileTrust(_members);
-          }();
+        onVerify: () async {
+          await trust.markVerified(
+              albumId: albumIdBytes, memberToken: m.memberToken, peerIkPub: ik);
+          await _reconcileTrust(_members);
         },
       ),
     );
-    // The sheet closes before its verification writes finish
-    await verifying?.catchError((_) {});
   }
 
   Future<void> _retryKeySync() async {
@@ -872,15 +874,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         displayName: name ?? 'this member',
         digits: digits,
         state: TrustState.changed,
+        albumName: _appState?.albumDisplayName(widget.album.id),
         onVerify: () async {
-          try {
-            await trust.markVerified(
-                albumId: albumIdBytes, memberToken: tokenB64, peerIkPub: ik);
-          } on VerificationNotSaved {
-            // Session only; a restart restores the alarm
-          }
+          await trust.markVerified(
+              albumId: albumIdBytes, memberToken: tokenB64, peerIkPub: ik);
           // Verification permits a retry but only a successful install clears the block
-          await _retryKeySync();
+          unawaited(_retryKeySync());
         },
       ),
     );
@@ -936,6 +935,30 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     if (mounted && applied.isNotEmpty) {
       setState(() => _memberNames.addAll(applied));
     }
+  }
+
+  // Joined people with a key to compare, never yourself or an invite
+  TrustSummary? get _trustSummary {
+    if (!_trustReady) return null;
+    final self = widget.album.memberToken;
+    return TrustSummary.of([
+      for (final m in _members)
+        if (!m.revoked &&
+            m.memberToken != self &&
+            m.profile.nameCt != null &&
+            _peerIk(m) != null)
+          (
+            name: _memberName(m),
+            trust: _trust[m.memberToken] ?? TrustState.unverified,
+          ),
+    ]);
+  }
+
+  // The album's own people, so the codes shown are this album's
+  Future<void> _openSecurity() async {
+    await openAlbumPeople(context, widget.album, service: widget.albumService);
+    // Verifying or inviting there changes what this header shows
+    if (mounted) await _loadMembers();
   }
 
   // Surfaced as a banner so a substituted key is noticed without tapping a chip
@@ -1262,6 +1285,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           onAdd: _viewerIsAdmin ? _openAddMember : null,
                           onRename: _viewerIsAdmin ? _rename : null,
                           folded: _collapsed,
+                          trust: loaded ? _trustSummary : null,
+                          onSecurity: _openSecurity,
                         ),
                       ],
                     ),

@@ -77,7 +77,6 @@ class NotificationsScreen extends StatelessWidget {
     final digits = await trust.safetyNumber(albumId: album, peerIkPub: ik);
     if (!context.mounted) return;
 
-    Future<void>? verifying;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Warm.ground,
@@ -88,22 +87,15 @@ class NotificationsScreen extends StatelessWidget {
         displayName: names.memberName(e.albumId, e.peerToken),
         digits: digits,
         state: TrustState.changed,
-        onVerify: () {
-          verifying = () async {
-            try {
-              await trust.markVerified(
-                  albumId: album, memberToken: e.peerToken, peerIkPub: ik);
-            } on VerificationNotSaved {
-              // The album alarms again after a restart, so no "it matched"
-              return;
-            }
-            await store.resolveVerified(e);
-          }();
+        albumName: names.albumTitle(e.albumId),
+        // A failed save throws, so the album keeps alarming and so does this
+        onVerify: () async {
+          await trust.markVerified(
+              albumId: album, memberToken: e.peerToken, peerIkPub: ik);
+          await store.resolveVerified(e);
         },
       ),
     );
-    // The sheet closes before its verification writes finish
-    await verifying?.catchError((_) {});
   }
 
   // Settle only when this album's pin agrees with the verified key

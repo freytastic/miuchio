@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_header.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
+import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/e2ee/identity_trust.dart';
+import 'package:miuchio/ui/people/trust_summary.dart';
 
 void main() {
   late int cleared;
@@ -17,6 +20,8 @@ void main() {
     String? filterToken,
     String? filterName,
     int filterCount = 0,
+    TrustSummary? trust,
+    VoidCallback? onSecurity,
   }) async {
     cleared = 0;
     await tester.pumpWidget(MaterialApp(
@@ -31,6 +36,8 @@ void main() {
           filterCount: filterCount,
           onTapMember: (_) {},
           onClearFilter: () => cleared++,
+          trust: trust,
+          onSecurity: onSecurity,
         ),
       ),
     ));
@@ -55,6 +62,64 @@ void main() {
     await tester.pump();
 
     expect(cleared, 1);
+  });
+
+  group('security line', () {
+    TrustSummary of(List<TrustState> s) => TrustSummary.of(
+        [for (final (i, t) in s.indexed) (name: 'P$i', trust: t)]);
+
+    testWidgets('is calm and labelled before anyone is compared',
+        (tester) async {
+      var opened = 0;
+      await pump(tester,
+          trust: of([TrustState.unverified, TrustState.unverified]),
+          onSecurity: () => opened++);
+
+      expect(find.text('Security codes'), findsOneWidget);
+      expect(find.byIcon(Icons.shield_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.verified_user_outlined), findsNothing);
+
+      await tester.tap(find.byKey(const Key('album-security')));
+      expect(opened, 1);
+      expect(tester.getSize(find.byKey(const Key('album-security'))).height,
+          greaterThanOrEqualTo(44));
+    });
+
+    testWidgets('counts, and earns the check only when everyone is verified',
+        (tester) async {
+      await pump(tester,
+          trust: of([TrustState.verified, TrustState.unverified]),
+          onSecurity: () {});
+      expect(find.text('1 of 2 verified'), findsOneWidget);
+      expect(find.byIcon(Icons.verified_user_outlined), findsNothing);
+
+      await pump(tester,
+          trust: of([TrustState.verified, TrustState.verified]),
+          onSecurity: () {});
+      expect(find.text('2 of 2 verified'), findsOneWidget);
+      expect(find.byIcon(Icons.verified_user_outlined), findsOneWidget);
+    });
+
+    testWidgets('a changed code replaces the count and is the only warning',
+        (tester) async {
+      await pump(tester,
+          trust: of([TrustState.verified, TrustState.changed]),
+          onSecurity: () {});
+
+      final text = tester.widget<Text>(find.text("P1's security code changed"));
+      expect(text.style?.color, Warm.warn);
+      expect(find.textContaining('verified'), findsNothing);
+      expect(find.byIcon(Icons.verified_user_outlined), findsNothing);
+    });
+
+    testWidgets('is hidden with nobody to compare, or before trust loads',
+        (tester) async {
+      await pump(tester, trust: of([]), onSecurity: () {});
+      expect(find.byKey(const Key('album-security')), findsNothing);
+
+      await pump(tester, onSecurity: () {});
+      expect(find.byKey(const Key('album-security')), findsNothing);
+    });
   });
 
   group('collapsed bar', () {

@@ -31,6 +31,39 @@ class FootScrim extends StatelessWidget {
       );
 }
 
+// The one place the make button lives, on every screen that has one: bottom
+// center, just above the home indicator. Screens only say what it does, so it
+// never moves as you go from Home into an album. Must sit in a Stack that
+// reaches the bottom of the screen
+class MakeSpot extends StatelessWidget {
+  static const double size = 52;
+  // Its bottom edge above the bottom inset
+  static const double lift = 14;
+  // Its top edge above the bottom inset, for anything stacked over it
+  static const double top = lift + size;
+
+  final VoidCallback? onTap;
+  final String tooltip;
+  final String? hint;
+
+  const MakeSpot(
+      {super.key, required this.onTap, required this.tooltip, this.hint});
+
+  @override
+  Widget build(BuildContext context) => Positioned(
+        left: 0,
+        right: 0,
+        bottom: lift + MediaQuery.paddingOf(context).bottom,
+        child: Center(
+          child: Semantics(
+            button: true,
+            hint: hint,
+            child: MakeButton(onTap: onTap, tooltip: tooltip, size: size),
+          ),
+        ),
+      );
+}
+
 class MakeButton extends StatefulWidget {
   final VoidCallback? onTap;
   final String? tooltip;

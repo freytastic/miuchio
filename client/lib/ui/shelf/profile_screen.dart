@@ -41,7 +41,7 @@ const _revealFor = Duration(seconds: 20);
 
 class ProfileScreen extends StatefulWidget {
   // Null leaves the safety numbers row as a count only
-  final VoidCallback? onSafetyNumbers;
+  final Future<void> Function()? onSafetyNumbers;
   // The You tab rather than a page: no back, and room for the dock
   final bool asTab;
 
@@ -214,7 +214,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       icon: Icons.verified_user_outlined,
                       title: 'Security codes',
                       value: _verified,
-                      onTap: widget.onSafetyNumbers,
+                      onTap: widget.onSafetyNumbers == null
+                          ? null
+                          : () async {
+                              await widget.onSafetyNumbers!();
+                              // Comparing from an album there changes it
+                              await _loadVerified();
+                            },
                     ),
                     _Row(
                       icon: Icons.logout_rounded,

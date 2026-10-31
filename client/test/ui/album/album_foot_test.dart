@@ -19,12 +19,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('the add button sits bottom right, as on Home', (tester) async {
+  testWidgets('the add button sits bottom center, as in the home dock',
+      (tester) async {
     await pump(tester);
 
     final add = tester.getRect(find.byType(MakeButton));
     final screen = tester.getRect(find.byType(Scaffold));
-    expect(screen.right - add.right, 18);
+    expect(add.center.dx, screen.center.dx);
+    expect(add.width, MakeSpot.size);
+    expect(screen.bottom - add.bottom, MakeSpot.lift);
     expect(find.text(AlbumCopy.select), findsNothing);
     expect(find.text('Download'), findsNothing);
   });

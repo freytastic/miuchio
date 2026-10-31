@@ -8,7 +8,8 @@ import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/data/models/album_summary.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
-import 'package:miuchio/ui/people/everyone.dart';
+import 'package:miuchio/ui/people/album_people.dart';
+import 'package:miuchio/ui/people/security_codes_page.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
 import 'package:miuchio/ui/create/create_album_screen.dart';
 import 'package:miuchio/ui/home/home_screen.dart';
@@ -110,19 +111,21 @@ class _MainShellState extends State<MainShell> {
                   onCreateAlbum: _create,
                   onOpenPeople: (album) => openAlbumPeople(context, album),
                 ),
-                // Rebuilt on each visit, so rosters and unread rows are fresh
-                if (_tab == HomeTab.people)
-                  const EveryoneTab()
-                else
-                  const SizedBox.shrink(),
+                // Rebuilt on each visit, so unread rows are fresh
                 if (_tab == HomeTab.notifications)
                   NotificationsScreen(asTab: true, onOpenAlbum: _openAlbumById)
                 else
                   const SizedBox.shrink(),
-                ProfileScreen(
-                  asTab: true,
-                  onSafetyNumbers: () => _select(HomeTab.people),
-                ),
+                // Rebuilt on each visit, so the verified count is current
+                if (_tab == HomeTab.you)
+                  ProfileScreen(
+                    asTab: true,
+                    onSafetyNumbers: () => Navigator.of(context).push(
+                        screenRoute<void>(
+                            SecurityCodesPage(onOpenAlbum: _openAlbum))),
+                  )
+                else
+                  const SizedBox.shrink(),
               ],
             ),
             Positioned(

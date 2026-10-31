@@ -8,10 +8,10 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 
-enum HomeTab { home, albums, people, notifications, you }
+enum HomeTab { home, albums, notifications, you }
 
-// The home screen's bottom bar: five equal tabs, with the make button
-// floating above its right end where a thumb rests
+// The home screen's bottom bar: two tabs either side of the make button, so
+// the most used action sits where both thumbs reach and the tabs balance
 class TabDock extends StatelessWidget {
   final HomeTab current;
   final ValueChanged<HomeTab> onSelect;
@@ -24,13 +24,15 @@ class TabDock extends StatelessWidget {
     required this.onMake,
   });
 
-  static const double _bar = 52;
-  static const double _gap = 10;
-  static const double _make = 56;
+  // Centers MakeSpot on the bar: 8 + (64 - 52) / 2 == MakeSpot.lift
+  static const double _bar = 64;
+  // Room left between the tabs for MakeSpot
+  static const double _makeSlot = 76;
+  // Room above the bar for content to fade before it meets the icons
+  static const double _fade = 32;
 
-  // Height above the bottom inset, floating button included, which pages keep
-  // clear of their content
-  static const double height = 8 + _bar + _gap + _make;
+  // Height above the bottom inset, which pages keep clear of their content
+  static const double height = _fade + _bar + 8;
 
   @override
   Widget build(BuildContext context) {
@@ -47,64 +49,51 @@ class TabDock extends StatelessWidget {
           ),
         );
 
-    // The fade sits behind both the bar and the floating button
     return Stack(
       alignment: Alignment.bottomCenter,
       children: [
         const Positioned.fill(child: FootScrim(height: double.infinity)),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(right: 18),
-              child: MakeButton(onTap: onMake, tooltip: 'Add', size: _make),
+        Padding(
+          padding: EdgeInsets.fromLTRB(8, _fade, 8, 8 + bottom),
+          child: SizedBox(
+            height: _bar,
+            child: Row(
+              children: [
+                tab(
+                    HomeTab.home,
+                    'Home',
+                    (on) =>
+                        _glyph(on, Icons.home_rounded, Icons.home_outlined)),
+                tab(
+                    HomeTab.albums,
+                    'Albums',
+                    (on) => _glyph(on, Icons.photo_library_rounded,
+                        Icons.photo_library_outlined)),
+                const SizedBox(width: _makeSlot),
+                tab(
+                    HomeTab.notifications,
+                    unread ? 'Notifications, new' : 'Notifications',
+                    (on) => _Dot(
+                          show: unread,
+                          child: _glyph(on, Icons.notifications_rounded,
+                              Icons.notifications_none_rounded),
+                        )),
+                tab(HomeTab.you, 'You', (on) => _Me(on: on)),
+              ],
             ),
-            const SizedBox(height: _gap),
-            Padding(
-              padding: EdgeInsets.fromLTRB(4, 0, 4, 8 + bottom),
-              child: SizedBox(
-                height: _bar,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    tab(
-                        HomeTab.home,
-                        'Home',
-                        (on) => _glyph(
-                            on, Icons.home_rounded, Icons.home_outlined)),
-                    tab(
-                        HomeTab.albums,
-                        'Albums',
-                        (on) => _glyph(on, Icons.photo_library_rounded,
-                            Icons.photo_library_outlined)),
-                    tab(
-                        HomeTab.people,
-                        'People',
-                        (on) => _glyph(on, Icons.people_alt_rounded,
-                            Icons.people_alt_outlined)),
-                    tab(
-                        HomeTab.notifications,
-                        'Notifications',
-                        (on) => _Dot(
-                              show: unread,
-                              child: _glyph(on, Icons.notifications_rounded,
-                                  Icons.notifications_none_rounded),
-                            )),
-                    tab(HomeTab.you, 'You', (on) => _Me(on: on)),
-                  ],
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
+        MakeSpot(
+            onTap: onMake,
+            tooltip: 'Add',
+            hint: 'Add photos or start an album'),
       ],
     );
   }
 
   static Widget _glyph(bool on, IconData filled, IconData outline) => Icon(
         on ? filled : outline,
-        size: 27,
+        size: 26,
         color: on ? Warm.ink : Warm.inkSoft,
       );
 }
@@ -135,11 +124,31 @@ class _Tab extends StatelessWidget {
           if (!on) HapticFeedback.selectionClick();
           onTap();
         },
-        // Icons only: five labels do not fit a phone's width. The name is
-        // still read out by screen readers
+        // Icons only, so the make button stays the bar's one label-free
+        // focal point. The name is still read out by screen readers. The
+        // selected tab is marked twice, filled and with a dot beneath, so it
+        // never relies on color alone
         child: SizedBox(
           height: TabDock._bar,
-          child: Center(child: icon),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 9),
+              SizedBox(height: 28, child: Center(child: icon)),
+              const SizedBox(height: 5),
+              AnimatedOpacity(
+                opacity: on ? 1 : 0,
+                duration: Warm.quick,
+                child: const SizedBox.square(
+                  dimension: 4,
+                  child: DecoratedBox(
+                    decoration:
+                        BoxDecoration(color: Warm.ink, shape: BoxShape.circle),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

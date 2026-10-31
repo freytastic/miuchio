@@ -49,7 +49,25 @@ void main() {
     expect(top(tester, 'bea'), lessThan(top(tester, 'ana')));
     expect(top(tester, 'ana'), lessThan(top(tester, 'dan')));
     expect(find.text('Security code changed'), findsOneWidget);
-    expect(find.text('Cabin · 1 of 3 verified'), findsOneWidget);
+    // The alarm outranks the count, which would otherwise reassure
+    expect(find.text("Cabin · cy's security code changed"), findsOneWidget);
+    expect(find.textContaining('of 3 verified'), findsNothing);
+  });
+
+  testWidgets('every joined person states whether they are verified',
+      (tester) async {
+    await pump(tester, [
+      _p('ana', TrustState.verified),
+      _p('bea', TrustState.unverified),
+      _p('dan', TrustState.unverified, invited: true),
+    ]);
+
+    expect(find.text('Cabin · 1 of 2 verified'), findsOneWidget);
+    expect(find.text('Verified'), findsOneWidget);
+    expect(find.text('Not verified'), findsOneWidget);
+    expect(find.byKey(const Key('verified-badge')), findsOneWidget,
+        reason: 'the badge is only for the verified person');
+    expect(find.byIcon(Icons.check_rounded), findsNothing);
   });
 
   testWidgets('opening someone reloads, an invite has nothing to open',

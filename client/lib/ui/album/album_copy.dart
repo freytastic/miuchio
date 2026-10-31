@@ -47,6 +47,12 @@ abstract final class AlbumCopy {
   static String deleteManyFailed(int n) =>
       n == 1 ? deleteFailed : "Couldn't delete $n photos.";
   static const people = 'People';
+  static const securityCodes = 'Security codes';
+  static const securityHint = 'Opens people and security codes';
+  static const peopleIntro =
+      'Photos in this album are encrypted either way. Comparing a security '
+      'code with someone in person confirms no one is in between. '
+      "It's optional, and saved on this phone.";
   static const albumInfo = 'Album info';
   static const openAlbum = 'Open album';
   static const addSomeone = 'Add someone';
