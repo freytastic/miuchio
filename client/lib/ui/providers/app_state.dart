@@ -302,11 +302,15 @@ class AppState extends ChangeNotifier {
     // A generation gap requires authoritative summary data
     if (generation > a.mediaGeneration + 1) _scheduleSummaryRefresh();
 
+    final lead = a.cover?.mediaId;
     final nextPreview = preview == null
         ? a.previewMedia
         : [
+            // A chosen cover keeps leading, new photos queue behind it
+            ...a.previewMedia.where((p) => p.mediaId == lead),
             preview,
-            ...a.previewMedia.where((p) => p.mediaId != preview.mediaId),
+            ...a.previewMedia.where(
+                (p) => p.mediaId != preview.mediaId && p.mediaId != lead),
           ].take(3).toList();
 
     final moved = a.copyWith(

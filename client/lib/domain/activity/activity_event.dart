@@ -120,6 +120,20 @@ class MemberLeft extends ActivityEvent {
       );
 }
 
+// Only a chosen cover is news, going back to the newest photo is not
+class CoverChanged extends ActivityEvent {
+  final String setBy;
+  const CoverChanged({
+    required super.id,
+    required super.albumId,
+    required super.at,
+    required this.setBy,
+  });
+
+  @override
+  ActivityLane get lane => ActivityLane.albums;
+}
+
 // uploaderToken is null until a media fetch attributes it: the shelf summary
 // says how many arrived but never who sent them
 class PhotosAdded extends ActivityEvent {

@@ -39,6 +39,9 @@ func (r *AvatarRepository) Reserve(ctx context.Context, a *model.MemberAvatar) e
 	if err := lockActiveMember(ctx, tx, a.AlbumID, a.MemberToken); err != nil {
 		return err
 	}
+	if err := requireCurrentEpoch(ctx, tx, a.AlbumID, sealedKeyEpoch(a.KeyCT)); err != nil {
+		return err
+	}
 
 	var prev struct {
 		album     uuid.UUID
@@ -67,7 +70,7 @@ func (r *AvatarRepository) Reserve(ctx context.Context, a *model.MemberAvatar) e
 	}
 
 	// One pending upload per member, keeping a key this reservation reuses
-	stale, err := removeAvatars(ctx, tx, `
+	stale, err := removeStoredObjects(ctx, tx, `
 		DELETE FROM member_avatars
 		WHERE album_id = $1 AND member_token = $2 AND confirmed = FALSE
 		RETURNING storage_key`, a.AlbumID, a.MemberToken)
@@ -113,8 +116,10 @@ func (r *AvatarRepository) Get(ctx context.Context, albumID, avatarID uuid.UUID)
 }
 
 // Confirm swaps the pending upload in and returns the replaced object keys,
-// already queued for cleanup. Confirming the current avatar again is a no op
-func (r *AvatarRepository) Confirm(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID) ([]string, error) {
+// already queued for cleanup. storageKey is the object the caller checked, so
+// a retry that re-reserved the same id with other bytes is not confirmed
+// unchecked. Confirming the current avatar again is a no op
+func (r *AvatarRepository) Confirm(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID, storageKey string) ([]string, error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -126,11 +131,14 @@ func (r *AvatarRepository) Confirm(ctx context.Context, albumID uuid.UUID, membe
 	}
 
 	var confirmed bool
+	var keyCT []byte
 	err = tx.QueryRow(ctx, `
-		SELECT confirmed FROM member_avatars
-		WHERE avatar_id = $1 AND album_id = $2 AND member_token = $3`,
-		avatarID, albumID, memberToken,
-	).Scan(&confirmed)
+		SELECT confirmed, key_ct FROM member_avatars
+		WHERE avatar_id = $1 AND album_id = $2 AND member_token = $3
+		  AND storage_key = $4
+		FOR UPDATE`,
+		avatarID, albumID, memberToken, storageKey,
+	).Scan(&confirmed, &keyCT)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrAvatarNotFound
 	}
@@ -140,28 +148,40 @@ func (r *AvatarRepository) Confirm(ctx context.Context, albumID uuid.UUID, membe
 	if confirmed {
 		return nil, tx.Commit(ctx)
 	}
+	// A revoke or rotation may have committed since the reservation
+	if err := requireCurrentEpoch(ctx, tx, albumID, sealedKeyEpoch(keyCT)); err != nil {
+		return nil, err
+	}
 
-	replaced, err := removeAvatars(ctx, tx, `
+	replaced, err := removeStoredObjects(ctx, tx, `
 		DELETE FROM member_avatars
 		WHERE album_id = $1 AND member_token = $2 AND avatar_id <> $3
 		RETURNING storage_key`, albumID, memberToken, avatarID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE member_avatars SET confirmed = TRUE WHERE avatar_id = $1`, avatarID,
-	); err != nil {
+	// The row lock keeps stale cleanup off it, the count proves that held
+	tag, err := tx.Exec(ctx,
+		`UPDATE member_avatars SET confirmed = TRUE
+		 WHERE avatar_id = $1 AND storage_key = $2 AND confirmed = FALSE`,
+		avatarID, storageKey)
+	if err != nil {
 		return nil, err
+	}
+	if tag.RowsAffected() != 1 {
+		return nil, ErrAvatarNotFound
 	}
 	return replaced, tx.Commit(ctx)
 }
 
-// DropPending retires one unconfirmed upload whose object failed verification
-func (r *AvatarRepository) DropPending(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID) ([]string, error) {
+// DropPending retires the one unconfirmed upload whose object failed
+// verification, never a newer reservation under the same id
+func (r *AvatarRepository) DropPending(ctx context.Context, albumID uuid.UUID, memberToken []byte, avatarID uuid.UUID, storageKey string) ([]string, error) {
 	return r.removeInTx(ctx, `
 		DELETE FROM member_avatars
-		WHERE avatar_id = $1 AND album_id = $2 AND member_token = $3 AND confirmed = FALSE
-		RETURNING storage_key`, avatarID, albumID, memberToken)
+		WHERE avatar_id = $1 AND album_id = $2 AND member_token = $3
+		  AND storage_key = $4 AND confirmed = FALSE
+		RETURNING storage_key`, avatarID, albumID, memberToken, storageKey)
 }
 
 // Remove deletes every avatar row the member has in the album
@@ -197,17 +217,17 @@ func (r *AvatarRepository) removeInTx(ctx context.Context, sql string, args ...a
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	keys, err := removeAvatars(ctx, tx, sql, args...)
+	keys, err := removeStoredObjects(ctx, tx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
 	return keys, tx.Commit(ctx)
 }
 
-// removeAvatars runs a DELETE returning storage_key and queues the keys before
-// the caller commits. Album and identity cascades would drop rows silently, so
-// every removal path calls this first
-func removeAvatars(ctx context.Context, tx pgx.Tx, sql string, args ...any) ([]string, error) {
+// removeStoredObjects runs a DELETE returning storage_key and queues the keys
+// before the caller commits. Album and identity cascades would drop rows
+// silently, so every removal path calls this first
+func removeStoredObjects(ctx context.Context, tx pgx.Tx, sql string, args ...any) ([]string, error) {
 	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err

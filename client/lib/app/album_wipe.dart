@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/data/storage/avatar_cache.dart';
+import 'package:miuchio/data/storage/cover_cache.dart';
 import 'package:miuchio/data/storage/identity_pin_store.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/media_sealed_cache.dart';
@@ -30,6 +31,7 @@ class AlbumWipe {
   final AppState appState;
   final NameCache nameCache;
   final AvatarCache avatarCache;
+  final CoverCache coverCache;
   final OwnAvatarStore ownAvatar;
   final IdentityTrust identityTrust;
   final IdentityPinStore identityPins;
@@ -46,6 +48,7 @@ class AlbumWipe {
     required this.appState,
     required this.nameCache,
     required this.avatarCache,
+    required this.coverCache,
     required this.ownAvatar,
     required this.identityTrust,
     required this.identityPins,
@@ -64,6 +67,7 @@ class AlbumWipe {
     await sealedCache.dropAlbum(albumStr);
     await nameCache.clearAlbum(albumStr);
     await avatarCache.clearAlbum(albumStr);
+    await coverCache.clearAlbum(albumStr);
     await ownAvatar.forgetAlbum(albumStr);
     await identityTrust.forgetAlbum(albumId);
     rotationRecovery.forget(albumId);
@@ -80,6 +84,7 @@ class AlbumWipe {
       if (await albumKeys.latestEpoch(albumId) >= 0) 'album keys',
       if (nameCache.holdsAlbum(albumStr)) 'names',
       if (await avatarCache.holdsAlbum(albumStr)) 'avatars',
+      if (await coverCache.holdsAlbum(albumStr)) 'album covers',
       if (identityPins.holdsAlbum(hexAlbumId(albumId))) 'pins',
       if (seenStore.holdsAlbum(albumStr)) 'seen state',
     ];

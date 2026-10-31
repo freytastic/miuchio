@@ -306,13 +306,20 @@ func (r *AccountDeletionRepository) RemoveMembership(ctx context.Context, userID
 		return MembershipRemoval{}, err
 	}
 	out.MediaIDs = media.MediaIDs
-	avatars, err := removeAvatars(ctx, tx,
+	avatars, err := removeStoredObjects(ctx, tx,
 		`DELETE FROM member_avatars WHERE album_id = $1 AND member_token = $2
 		 RETURNING storage_key`, albumID, m.MemberToken)
 	if err != nil {
 		return MembershipRemoval{}, err
 	}
-	out.Keys = append(media.Keys, avatars...)
+	// Severing the identity would cascade the row away and orphan its object
+	covers, err := removeStoredObjects(ctx, tx,
+		`DELETE FROM album_covers WHERE album_id = $1 AND set_by = $2
+		 AND storage_key IS NOT NULL RETURNING storage_key`, albumID, m.MemberToken)
+	if err != nil {
+		return MembershipRemoval{}, err
+	}
+	out.Keys = append(append(media.Keys, avatars...), covers...)
 
 	if out.NotifyUserIDs, err = activeUserIDs(ctx, tx, r.linker, albumID, m.MemberToken); err != nil {
 		return MembershipRemoval{}, err

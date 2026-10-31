@@ -38,6 +38,8 @@ func newAvatarEnv(t *testing.T) *avatarEnv {
 	if err != nil {
 		t.Fatalf("add member: %v", err)
 	}
+	// Uploads are gated on the current epoch, which key_ct names as 0
+	env.ensureEpoch(t, album.ID)
 	t.Cleanup(func() {
 		_, _ = env.pool.Exec(ctx,
 			`DELETE FROM media_object_cleanup WHERE storage_key LIKE 'avatar-%'`)
@@ -73,7 +75,7 @@ func (e *avatarEnv) upload(t *testing.T, token []byte, key string) *model.Member
 	if err := e.avatars.Reserve(ctx, a); err != nil {
 		t.Fatalf("reserve %s: %v", key, err)
 	}
-	if _, err := e.avatars.Confirm(ctx, e.album, token, a.AvatarID); err != nil {
+	if _, err := e.avatars.Confirm(ctx, e.album, token, a.AvatarID, a.StorageKey); err != nil {
 		t.Fatalf("confirm %s: %v", key, err)
 	}
 	return a
@@ -117,7 +119,7 @@ func TestAvatar_PendingIsHiddenUntilConfirmed(t *testing.T) {
 		t.Fatalf("pending avatar leaked into the roster: %+v", got)
 	}
 
-	if _, err := e.avatars.Confirm(ctx, e.album, e.admin, a.AvatarID); err != nil {
+	if _, err := e.avatars.Confirm(ctx, e.album, e.admin, a.AvatarID, a.StorageKey); err != nil {
 		t.Fatalf("confirm: %v", err)
 	}
 	got := e.rosterAvatar(t, e.admin)
@@ -152,7 +154,7 @@ func TestAvatar_ConfirmReplacesAndQueuesTheOldObject(t *testing.T) {
 	if err := e.avatars.Reserve(ctx, next); err != nil {
 		t.Fatalf("reserve: %v", err)
 	}
-	replaced, err := e.avatars.Confirm(ctx, e.album, e.admin, next.AvatarID)
+	replaced, err := e.avatars.Confirm(ctx, e.album, e.admin, next.AvatarID, next.StorageKey)
 	if err != nil {
 		t.Fatalf("confirm: %v", err)
 	}
@@ -166,7 +168,7 @@ func TestAvatar_ConfirmReplacesAndQueuesTheOldObject(t *testing.T) {
 		t.Fatalf("roster avatar = %+v, want the replacement", got)
 	}
 
-	again, err := e.avatars.Confirm(ctx, e.album, e.admin, next.AvatarID)
+	again, err := e.avatars.Confirm(ctx, e.album, e.admin, next.AvatarID, next.StorageKey)
 	if err != nil || len(again) != 0 {
 		t.Fatalf("repeat confirm = %v, %v, want a no op", again, err)
 	}
@@ -211,7 +213,7 @@ func TestAvatar_AnotherMemberCannotTakeAnAvatarID(t *testing.T) {
 	if err := e.avatars.Reserve(ctx, stolen); !errors.Is(err, repository.ErrAvatarNotOwned) {
 		t.Fatalf("reserve = %v, want ErrAvatarNotOwned", err)
 	}
-	if _, err := e.avatars.Confirm(ctx, e.album, e.friend, a.AvatarID); !errors.Is(err, repository.ErrAvatarNotFound) {
+	if _, err := e.avatars.Confirm(ctx, e.album, e.friend, a.AvatarID, a.StorageKey); !errors.Is(err, repository.ErrAvatarNotFound) {
 		t.Fatalf("confirm = %v, want ErrAvatarNotFound", err)
 	}
 }
@@ -292,5 +294,58 @@ func TestAvatar_AccountDeletionLeavesWithoutAnAvatar(t *testing.T) {
 	}
 	if !slices.Contains(out.Keys, "avatar-leaver") || !e.queued(t, "avatar-leaver") {
 		t.Errorf("avatar was not returned and queued: %v", out.Keys)
+	}
+}
+
+// After rotation an avatar sealed under the old key is neither confirmed nor
+// reserved, a reseal under the new one is
+func TestAvatar_RotationRefusesTheOldKeyAndTakesTheReseal(t *testing.T) {
+	e := newAvatarEnv(t)
+	ctx := context.Background()
+
+	old := e.row(e.friend, "avatar-old", 4)
+	if err := e.avatars.Reserve(ctx, old); err != nil {
+		t.Fatalf("reserve at epoch 0: %v", err)
+	}
+	rotateTo(t, e, 1)
+
+	if _, err := e.avatars.Confirm(ctx, e.album, e.friend, old.AvatarID, old.StorageKey); !errors.Is(err, repository.ErrEpochMismatch) {
+		t.Fatalf("confirm under the old key = %v, want ErrEpochMismatch", err)
+	}
+	if err := e.avatars.Reserve(ctx, e.row(e.friend, "avatar-old2", 5)); !errors.Is(err, repository.ErrEpochMismatch) {
+		t.Fatalf("reserve under the old key = %v, want ErrEpochMismatch", err)
+	}
+
+	resealed := e.row(e.friend, "avatar-new", 6)
+	resealed.KeyCT = sealedAt(1)
+	if err := e.avatars.Reserve(ctx, resealed); err != nil {
+		t.Fatalf("reserve resealed: %v", err)
+	}
+	if _, err := e.avatars.Confirm(ctx, e.album, e.friend, resealed.AvatarID, resealed.StorageKey); err != nil {
+		t.Fatalf("confirm resealed: %v", err)
+	}
+	if got := e.rosterAvatar(t, e.friend); got == nil || got.AvatarID != resealed.AvatarID {
+		t.Fatalf("roster avatar = %+v, want the resealed one", got)
+	}
+}
+
+func TestAvatar_StaleDropKeepsTheReplacement(t *testing.T) {
+	e := newAvatarEnv(t)
+	ctx := context.Background()
+
+	first := e.row(e.admin, "avatar-a1", 7)
+	if err := e.avatars.Reserve(ctx, first); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	again := *first
+	again.StorageKey, again.BlobSHA256 = "avatar-a2", bytes.Repeat([]byte{8}, 32)
+	if err := e.avatars.Reserve(ctx, &again); err != nil {
+		t.Fatalf("re-reserve: %v", err)
+	}
+	if keys, err := e.avatars.DropPending(ctx, e.album, e.admin, first.AvatarID, "avatar-a1"); err != nil || len(keys) != 0 {
+		t.Fatalf("stale drop = %v, %v, want nothing removed", keys, err)
+	}
+	if _, err := e.avatars.Confirm(ctx, e.album, e.admin, again.AvatarID, "avatar-a2"); err != nil {
+		t.Fatalf("the replacement was lost: %v", err)
 	}
 }

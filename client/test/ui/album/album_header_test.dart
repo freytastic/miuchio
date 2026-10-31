@@ -72,7 +72,7 @@ void main() {
         ),
       ));
 
-      await tester.tap(find.byTooltip(AlbumCopy.more), warnIfMissed: false);
+      await tester.tap(find.byTooltip(AlbumCopy.settings), warnIfMissed: false);
       await tester.pump();
 
       expect(more, 0, reason: 'a hidden bar must not swallow taps');

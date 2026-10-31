@@ -154,6 +154,7 @@ func (h *AlbumHandler) ListAlbums(w http.ResponseWriter, r *http.Request) {
 			"rotation_required":   a.Summary.RotationRequired,
 			"preview_media":       previewMediaJSON(a.Summary.PreviewMedia),
 			"member_previews":     memberPreviewsJSON(a.Summary.MemberPreviews),
+			"cover":               coverJSON(a.Cover),
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

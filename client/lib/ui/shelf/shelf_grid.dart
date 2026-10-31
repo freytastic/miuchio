@@ -183,7 +183,7 @@ class _ShelfCardState extends State<_ShelfCard> {
   }
 
   Widget? _image(int slot) {
-    final bytes = _covers?.bytes(widget.album.id, slot);
+    final bytes = printPhoto(context, widget.album, slot);
     if (bytes == null) return null;
     return Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true);
   }
@@ -270,6 +270,7 @@ class _ShelfCardState extends State<_ShelfCard> {
   Widget build(BuildContext context) {
     final covers = _covers;
     if (covers != null) context.watch<ShelfCovers>();
+    context.watch<CoverCache?>();
     context.watch<AppState>();
 
     final card = Opacity(

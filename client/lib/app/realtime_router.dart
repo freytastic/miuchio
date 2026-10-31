@@ -60,6 +60,9 @@ class RealtimeRouter {
         appState.notifyMemberChanged(albumStr);
       case 'e2ee.member_revoked':
         _memberRevoked(ev.payload);
+      // Carries only the album id, the listing says what changed
+      case 'e2ee.album_updated':
+        appState.refreshSummarySoon();
     }
   }
 

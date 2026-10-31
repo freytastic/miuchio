@@ -103,7 +103,12 @@ void main() {
     expect(find.text('bobtoken'), findsNothing);
     expect(find.byType(MemberAvatars), findsOneWidget);
     expect(find.text('·'), findsOneWidget);
-    expect(find.byType(DashedCircle), findsOneWidget);
+    // Bob's place while he has not opened it, and the owner's add slot
+    expect(find.byType(DashedCircle), findsNWidgets(2));
+    expect(
+        find.descendant(
+            of: find.byType(AddSlot), matching: find.byType(DashedCircle)),
+        findsOneWidget);
   });
 
   testWidgets('an invited member is counted as invited, not as a person',
@@ -163,9 +168,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip(AlbumCopy.more).first);
+    await tester.tap(find.byTooltip(AlbumCopy.settings).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text(AlbumCopy.people));
+    await tester.tap(find.byKey(const Key('album-settings-people')));
     await tester.pumpAndSettle();
 
     expect(find.byType(PeopleScreen), findsOneWidget);
@@ -327,9 +332,9 @@ void main() {
         names: await names(tester),
       ));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip(AlbumCopy.more).first);
+      await tester.tap(find.byTooltip(AlbumCopy.settings).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text(AlbumCopy.people));
+      await tester.tap(find.byKey(const Key('album-settings-people')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('person-caroltoken789')));
@@ -358,9 +363,9 @@ void main() {
       names: await names(tester),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip(AlbumCopy.more).first);
+    await tester.tap(find.byTooltip(AlbumCopy.settings).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text(AlbumCopy.people));
+    await tester.tap(find.byKey(const Key('album-settings-people')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('person-bobtoken456')));
     await tester.pumpAndSettle();

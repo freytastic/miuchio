@@ -14,6 +14,8 @@ void main() {
     bool rotationRequired = false,
     String? self,
     DateTime? last,
+    String? cover,
+    String? coverBy,
   }) =>
       AlbumSnapshot(
         albumId: id,
@@ -24,6 +26,8 @@ void main() {
         myRole: role,
         rotationRequired: rotationRequired,
         latestActivityAt: last,
+        coverId: cover,
+        coverSetBy: coverBy,
       );
 
   Map<String, AlbumSnapshot> byId(List<AlbumSnapshot> xs) => {
@@ -299,6 +303,31 @@ void main() {
           .single;
 
       expect(first.id, isNot(again.id));
+    });
+  });
+
+  group('cover', () {
+    test('a chosen cover is news to members, once per choice', () {
+      final events = derive([snap('a', self: 'me')],
+          [snap('a', self: 'me', cover: 'c1', coverBy: 'owner')]);
+
+      final e = events.single as CoverChanged;
+      expect(e.setBy, 'owner');
+      expect(e.lane, ActivityLane.albums);
+      expect(
+          derive([snap('a', self: 'me', cover: 'c1', coverBy: 'owner')],
+              [snap('a', self: 'me', cover: 'c1', coverBy: 'owner')]),
+          isEmpty);
+    });
+
+    test('going back to the newest photo and your own choice say nothing', () {
+      expect(
+          derive([snap('a', self: 'me', cover: 'c1', coverBy: 'owner')],
+              [snap('a', self: 'me')]),
+          isEmpty);
+      final mine = snap('a',
+          role: 'admin', self: 'me', cover: 'c2', coverBy: 'me');
+      expect(derive([snap('a', role: 'admin', self: 'me')], [mine]), isEmpty);
     });
   });
 }

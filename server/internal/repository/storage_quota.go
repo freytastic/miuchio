@@ -33,12 +33,17 @@ const accountUsageSQL = `
 	   FROM member_avatars a
 	   JOIN album_member_identities i
 	     ON i.member_token = a.member_token AND i.album_id = a.album_id
+	   WHERE i.user_handle = $1)
+	+ (SELECT COALESCE(SUM(c.blob_size), 0)::bigint
+	   FROM album_covers c
+	   JOIN album_member_identities i ON i.member_token = c.set_by
 	   WHERE i.user_handle = $1)`
 
 const totalUsageSQL = `
 	SELECT
 	  (SELECT COALESCE(SUM(blob_size + COALESCE(thumb_size, 0)), 0)::bigint FROM media)
-	+ (SELECT COALESCE(SUM(blob_size), 0)::bigint FROM member_avatars)`
+	+ (SELECT COALESCE(SUM(blob_size), 0)::bigint FROM member_avatars)
+	+ (SELECT COALESCE(SUM(blob_size), 0)::bigint FROM album_covers)`
 
 // Runs inside a reservation after the album lock and after any replaced
 // pending row is deleted. Every caller takes the account lock second, so the

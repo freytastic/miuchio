@@ -3,13 +3,17 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:miuchio/data/models/album_model.dart';
+import 'package:miuchio/data/models/album_summary.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_menu.dart';
+import 'package:miuchio/ui/providers/app_state.dart';
+import 'package:miuchio/ui/shelf/album_print.dart';
 import 'package:miuchio/ui/shelf/shelf_copy.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/blur_scrim.dart';
 import 'package:miuchio/ui/widgets/peek_route.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
+import 'package:provider/provider.dart';
 
 typedef PeekPrint = Widget Function({required bool fanned});
 
@@ -209,8 +213,29 @@ class _ShelfPeekState extends State<ShelfPeek> {
         ],
       );
 
+  // Your own face keeps your name, only the sentence says You
+  String? _nameOf(MemberPreview m) {
+    final a = widget.album;
+    final state = context.read<AppState>();
+    if (m.memberToken == a.memberToken) return state.profileName;
+    return state.memberDisplayName(a.id, m.memberToken);
+  }
+
   Widget _facts() {
     final a = widget.album;
+    final names = [
+      for (final m in a.memberPreviews)
+        if (m.memberToken == a.memberToken) AlbumCopy.you,
+      for (final m in a.memberPreviews)
+        if (m.memberToken != a.memberToken)
+          _nameOf(m) ?? AlbumCopy.unknownMember,
+    ];
+    final when = relativeTime(a.latestActivityAt);
+    final last = a.mediaCount == 0
+        ? AlbumCopy.noPhotosYet
+        : when == null
+            ? null
+            : AlbumCopy.lastPhoto(when);
     return MenuCard(
       key: const ValueKey('shelf-peek-info'),
       children: [
@@ -234,61 +259,82 @@ class _ShelfPeekState extends State<ShelfPeek> {
             ),
           ),
         ),
-        _Fact(AlbumCopy.infoPhotos, '${a.mediaCount}'),
-        _Fact(AlbumCopy.infoPeople, '${a.activeMemberCount}'),
-        _Fact(AlbumCopy.infoLast,
-            relativeTime(a.latestActivityAt) ?? AlbumCopy.infoNone),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Text(
-            AlbumCopy.infoKey,
-            style: TextStyle(fontSize: 12, height: 1.45, color: Warm.inkSoft),
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: Warm.inkGhost)),
           ),
+          child: _Count(
+              value: a.mediaCount, unit: AlbumCopy.photoUnit(a.mediaCount)),
         ),
+        if (a.memberPreviews.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Row(
+              children: [
+                PrintFaces(
+                  albumId: a.id,
+                  members: a.memberPreviews,
+                  total: a.activeMemberCount,
+                  nameOf: _nameOf,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    AlbumCopy.whoCanSee(names, a.activeMemberCount),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: _quiet,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (last != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Text(last, style: _quiet),
+          ),
       ],
     );
   }
+
+  static const _quiet = TextStyle(fontSize: 13, color: Warm.inkSoft);
 }
 
-class _Fact extends StatelessWidget {
-  final String label;
-  final String value;
+class _Count extends StatelessWidget {
+  final int value;
+  final String unit;
 
-  const _Fact(this.label, this.value);
+  const _Count({required this.value, required this.unit});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Warm.inkGhost)),
-      ),
+    return Semantics(
+      label: '$value $unit',
+      excludeSemantics: true,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
         children: [
-          Text(label,
-              style: const TextStyle(fontSize: 13.5, color: Warm.inkSoft)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: Warm.ink,
-                fontFeatures: [FontFeature.tabularFigures()],
-              ),
+          Text(
+            '$value',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.5,
+              color: Warm.ink,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
+          const SizedBox(width: 5),
+          Text(unit, style: const TextStyle(fontSize: 13, color: Warm.inkSoft)),
         ],
       ),
     );
   }
 }
 
-// Shrinks into the lower left, then accelerates off the edge
 class _Tuck extends StatefulWidget {
   final Rect rect;
   final Widget print;

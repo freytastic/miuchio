@@ -227,8 +227,8 @@ class AlbumTopBar extends StatelessWidget {
                 ),
               ),
               AlbumIconButton(
-                icon: Icons.more_horiz_rounded,
-                tooltip: AlbumCopy.more,
+                icon: Icons.settings_outlined,
+                tooltip: AlbumCopy.settings,
                 onTap: onMore,
               ),
             ],

@@ -196,6 +196,8 @@ void main() {
     DebugLog.record(DebugEvent.uploadFailed, reason: 'http_503');
     await DebugLog.flush();
     await DebugLog.debugReset();
+    // The reset restores the real clock, which would prune the pinned entry
+    DebugLog.debugNow = () => now;
     await DebugLog.attach(_key(8), file: logFile());
     expect(DebugLog.entries.map((e) => e.event), [DebugEvent.uploadFailed]);
   });

@@ -1,4 +1,5 @@
 import 'package:miuchio/data/models/album_summary.dart';
+import 'package:miuchio/data/models/cover_ref.dart';
 
 class AlbumModel {
   final String id;
@@ -21,6 +22,8 @@ class AlbumModel {
   final bool hasSummary;
   // Uploads stay frozen until the album's next epoch commits
   final bool rotationRequired;
+  // Null while the newest photo leads
+  final CoverRef? cover;
 
   AlbumModel({
     required this.id,
@@ -37,6 +40,7 @@ class AlbumModel {
     this.memberPreviews = const [],
     this.hasSummary = false,
     this.rotationRequired = false,
+    this.cover,
   });
 
   AlbumModel copyWith({
@@ -63,6 +67,7 @@ class AlbumModel {
         memberPreviews: memberPreviews,
         hasSummary: hasSummary ?? this.hasSummary,
         rotationRequired: rotationRequired ?? this.rotationRequired,
+        cover: cover,
       );
 
   factory AlbumModel.fromJson(Map<String, dynamic> json) {
@@ -87,6 +92,7 @@ class AlbumModel {
       previewMedia: _list(json['preview_media'], PreviewMedia.tryFromJson),
       memberPreviews: _list(json['member_previews'], MemberPreview.tryFromJson),
       rotationRequired: json['rotation_required'] as bool? ?? false,
+      cover: CoverRef.tryFromJson(json['cover']),
     );
   }
 
@@ -105,6 +111,7 @@ class AlbumModel {
         'preview_media': [for (final p in previewMedia) p.toJson()],
         'member_previews': [for (final m in memberPreviews) m.toJson()],
         'rotation_required': rotationRequired,
+        if (cover != null) 'cover': cover!.toJson(),
       };
 
   // Drop malformed summary rows without failing the album list
