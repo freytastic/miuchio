@@ -7,9 +7,7 @@ import 'package:miuchio/ui/widgets/warm_button.dart';
 import 'album_copy.dart';
 
 class AlbumFoot extends StatelessWidget {
-  final VoidCallback? onSelect;
   final VoidCallback? onAdd;
-  final VoidCallback? onDownload;
 
   final Widget? pill;
 
@@ -18,9 +16,7 @@ class AlbumFoot extends StatelessWidget {
 
   const AlbumFoot({
     super.key,
-    required this.onSelect,
     required this.onAdd,
-    required this.onDownload,
     this.pill,
   });
 
@@ -37,24 +33,8 @@ class AlbumFoot extends StatelessWidget {
           FootScrim(height: clearance + bottom),
           Padding(
             padding: EdgeInsets.only(left: 44, right: 44, bottom: 18 + bottom),
-            // Equal sides keep the add button centred whatever the labels
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: _Act(label: AlbumCopy.select, onTap: onSelect),
-                  ),
-                ),
-                MakeButton(onTap: onAdd, tooltip: AlbumCopy.addPhotos),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: _Act(label: AlbumCopy.download, onTap: onDownload),
-                  ),
-                ),
-              ],
+            child: Center(
+              child: MakeButton(onTap: onAdd, tooltip: AlbumCopy.addPhotos),
             ),
           ),
           if (pill != null)
@@ -163,29 +143,6 @@ class _SoonPill extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Act extends StatelessWidget {
-  final String label;
-  final VoidCallback? onTap;
-
-  const _Act({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
-        child: Text(
-          label,
-          style: Warm.tab.copyWith(
-            color: onTap == null ? Warm.inkGhost : Warm.inkFaint,
-          ),
         ),
       ),
     );

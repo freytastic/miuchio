@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:miuchio/e2ee/media_record.dart';
+import 'package:miuchio/ui/create/glass_sheet.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
@@ -9,7 +10,8 @@ import 'album_copy.dart';
 import 'album_stats.dart';
 import 'leave_photos_choice.dart';
 
-Future<T?> _paperSheet<T>(BuildContext context, WidgetBuilder builder) {
+Future<T?> _paperSheet<T>(BuildContext context, WidgetBuilder builder,
+    {Color background = Warm.paper}) {
   // Keep sheets above the transparent peek route
   final navigator = Navigator.of(context, rootNavigator: true);
   final labels = MaterialLocalizations.of(context);
@@ -19,7 +21,7 @@ Future<T?> _paperSheet<T>(BuildContext context, WidgetBuilder builder) {
         InheritedTheme.capture(from: context, to: navigator.context),
     barrierLabel: labels.scrimLabel,
     barrierOnTapHint: labels.scrimOnTapHint(labels.bottomSheetLabel),
-    backgroundColor: Warm.paper,
+    backgroundColor: background,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
@@ -128,16 +130,36 @@ Future<PersonAction?> showPersonSheet(
       ),
     );
 
+class SheetChoice<T> {
+  final T value;
+  final IconData icon;
+  final String title;
+  final String? detail;
+
+  const SheetChoice(this.value, this.icon, this.title, {this.detail});
+}
+
+// Null when dismissed
+Future<T?> askChoice<T>(
+  BuildContext context, {
+  String? title,
+  required List<SheetChoice<T>> choices,
+}) =>
+    _paperSheet<T>(
+        context, (_) => _ChoiceSheet<T>(title: title, choices: choices));
+
 // Trimmed new name, or null when dismissed or unchanged
 Future<String?> askAlbumName(BuildContext context, String current) =>
     _paperSheet<String>(context, (_) => _RenameSheet(current: current));
 
+// Glass over the photo, which stays in view behind it
 Future<void> showPhotoDetails(
   BuildContext context, {
   required MediaRecord record,
   required Widget face,
   required String? name,
   required bool mine,
+  required String position,
   DateTime? now,
 }) =>
     _paperSheet<void>(
@@ -147,8 +169,10 @@ Future<void> showPhotoDetails(
         face: face,
         name: name,
         mine: mine,
+        position: position,
         now: now,
       ),
+      background: Colors.transparent,
     );
 
 String formatPhotoDay(DateTime at, {DateTime? now}) {
@@ -377,6 +401,91 @@ class _PersonSheet extends StatelessWidget {
   }
 }
 
+class _ChoiceSheet<T> extends StatelessWidget {
+  final String? title;
+  final List<SheetChoice<T>> choices;
+
+  const _ChoiceSheet({required this.title, required this.choices});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _Grab(),
+            if (title != null) ...[
+              const SizedBox(height: 18),
+              Text(title!, style: Warm.cardTitle),
+            ],
+            const SizedBox(height: 10),
+            for (var i = 0; i < choices.length; i++) ...[
+              if (i > 0) const _Rule(),
+              _ChoiceRow(
+                choice: choices[i],
+                onTap: () => Navigator.of(context).pop(choices[i].value),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChoiceRow extends StatelessWidget {
+  final SheetChoice<Object?> choice;
+  final VoidCallback onTap;
+
+  const _ChoiceRow({required this.choice, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = choice.detail;
+    return Semantics(
+      button: true,
+      label: choice.title,
+      excludeSemantics: true,
+      child: PressableScale(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  color: Warm.wellEmpty,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(choice.icon, size: 20, color: Warm.ink),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(choice.title, style: Warm.rowTitle),
+                    if (detail != null) ...[
+                      const SizedBox(height: 2),
+                      Text(detail, style: Warm.meta),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Rule extends StatelessWidget {
   const _Rule();
 
@@ -509,6 +618,7 @@ class _DetailsSheet extends StatelessWidget {
   final Widget face;
   final String? name;
   final bool mine;
+  final String position;
   final DateTime? now;
 
   const _DetailsSheet({
@@ -516,6 +626,7 @@ class _DetailsSheet extends StatelessWidget {
     required this.face,
     required this.name,
     required this.mine,
+    required this.position,
     this.now,
   });
 
@@ -530,108 +641,80 @@ class _DetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final day = formatPhotoDay(record.createdAt, now: now);
-    return SafeArea(
-      top: false,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
-        ),
-        child: ListView(
-          key: const Key('photo-details'),
-          primary: false,
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
-          children: [
-            const _Grab(),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                face,
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(AlbumCopy.sharedBy(name, mine: mine),
-                          style: Warm.factTitle),
-                      Text(day, style: Warm.meta),
-                    ],
+    final who = mine ? AlbumCopy.you : name ?? AlbumCopy.unknownMember;
+    return GlassPanel(
+      key: const Key('photo-details'),
+      radius: const BorderRadius.vertical(top: Radius.circular(22)),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Warm.glassHairlineStrong,
+                    borderRadius: BorderRadius.circular(2),
                   ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  face,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          who,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Warm.glassInk,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          formatPhotoDay(record.createdAt, now: now),
+                          style: const TextStyle(
+                              fontSize: 13, color: Warm.glassInkSoft),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 26),
+              Row(
+                children: [
+                  _Fact(value: formatOf(record), label: AlbumCopy.factFormat),
+                  _Fact(
+                    value: AlbumStats.formatBytes(
+                        AlbumStats.storedBytes(record)),
+                    label: AlbumCopy.factSize,
+                  ),
+                  _Fact(value: position, label: AlbumCopy.factPlace),
+                ],
+              ),
+              if (record.mediaType == 'photo') ...[
+                const SizedBox(height: 24),
+                const Text(
+                  AlbumCopy.privateNote,
+                  style: TextStyle(
+                      fontSize: 13, height: 1.4, color: Warm.glassInkSoft),
                 ),
               ],
-            ),
-            const SizedBox(height: 18),
-            Container(
-              decoration: BoxDecoration(
-                color: Warm.wellEmpty.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: IntrinsicHeight(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _Fact(
-                        label: AlbumCopy.factSize,
-                        value: AlbumStats.formatBytes(
-                            AlbumStats.storedBytes(record)),
-                      ),
-                    ),
-                    const VerticalDivider(width: 1, color: Warm.inkGhost),
-                    Expanded(
-                      child: _Fact(
-                          label: AlbumCopy.factFormat, value: formatOf(record)),
-                    ),
-                    const VerticalDivider(width: 1, color: Warm.inkGhost),
-                    Expanded(
-                      child: _Fact(label: AlbumCopy.factAdded, value: day),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (record.mediaType == 'photo') ...[
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 3),
-                    child: Icon(Icons.lock_outline_rounded,
-                        size: 14, color: Warm.inkFaint),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(AlbumCopy.privateNote,
-                        style: Warm.note),
-                  ),
-                ],
-              ),
             ],
-            const SizedBox(height: 22),
-            const _Section(
-                title: AlbumCopy.hearts, body: AlbumCopy.heartsLater),
-            const SizedBox(height: 18),
-            const _Section(
-                title: AlbumCopy.comments, body: AlbumCopy.commentsLater),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-              decoration: BoxDecoration(
-                color: Warm.fieldFill,
-                borderRadius: BorderRadius.circular(21),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(AlbumCopy.sayPlaceholder,
-                        style: Warm.meta.copyWith(color: Warm.inkFaint)),
-                  ),
-                  const _Chip(),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -639,73 +722,33 @@ class _DetailsSheet extends StatelessWidget {
 }
 
 class _Fact extends StatelessWidget {
-  final String label;
   final String value;
+  final String label;
 
-  const _Fact({required this.label, required this.value});
+  const _Fact({required this.value, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label.toUpperCase(), style: Warm.sectionLabel),
-          const SizedBox(height: 4),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Warm.rowTitle.copyWith(
-                fontSize: 13.5,
-                fontFeatures: const [FontFeature.tabularFigures()]),
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.3,
+              color: Warm.glassInk,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
           ),
+          const SizedBox(height: 2),
+          Text(label,
+              style: const TextStyle(fontSize: 12, color: Warm.glassInkFaint)),
         ],
-      ),
-    );
-  }
-}
-
-class _Section extends StatelessWidget {
-  final String title;
-  final String body;
-
-  const _Section({required this.title, required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(title, style: Warm.rowTitle.copyWith(fontSize: 14)),
-            const SizedBox(width: 8),
-            const _Chip(),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(body, style: Warm.note),
-      ],
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: Warm.inkGhost,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        AlbumCopy.betaV2,
-        style: Warm.sectionLabel.copyWith(letterSpacing: 0.3),
       ),
     );
   }

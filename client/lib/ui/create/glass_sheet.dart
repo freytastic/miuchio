@@ -15,17 +15,18 @@ class GlassSheet extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         BackdropFilter(
-          filter: ui.ImageFilter.compose(
-            outer: ui.ImageFilter.blur(
-                sigmaX: Warm.glassBlur, sigmaY: Warm.glassBlur),
-            inner: ui.ColorFilter.matrix(_saturation(Warm.glassSaturation)),
-          ),
+          filter: filter,
           child: const ColoredBox(color: Warm.glassScrim),
         ),
         child,
       ],
     );
   }
+
+  static final ui.ImageFilter filter = ui.ImageFilter.compose(
+    outer: ui.ImageFilter.blur(sigmaX: Warm.glassBlur, sigmaY: Warm.glassBlur),
+    inner: ui.ColorFilter.matrix(_saturation(Warm.glassSaturation)),
+  );
 
   // Luminance preserving saturation matrix
   static List<double> _saturation(double s) {
@@ -37,5 +38,25 @@ class GlassSheet extends StatelessWidget {
       sr, sg, sb + s, 0, 0, //
       0, 0, 0, 1, 0,
     ];
+  }
+}
+
+// The same glass on a panel. The blur is clipped to the panel, so it costs
+// only the area it covers
+class GlassPanel extends StatelessWidget {
+  final Widget child;
+  final BorderRadius radius;
+
+  const GlassPanel({super.key, required this.child, required this.radius});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter(
+        filter: GlassSheet.filter,
+        child: ColoredBox(color: Warm.glassScrim, child: child),
+      ),
+    );
   }
 }

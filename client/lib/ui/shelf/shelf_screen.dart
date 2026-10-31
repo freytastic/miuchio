@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:miuchio/diagnostics/fx.dart';
 import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/data/models/album_model.dart';
+import 'package:miuchio/data/storage/cover_cache.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
@@ -20,6 +21,7 @@ import 'package:miuchio/ui/shelf/shelf_data.dart';
 import 'package:miuchio/ui/shelf/shelf_layout.dart';
 import 'package:miuchio/ui/shelf/shelf_peek.dart';
 import 'package:miuchio/ui/shelf/shelf_view_preference.dart';
+import 'package:miuchio/ui/shelf/still_print.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/foot_bar.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
@@ -33,6 +35,8 @@ class ShelfScreen extends StatefulWidget {
   final VoidCallback? onOpenProfile;
   final Future<void> Function(AlbumModel album)? onOpenAlbum;
   final VoidCallback? onCreateAlbum;
+  // The + button, which may offer more than a new album
+  final VoidCallback? onMake;
   final VoidCallback? onOpenActivity;
   final Future<void> Function(AlbumModel album)? onOpenPeople;
 
@@ -41,6 +45,7 @@ class ShelfScreen extends StatefulWidget {
     this.onOpenProfile,
     this.onOpenAlbum,
     this.onCreateAlbum,
+    this.onMake,
     this.onOpenActivity,
     this.onOpenPeople,
   });
@@ -191,7 +196,7 @@ class _ShelfScreenState extends State<ShelfScreen>
             const _BarScrim(),
             _Bar(
               unread: state.hasUnreadNotifications,
-              onCreate: widget.onCreateAlbum,
+              onCreate: widget.onMake ?? widget.onCreateAlbum,
               onActivity: widget.onOpenActivity,
             ),
             const Positioned(

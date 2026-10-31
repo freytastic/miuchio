@@ -131,8 +131,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('album-title')), findsNothing);
-    await tester.tap(find.byTooltip(AlbumCopy.more).first);
+    await tester.tap(find.byTooltip(AlbumCopy.settings).first);
     await tester.pumpAndSettle();
-    expect(find.text(AlbumCopy.renameAlbum), findsNothing);
+    expect(find.byKey(const Key('album-settings-rename')), findsNothing);
   });
 }

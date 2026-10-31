@@ -20,8 +20,8 @@ import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_foot.dart';
 import 'package:miuchio/ui/album/album_header.dart';
 import 'package:miuchio/ui/album/album_info_screen.dart';
-import 'package:miuchio/ui/album/album_menu.dart';
 import 'package:miuchio/ui/album/album_rename.dart';
+import 'package:miuchio/ui/album/album_settings_screen.dart';
 import 'package:miuchio/ui/album/album_stats.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/album/photo_delete.dart';
@@ -51,6 +51,7 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/decrypted_image_preview.dart';
 import 'package:miuchio/ui/widgets/encrypted_image.dart';
+import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/safety_number_sheet.dart';
 
 Future<List<XFile>> _systemPicker({int limit = 0}) =>
@@ -63,6 +64,8 @@ class AlbumDetailScreen extends StatefulWidget {
   final AlbumService albumService;
   final MediaApi? mediaApi;
   final MultiImagePicker? pickImages;
+  // Opens the photo picker as soon as the album can take uploads
+  final bool addOnOpen;
 
   AlbumDetailScreen({
     super.key,
@@ -70,6 +73,7 @@ class AlbumDetailScreen extends StatefulWidget {
     AlbumService? albumService,
     this.mediaApi,
     this.pickImages,
+    this.addOnOpen = false,
   }) : albumService = albumService ?? AlbumService();
 
   @override
@@ -82,6 +86,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   List<MediaRecord> _items = [];
   AlbumFeedState _feed = AlbumFeedState.loadingNoCache;
   bool _markedOpenSeen = false;
+  late bool _addPending = widget.addOnOpen;
 
   // Deduplicate events repeated by unrelated AppState notifications
   String? _lastSeenMediaAddedId;
@@ -132,17 +137,22 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   void _toggleFilter(String token) =>
       setState(() => _filterToken = _filterToken == token ? null : token);
 
-  Future<void> _openMenu() => AlbumMenu.show(
-        context,
-        onSelectPhotos: _startSelect,
-        onDownloadAlbum: _notYet,
-        onAlbumInfo: _openAlbumInfo,
-        onPeople: _openPeople,
-        onAddSomeone: _viewerIsAdmin ? _openAddMember : null,
-        onRename: _viewerIsAdmin ? _rename : null,
-        onLeave: _me == null || _viewerIsAdmin ? null : _leave,
-        onDeleteAlbum: _viewerIsAdmin ? _deleteAlbum : null,
-      );
+  Future<void> _openSettings() =>
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => AlbumSettingsScreen(
+          album: widget.album,
+          owner: _isOwner,
+          photos: _visible,
+          albumService: widget.albumService,
+          onRename: _rename,
+          onPeople: _openPeople,
+          onAlbumInfo: _openAlbumInfo,
+          onAddSomeone: _isOwner ? _openAddMember : null,
+          onLeaveOrDelete: _isOwner ? _deleteAlbum : _leave,
+        ),
+      ));
+
+  bool get _isOwner => _viewerIsAdmin || widget.album.myRole == 'admin';
 
   AlbumMember? get _owner =>
       _members.where((m) => m.role == 'admin' && !m.revoked).firstOrNull;
@@ -1151,6 +1161,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     // Uploads stay blocked until catch up reaches the refused epoch
     final keyBlock = state.keyBlockFor(widget.album.id);
     final rotation = state.rotationFor(widget.album.id);
+    if (_addPending && !syncing && keyBlock == null) {
+      _addPending = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_pickAndUpload());
+      });
+    }
 
     final memberDisplayNames = _resolvedNames();
     final title = state.albumDisplayName(widget.album.id) ?? 'Album';
@@ -1188,7 +1204,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       children: [
                         _AlbumTopRow(
                           onBack: () => Navigator.of(context).maybePop(),
-                          onMore: _openMenu,
+                          onSelect: shown.isEmpty ? null : _startSelect,
+                          onSettings: _openSettings,
                         ),
                         AlbumHeader(
                           albumId: widget.album.id,
@@ -1273,9 +1290,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             builder: (context, _) {
               if (!_selection.active) {
                 return AlbumFoot(
-                  onSelect: shown.isEmpty ? null : _selection.start,
                   onAdd: (syncing || keyBlock != null) ? null : _pickAndUpload,
-                  onDownload: _notYet,
                   pill: const UploadPill(),
                 );
               }
@@ -1292,7 +1307,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             title: title,
             visible: _collapsed,
             onBack: () => Navigator.of(context).maybePop(),
-            onMore: _openMenu,
+            onMore: _openSettings,
           ),
           ListenableBuilder(
             listenable: _selection,
@@ -1338,28 +1353,69 @@ SnackBar _note(String text, {bool brief = false}) => SnackBar(
 
 class _AlbumTopRow extends StatelessWidget {
   final VoidCallback onBack;
-  final VoidCallback onMore;
+  // Null while there is nothing to select
+  final VoidCallback? onSelect;
+  final VoidCallback onSettings;
 
-  const _AlbumTopRow({required this.onBack, required this.onMore});
+  const _AlbumTopRow({
+    required this.onBack,
+    required this.onSelect,
+    required this.onSettings,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           AlbumIconButton(
             icon: Icons.chevron_left_rounded,
             tooltip: AlbumCopy.back,
             onTap: onBack,
           ),
+          const Spacer(),
+          _SelectPill(onTap: onSelect),
+          const SizedBox(width: 6),
           AlbumIconButton(
-            icon: Icons.more_horiz_rounded,
-            tooltip: AlbumCopy.more,
-            onTap: onMore,
+            icon: Icons.settings_outlined,
+            tooltip: AlbumCopy.settings,
+            onTap: onSettings,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SelectPill extends StatelessWidget {
+  final VoidCallback? onTap;
+
+  const _SelectPill({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: AlbumCopy.selectPhotos,
+      excludeSemantics: true,
+      child: PressableScale(
+        onTap: onTap,
+        child: Container(
+          key: const Key('album-select'),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: Warm.groundLift,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            AlbumCopy.select,
+            style: Warm.rowTitle.copyWith(
+                fontSize: 13.5,
+                color: onTap == null ? Warm.inkFaint : Warm.ink),
+          ),
+        ),
       ),
     );
   }

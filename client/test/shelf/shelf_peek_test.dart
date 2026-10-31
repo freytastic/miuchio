@@ -126,8 +126,9 @@ void main() {
 
     await tester.tap(find.text('Album info'));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Last photo'), findsOneWidget);
     expect(find.text('7'), findsOneWidget);
+    expect(find.text('photos'), findsOneWidget);
+    expect(find.textContaining('hold the key'), findsNothing);
     expect(opened, isEmpty);
 
     await tester.tap(find.byIcon(Icons.chevron_left_rounded));

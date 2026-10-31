@@ -88,14 +88,13 @@ void main() {
 
   Finder pages() => find.byKey(const Key('photo-viewer-pages'));
 
-  testWidgets('opens on the photo alone, a tap shows the controls',
+  testWidgets('opens with the controls, a tap leaves the photo alone',
       (tester) async {
     await open(tester);
-    expect(chrome(tester), 0);
-
-    await tapPhoto(tester);
     expect(chrome(tester), 1);
     expect(find.text('Ana'), findsOneWidget);
+    expect(find.text('1 / 3'), findsOneWidget);
+    expect(find.byKey(const Key('photo-viewer-strip')), findsOneWidget);
 
     await tapPhoto(tester);
     expect(chrome(tester), 0);
@@ -121,10 +120,10 @@ void main() {
     await tester.fling(pages(), const Offset(0, -300), 1000);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('photo-details')), findsOneWidget);
-    expect(find.text(AlbumCopy.sharedBy('Ana', mine: false)), findsOneWidget);
+    expect(find.text('1 / 3'), findsWidgets);
     expect(find.text('1.4 MB'), findsOneWidget);
     expect(find.text('JPEG'), findsOneWidget);
-    expect(find.text(AlbumCopy.betaV2), findsWidgets);
+    expect(find.text(AlbumCopy.privateNote), findsOneWidget);
   });
 
   testWidgets('swiping down closes the viewer', (tester) async {
@@ -158,14 +157,13 @@ void main() {
 
   testWidgets('only the uploader sees delete', (tester) async {
     await open(tester);
-    await tapPhoto(tester);
+    expect(find.byKey(const Key('photo-viewer-details')), findsOneWidget);
     expect(find.byKey(const Key('photo-peek-delete')), findsNothing);
   });
 
   testWidgets('delete asks first, then moves on to the next photo',
       (tester) async {
     await open(tester, owner: true);
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-delete')));
     await tester.pumpAndSettle();
@@ -183,7 +181,6 @@ void main() {
 
   testWidgets('deleting the last photo closes the viewer', (tester) async {
     await open(tester, owner: true, records: [_shot('m1')]);
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-delete')));
     await tester.pumpAndSettle();
@@ -195,7 +192,6 @@ void main() {
   testWidgets('a failed delete keeps the photo', (tester) async {
     deleteWorks = false;
     await open(tester, owner: true);
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-delete')));
     await tester.pumpAndSettle();
@@ -209,7 +205,6 @@ void main() {
     await open(tester,
         owner: true,
         onDelete: (r) => r.id == 'm1' ? first.future : Future.value(true));
-    await tapPhoto(tester);
 
     Future<void> delete() async {
       await tester.tap(find.byKey(const Key('photo-peek-delete')));
@@ -241,7 +236,6 @@ void main() {
       asked.add(r.id);
       return r.id == 'm1' ? first.future : Future.value(true);
     });
-    await tapPhoto(tester);
 
     await tester.tap(find.byKey(const Key('photo-peek-delete')));
     await tester.pumpAndSettle();
@@ -257,19 +251,5 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(asked, ['m1', 'm2']);
-  });
-
-  testWidgets('heart and save say they are not here yet', (tester) async {
-    await open(tester);
-    await tapPhoto(tester);
-
-    await tester.tap(find.byKey(const Key('photo-peek-heart')));
-    await tester.pump();
-    expect(find.text(AlbumCopy.heartSoon), findsOneWidget);
-
-    await tester.tap(find.text(AlbumCopy.saveToPhone));
-    await tester.pump();
-    expect(find.text(AlbumCopy.saveSoon), findsOneWidget);
-    await tester.pumpAndSettle(const Duration(seconds: 3));
   });
 }

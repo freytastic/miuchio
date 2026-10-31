@@ -45,28 +45,21 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   late final PageController _pages =
       PageController(initialPage: widget.initialIndex);
   late int _index = widget.initialIndex;
-  bool _chrome = false;
+  // Shown on open, a tap leaves the photo alone on the screen
+  bool _chrome = true;
   bool _zoomed = false;
+  // A second finger means a pinch, so paging and swipes stand down until the
+  // fingers lift and the zoom gets the gesture from the first touch
+  int _fingers = 0;
   String? _lastDeleted;
   double _dragY = 0;
-  String? _note;
-  Timer? _noteTimer;
 
   MediaRecord get _current => _records[_index];
 
   @override
   void dispose() {
-    _noteTimer?.cancel();
     _pages.dispose();
     super.dispose();
-  }
-
-  void _say(String note) {
-    _noteTimer?.cancel();
-    setState(() => _note = note);
-    _noteTimer = Timer(const Duration(milliseconds: 1800), () {
-      if (mounted) setState(() => _note = null);
-    });
   }
 
   String? _nameOf(MediaRecord r) =>
@@ -78,7 +71,16 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
         face: widget.faceOf(_current.uploaderToken, 40),
         name: _nameOf(_current),
         mine: widget.isOwner(_current),
+        position: '${_index + 1} / ${_records.length}',
       );
+
+  bool get _held => _zoomed || _fingers > 1;
+
+  void _touch(int by) {
+    final was = _fingers > 1;
+    _fingers = (_fingers + by).clamp(0, 10);
+    if (was != _fingers > 1) setState(() {});
+  }
 
   void _onVerticalEnd(DragEndDetails d) {
     final v = d.primaryVelocity ?? 0;
@@ -152,62 +154,65 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          GestureDetector(
-            onVerticalDragUpdate: _zoomed ? null : (d) => _dragY += d.delta.dy,
-            onVerticalDragEnd: _zoomed ? null : _onVerticalEnd,
-            child: PageView.builder(
-              key: const Key('photo-viewer-pages'),
-              controller: _pages,
-              // Let zoomed photos pan without changing pages
-              physics: _zoomed
-                  ? const NeverScrollableScrollPhysics()
-                  : const PageScrollPhysics(),
-              itemCount: _records.length,
-              onPageChanged: (i) => setState(() {
-                _index = i;
-                _zoomed = false;
-              }),
-              itemBuilder: (context, i) => _ZoomPage(
-                key: ValueKey(_records[i].id),
-                onTap: () => setState(() => _chrome = !_chrome),
-                onZoom: (zoomed) {
-                  if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
-                },
-                child: widget.imageBuilder?.call(_records[i], cap) ??
-                    _FullPhoto(
-                      record: _records[i],
-                      cache: widget.cache,
-                      cacheWidth: cap,
-                    ),
+          Listener(
+            onPointerDown: (_) => _touch(1),
+            onPointerUp: (_) => _touch(-1),
+            onPointerCancel: (_) => _touch(-1),
+            child: GestureDetector(
+              onVerticalDragUpdate: _held ? null : (d) => _dragY += d.delta.dy,
+              onVerticalDragEnd: _held ? null : _onVerticalEnd,
+              child: PageView.builder(
+                key: const Key('photo-viewer-pages'),
+                controller: _pages,
+                // Let zoomed and pinched photos pan without changing pages
+                physics: _held
+                    ? const NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
+                itemCount: _records.length,
+                onPageChanged: (i) => setState(() {
+                  _index = i;
+                  _zoomed = false;
+                }),
+                itemBuilder: (context, i) => _ZoomPage(
+                  key: ValueKey(_records[i].id),
+                  onTap: () => setState(() => _chrome = !_chrome),
+                  onZoom: (zoomed) {
+                    if (zoomed == _zoomed) return;
+                    setState(() {
+                      _zoomed = zoomed;
+                      if (zoomed) _chrome = false;
+                    });
+                  },
+                  child: widget.imageBuilder?.call(_records[i], cap) ??
+                      _FullPhoto(
+                        record: _records[i],
+                        cache: widget.cache,
+                        cacheWidth: cap,
+                      ),
+                ),
               ),
             ),
           ),
           _Chrome(
             visible: _chrome,
             top: _TopBar(
-              face: widget.faceOf(record.uploaderToken, 28),
+              face: widget.faceOf(record.uploaderToken, 32),
               name: _nameOf(record) ?? AlbumCopy.unknownMember,
               day: formatPhotoDay(record.createdAt),
+              position: '${_index + 1} / ${_records.length}',
             ),
             bottom: _BottomBar(
+              strip: _records.length < 2
+                  ? null
+                  : _Strip(
+                      records: _records,
+                      index: _index,
+                      cache: widget.cache,
+                      onPick: (i) => _pages.jumpToPage(i),
+                    ),
               owner: widget.isOwner(record),
-              onHeart: () => _say(AlbumCopy.heartSoon),
-              onSave: () => _say(AlbumCopy.saveSoon),
+              onDetails: _details,
               onDelete: _delete,
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: media.padding.top + 64,
-            child: IgnorePointer(
-              child: Center(
-                child: AnimatedOpacity(
-                  opacity: _note == null ? 0 : 1,
-                  duration: Warm.quick,
-                  child: PeekNote(text: _note ?? ''),
-                ),
-              ),
             ),
           ),
         ],
@@ -401,13 +406,19 @@ class _TopBar extends StatelessWidget {
   final Widget face;
   final String name;
   final String day;
+  final String position;
 
-  const _TopBar({required this.face, required this.name, required this.day});
+  const _TopBar({
+    required this.face,
+    required this.name,
+    required this.day,
+    required this.position,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 6, 16, 18),
+      padding: const EdgeInsets.fromLTRB(4, 6, 18, 22),
       child: Row(
         children: [
           IconButton(
@@ -417,30 +428,46 @@ class _TopBar extends StatelessWidget {
           ),
           face,
           const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  day,
+                  style:
+                      const TextStyle(fontSize: 12.5, color: Color(0xB3FFFFFF)),
+                ),
+              ],
             ),
           ),
           Container(
-            width: 2.5,
-            height: 2.5,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: const BoxDecoration(
-              color: Color(0x80FFFFFF),
-              shape: BoxShape.circle,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Warm.glassFill,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Warm.glassHairline),
             ),
-          ),
-          Text(
-            day,
-            style: const TextStyle(fontSize: 13, color: Color(0xB3FFFFFF)),
+            child: Text(
+              position,
+              key: const Key('photo-viewer-position'),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xD9FFFFFF),
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
           ),
         ],
       ),
@@ -449,28 +476,143 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BottomBar extends StatelessWidget {
+  final Widget? strip;
   final bool owner;
-  final VoidCallback onHeart;
-  final VoidCallback onSave;
+  final VoidCallback onDetails;
   final VoidCallback onDelete;
 
   const _BottomBar({
+    required this.strip,
     required this.owner,
-    required this.onHeart,
-    required this.onSave,
+    required this.onDetails,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 14),
-      child: Center(
-        child: PeekDock(
-          owner: owner,
-          onHeart: onHeart,
-          onSave: onSave,
-          onDelete: onDelete,
+      padding: const EdgeInsets.fromLTRB(0, 28, 0, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (strip != null) ...[strip!, const SizedBox(height: 18)],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              PeekRoundButton(
+                key: const Key('photo-viewer-details'),
+                label: AlbumCopy.details,
+                icon: Icons.info_outline_rounded,
+                onTap: onDetails,
+              ),
+              if (owner) ...[
+                const SizedBox(width: 18),
+                PeekRoundButton(
+                  key: const Key('photo-peek-delete'),
+                  label: AlbumCopy.delete,
+                  icon: Icons.delete_outline_rounded,
+                  quiet: true,
+                  onTap: onDelete,
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Every photo of the album as a small frame, the current one lifted and
+// centred, from the same on-device thumbnails as the grid
+class _Strip extends StatefulWidget {
+  final List<MediaRecord> records;
+  final int index;
+  final MediaCacheManager cache;
+  final ValueChanged<int> onPick;
+
+  const _Strip({
+    required this.records,
+    required this.index,
+    required this.cache,
+    required this.onPick,
+  });
+
+  static const double _w = 34;
+  static const double _h = 46;
+  static const double _step = _w + 3;
+
+  @override
+  State<_Strip> createState() => _StripState();
+}
+
+class _StripState extends State<_Strip> {
+  late final ScrollController _scroll =
+      ScrollController(initialScrollOffset: widget.index * _Strip._step);
+
+  @override
+  void didUpdateWidget(_Strip old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index && _scroll.hasClients) {
+      _scroll.animateTo(widget.index * _Strip._step,
+          duration: Warm.quick, curve: Warm.easeOut);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      key: const Key('photo-viewer-strip'),
+      height: _Strip._h + 6,
+      child: LayoutBuilder(
+        // Side room lets the first and last frames reach the centre
+        builder: (context, box) => ListView.builder(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          padding:
+              EdgeInsets.symmetric(horizontal: (box.maxWidth - _Strip._w) / 2),
+          itemExtent: _Strip._step,
+          itemCount: widget.records.length,
+          itemBuilder: (context, i) {
+            final on = i == widget.index;
+            final r = widget.records[i];
+            return Center(
+              child: GestureDetector(
+                onTap: () => widget.onPick(i),
+                child: AnimatedContainer(
+                  duration: Warm.quick,
+                  curve: Warm.easeOut,
+                  width: _Strip._w,
+                  height: on ? _Strip._h + 6 : _Strip._h,
+                  decoration: BoxDecoration(
+                    color: const Color(0x26FFFFFF),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: on ? Colors.white : Colors.transparent,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: AnimatedOpacity(
+                      opacity: on ? 1 : 0.55,
+                      duration: Warm.quick,
+                      child: r.hasThumb
+                          ? EncryptedThumbnail(record: r, cache: widget.cache)
+                          : const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

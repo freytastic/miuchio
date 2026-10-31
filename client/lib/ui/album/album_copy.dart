@@ -1,6 +1,5 @@
 abstract final class AlbumCopy {
   static const back = 'Back to albums';
-  static const more = 'More';
 
   static const select = 'Select';
   static const download = 'Download';
@@ -51,6 +50,14 @@ abstract final class AlbumCopy {
   static const downloadAlbum = 'Download album';
   static const people = 'People';
   static const albumInfo = 'Album info';
+  static const settings = 'Album settings';
+  static const coverNewest = 'Newest photo as cover';
+  static const changeCover = 'Change cover';
+  static const coverFromAlbum = 'Choose from this album';
+  static const coverFromPhone = 'Choose from your phone';
+  static const coverFailed = "Couldn't change the cover. Try again.";
+  static const coverUnusable = "This photo couldn't be used. Try another one.";
+  static String peopleCount(int n) => n == 1 ? '1 person' : '$n people';
   static const openAlbum = 'Open album';
   static const addSomeone = 'Add someone';
 
@@ -107,16 +114,25 @@ abstract final class AlbumCopy {
   static const infoPhotos = 'Photos';
   static const infoSize = 'Size';
   static const infoPeople = 'People';
-  static const infoLast = 'Last photo';
-  static const infoNone = 'None yet';
-  static const infoKey =
-      'Only its members hold the key, so the server stores it without being '
-      'able to open it';
+  static const noPhotosYet = 'No photos yet';
+  static String photoUnit(int n) => n == 1 ? 'photo' : 'photos';
+  static String lastPhoto(String when) => 'Last photo $when';
+  // "You and Bob", "You, Bob and 3 others": the names say who, not a count
+  static String whoCanSee(List<String> names, int total) {
+    final shown = names.take(2).toList();
+    final rest = (total > names.length ? total : names.length) - shown.length;
+    if (rest > 0) {
+      return '${shown.join(', ')} and $rest other${rest == 1 ? '' : 's'}';
+    }
+    if (shown.length == 1) return '${shown.single} only';
+    return shown.join(' and ');
+  }
   static const infoStorage = 'Who added what';
   static const infoStorageEmpty = 'Nothing has been added yet.';
 
   static const save = 'Save';
   static const delete = 'Delete';
+  static const details = 'Details';
   static const sayPlaceholder = 'Say something';
   static const sayAdd = 'Add';
   static const deleteTitle = 'Delete this photo?';
@@ -133,19 +149,10 @@ abstract final class AlbumCopy {
   static const heartSoon = 'Hearts are coming soon.';
   static const heart = 'Heart';
   static const deleteForEveryone = 'Delete for everyone';
-  static const betaV2 = 'Soon';
-  static const hearts = 'Hearts';
-  static const heartsLater = 'Hearts are coming soon.';
-  static const comments = 'Comments';
-  static const commentsLater = 'Comments are coming soon.';
-  static const factSize = 'Size';
-  static const factFormat = 'Type';
-  static const factAdded = 'Added';
-  static String sharedBy(String? name, {required bool mine}) => mine
-      ? 'Shared by you'
-      : 'Shared by ${name ?? 'someone'}';
-  static const privateNote = 'Only people in this album can see it. Location '
-      'and camera details were removed.';
+  static const factSize = 'size';
+  static const factFormat = 'type';
+  static const factPlace = 'in album';
+  static const privateNote = 'Location and camera details were removed.';
 
   static const renameAlbum = 'Rename album';
   static const renameSave = 'Save';
