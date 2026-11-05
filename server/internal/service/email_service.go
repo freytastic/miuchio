@@ -2,11 +2,13 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 type EmailService interface {
@@ -22,31 +24,56 @@ func (ConsoleEmailService) SendOTP(email, otp string) error {
 	return nil
 }
 
+func (ConsoleEmailService) SendDeletionCode(_ context.Context, email, code string) error {
+	fmt.Printf("dev deletion code: %s -> %s\n", email, code)
+	return nil
+}
+
 type ResendEmailService struct {
 	APIKey string
 	From   string
+	client *http.Client
 }
 
+// Bounded so a stalled provider cannot hold a sender forever
+const emailSendTimeout = 10 * time.Second
+
 func NewResendEmailService(apiKey, from string) *ResendEmailService {
-	return &ResendEmailService{APIKey: apiKey, From: from}
+	return &ResendEmailService{APIKey: apiKey, From: from, client: &http.Client{Timeout: emailSendTimeout}}
 }
 
 func (s *ResendEmailService) SendOTP(email, otp string) error {
+	return s.send(context.Background(), email, "Your Miuchio Login Code",
+		fmt.Sprintf("<strong>Your Miuchio login code is: %s</strong>. This code will expire in 5 minutes.", otp))
+}
+
+// Worded apart from the sign-in email so nobody can pass it off as a login code
+func (s *ResendEmailService) SendDeletionCode(ctx context.Context, email, code string) error {
+	return s.send(ctx, email, "Code to delete your Miuchio account", fmt.Sprintf(
+		"<p>Someone asked to delete the Miuchio account for this address on miuchio.com.</p>"+
+			"<p>If it was you, your code is <strong>%s</strong>. It expires in 5 minutes.</p>"+
+			"<p>If it was not you, ignore this email. Nothing happens without the code. "+
+			"Never share it with anyone, including someone who says they are from Miuchio.</p>", code))
+}
+
+func (s *ResendEmailService) send(ctx context.Context, email, subject, html string) error {
 	url := "https://api.resend.com/emails"
 	payload := map[string]interface{}{
 		"from":    s.From,
 		"to":      email,
-		"subject": "Your Miuchio Login Code",
-		"html":    fmt.Sprintf("<strong>Your Miuchio login code is: %s</strong>. This code will expire in 5 minutes.", otp),
+		"subject": subject,
+		"html":    html,
 	}
 
 	jsonPayload, _ := json.Marshal(payload)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}
