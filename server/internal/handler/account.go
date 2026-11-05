@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/freytastic/miuchio/internal/apierr"
 	"github.com/freytastic/miuchio/internal/middleware"
@@ -12,6 +13,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
+
+// Abandoning writes a row kept as long as accepted receipts from a route anyone
+// can call, so every caller shares one budget until callers can be told apart.
+// Legitimate abandons are rare and the app keeps its receipt when refused
+const (
+	MaxReceiptAbandons    = 100
+	ReceiptAbandonsWindow = time.Hour
+)
+
+func KeyReceiptAbandons(*http.Request) string { return "ratelimit:receipt-abandons" }
 
 type accountDeleter interface {
 	Preflight(ctx context.Context, userID uuid.UUID) ([]service.DeletionAlbum, error)

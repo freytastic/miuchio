@@ -94,7 +94,10 @@ func main() {
 		log.Printf("s3 bucket bootstrap: %v", err) // non fatal : bucket may exist + creds may have only object level perms
 	}
 
-	var emailService service.EmailService = service.NewResendEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
+	var emailService interface {
+		service.EmailService
+		service.DeletionCodeMailer
+	} = service.NewResendEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
 	if cfg.ResendAPIKey == "" {
 		emailService = service.ConsoleEmailService{} // config.Load only allows an empty key in dev mode
 	}
@@ -130,6 +133,8 @@ func main() {
 	coverService := service.NewCoverService(coverRepo, &s3Adapter{s3Client}, mediaService, hub, inviteRepo)
 	accountDeletions := service.NewAccountDeletionService(
 		repository.NewAccountDeletionRepository(dbPool, linker), mediaService, hub)
+	webDeletions := service.NewWebDeletionService(repository.NewDeletionCodeRepository(rdb), userRepo,
+		repository.NewDeletionTicketRepository(rdb), accountDeletions, emailService, cfg.EmailHMACKey)
 
 	rateLimiter := middleware.NewRateLimiter(rdb)
 
@@ -141,6 +146,7 @@ func main() {
 	coverHandler := handler.NewCoverHandler(coverService)
 	inviteHandler := handler.NewInviteHandler()
 	accountHandler := handler.NewAccountHandler(accountDeletions)
+	webDeletionHandler := handler.NewWebDeletionHandler(webDeletions)
 	wsHandler := handler.NewWSHandler(hub, ticketStore)
 
 	authMiddleware := middleware.NewAuthMiddleware(sessionRepo)
@@ -156,7 +162,17 @@ func main() {
 	apiV1.HandleFunc("/auth/otp/refresh", authHandler.Refresh).Methods(http.MethodPost)
 	apiV1.HandleFunc("/invite/{code}", inviteHandler.GetPreview).Methods(http.MethodGet)
 	apiV1.HandleFunc("/account-deletions/{receipt}", accountHandler.DeletionReceipt).Methods(http.MethodGet)
-	apiV1.HandleFunc("/account-deletions/{receipt}/abandon", accountHandler.AbandonDeletion).Methods(http.MethodPost)
+	apiV1.Handle(
+		"/account-deletions/{receipt}/abandon",
+		rateLimiter.Middleware(handler.KeyReceiptAbandons, handler.MaxReceiptAbandons, handler.ReceiptAbandonsWindow)(
+			http.HandlerFunc(accountHandler.AbandonDeletion),
+		),
+	).Methods(http.MethodPost)
+	// The website's deletion page, for people who no longer have the app
+	apiV1.HandleFunc("/web-deletion/code", webDeletionHandler.RequestCode).Methods(http.MethodPost)
+	apiV1.HandleFunc("/web-deletion/review", webDeletionHandler.VerifyCode).Methods(http.MethodPost)
+	apiV1.HandleFunc("/web-deletion/confirm", webDeletionHandler.Confirm).Methods(http.MethodPost)
+	apiV1.HandleFunc("/web-deletion/settle", webDeletionHandler.Settle).Methods(http.MethodPost)
 
 	// Authenticated by ticket rather than bearer, so it sits outside authed
 	apiV1.HandleFunc("/ws", wsHandler.ServeWS).Methods(http.MethodGet)
@@ -288,6 +304,7 @@ func main() {
 		defer close(accountDeletionsDone)
 		accountDeletions.Run(cleanupCtx)
 	}()
+	go webDeletions.RunMailer(cleanupCtx)
 
 	serverErrors := make(chan error, 1)
 	go func() {

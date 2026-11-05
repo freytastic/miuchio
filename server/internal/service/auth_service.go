@@ -109,8 +109,12 @@ func NewAuthService(otpRepo OTPStore, userRepo AuthUserStore, sessionRepo Sessio
 
 // Separate key so a code MAC can never equal an email HMAC
 func deriveOTPKey(emailHMACKey []byte) []byte {
+	return deriveKey(emailHMACKey, "miuchio-otp-key-v1")
+}
+
+func deriveKey(emailHMACKey []byte, label string) []byte {
 	mac := hmac.New(sha256.New, emailHMACKey)
-	mac.Write([]byte("miuchio-otp-key-v1"))
+	mac.Write([]byte(label))
 	return mac.Sum(nil)
 }
 
@@ -126,7 +130,11 @@ func (s *AuthService) otpMAC(emailHMAC []byte, otp string) string {
 // HashEmail computes HMAC-SHA256(emailHMACKey, lower(trim(email))), after which
 // the plaintext can be discarded
 func (s *AuthService) HashEmail(email string) []byte {
-	mac := hmac.New(sha256.New, s.emailHMACKey)
+	return hashEmail(s.emailHMACKey, email)
+}
+
+func hashEmail(emailHMACKey []byte, email string) []byte {
+	mac := hmac.New(sha256.New, emailHMACKey)
 	mac.Write([]byte(strings.ToLower(strings.TrimSpace(email))))
 	return mac.Sum(nil)
 }
