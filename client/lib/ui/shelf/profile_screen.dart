@@ -21,11 +21,14 @@ import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/shelf/avatar_crop_screen.dart';
 import 'package:miuchio/ui/shelf/safety_summary.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
+import 'package:miuchio/ui/album/safety_copy.dart';
+import 'package:miuchio/ui/settings/blocked_page.dart';
 import 'package:miuchio/ui/settings/delete_account_screen.dart';
 import 'package:miuchio/ui/settings/debug_log_copy.dart';
 import 'package:miuchio/ui/settings/debug_log_page.dart';
 import 'package:miuchio/ui/settings/settings_page.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/external_link.dart';
 import 'package:miuchio/ui/widgets/grouped_list.dart';
 import 'package:miuchio/ui/widgets/miuchio_mark.dart';
 import 'package:miuchio/ui/widgets/print_card.dart';
@@ -35,7 +38,6 @@ import 'package:miuchio/ui/widgets/warm_field.dart';
 
 part 'profile_sheets.dart';
 
-const _siteUrl = 'https://www.miuchio.com';
 const _repoUrl = 'https://github.com/freytastic/miuchio';
 
 const _revealFor = Duration(seconds: 20);
@@ -223,6 +225,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: widget.onSafetyNumbers,
                     ),
                     SettingsRow(
+                      lead: SettingsRow.icon(Icons.block_rounded),
+                      title: SafetyCopy.blockedTitle,
+                      onTap: () => _open(const BlockedPage()),
+                    ),
+                    SettingsRow(
                       lead: SettingsRow.icon(Icons.logout_rounded),
                       title: 'When you leave',
                       value: state.deleteMediaOnLeave
@@ -248,7 +255,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       lead: SettingsRow.icon(Icons.chat_bubble_outline_rounded),
                       title: 'Send feedback',
                       external: true,
-                      onTap: () => _openLink(context, '$_repoUrl/issues/new'),
+                      onTap: () =>
+                          openExternalLink(context, '$_repoUrl/issues/new'),
                     ),
                     SettingsRow(
                       lead: SettingsRow.icon(Icons.receipt_long_outlined),
@@ -259,7 +267,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       lead: SettingsRow.icon(Icons.privacy_tip_outlined),
                       title: 'Privacy policy',
                       external: true,
-                      onTap: () => _openLink(context, '$_siteUrl/privacy'),
+                      onTap: () =>
+                          openExternalLink(context, '$kSiteUrl/privacy'),
+                    ),
+                    SettingsRow(
+                      lead: SettingsRow.icon(Icons.gavel_rounded),
+                      title: 'Terms',
+                      external: true,
+                      onTap: () =>
+                          openExternalLink(context, '$kSiteUrl/terms'),
                     ),
                   ]),
                   _Group(children: [
@@ -550,26 +566,6 @@ class _IconButton extends StatelessWidget {
           ),
         ),
       );
-}
-
-Future<void> _openLink(BuildContext context, String url) async {
-  HapticFeedback.selectionClick();
-  final uri = Uri.tryParse(url);
-  if (uri != null) {
-    try {
-      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
-    } catch (_) {}
-  }
-  if (!context.mounted) return;
-  await Clipboard.setData(ClipboardData(text: url));
-  if (!context.mounted) return;
-  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-    const SnackBar(
-      content: Text('Link copied'),
-      duration: Duration(seconds: 2),
-      behavior: SnackBarBehavior.floating,
-    ),
-  );
 }
 
 class _Foot extends StatelessWidget {

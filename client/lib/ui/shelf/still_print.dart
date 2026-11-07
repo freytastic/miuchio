@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/data/storage/cover_cache.dart';
+import 'package:miuchio/data/storage/safety_store.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/shelf/album_print.dart';
 import 'package:miuchio/ui/shelf/shelf_data.dart';
@@ -11,6 +12,8 @@ import 'package:provider/provider.dart';
 // The print's photos in order. An uploaded cover leads and the album's own
 // previews follow, until it opens the newest photo stands in
 Uint8List? printPhoto(BuildContext context, AlbumModel album, int slot) {
+  // Someone else's album shows no photos until it is opened once
+  if (context.read<SafetyStore?>()?.accepted(album.id) == false) return null;
   final covers = context.read<ShelfCovers?>();
   final cover = album.cover;
   if (cover == null || !cover.isUpload) return covers?.bytes(album.id, slot);

@@ -214,6 +214,24 @@ abstract class Kex {
   }
 }
 
+// crypto_box_seal, so only the holder of the private key can open it
+abstract class SealedBox {
+  static SodiumSumo? _sodium;
+  static void bindSodium(SodiumSumo s) => _sodium = s;
+  static SodiumSumo get _s {
+    final s = _sodium;
+    if (s == null) throw StateError('SealedBox.bindSodium not called');
+    return s;
+  }
+
+  static Uint8List seal(Uint8List message, Uint8List publicKey) {
+    if (publicKey.length != 32) {
+      throw ArgumentError('public key must be 32B, got ${publicKey.length}');
+    }
+    return _s.crypto.box.seal(message: message, publicKey: publicKey);
+  }
+}
+
 abstract class Csprng {
   static Uint8List bytes(int n) {
     if (n < 0) throw ArgumentError('n must be >= 0');

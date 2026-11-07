@@ -9,6 +9,7 @@ import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/media_sealed_cache.dart';
 import 'package:miuchio/data/storage/name_cache.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
+import 'package:miuchio/data/storage/safety_store.dart';
 import 'package:miuchio/data/upload/upload_outbox.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/identity_trust.dart';
@@ -27,6 +28,7 @@ class AlbumWipe {
   final MediaCacheManager mediaCache;
   final MediaSealedCache sealedCache;
   final SealedSeenStore seenStore;
+  final SafetyStore safetyStore;
   final AlbumKeyStore albumKeys;
   final AppState appState;
   final NameCache nameCache;
@@ -44,6 +46,7 @@ class AlbumWipe {
     required this.mediaCache,
     required this.sealedCache,
     required this.seenStore,
+    required this.safetyStore,
     required this.albumKeys,
     required this.appState,
     required this.nameCache,
@@ -61,6 +64,7 @@ class AlbumWipe {
     await shelfCovers.forget(albumStr);
     await mediaCache.clearAlbum(albumStr);
     await seenStore.forget(albumStr);
+    await safetyStore.forget(albumStr);
     await albumKeys.deleteAlbumMKs(albumId);
     // Mark gone first so in flight resolvers cannot repopulate wiped data
     appState.removeAlbum(albumStr);
@@ -87,6 +91,7 @@ class AlbumWipe {
       if (await coverCache.holdsAlbum(albumStr)) 'album covers',
       if (identityPins.holdsAlbum(hexAlbumId(albumId))) 'pins',
       if (seenStore.holdsAlbum(albumStr)) 'seen state',
+      if (safetyStore.holdsAlbum(albumStr)) 'album gate',
     ];
     if (left.isNotEmpty) {
       throw StateError('album data left behind: ${left.join(', ')}');

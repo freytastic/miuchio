@@ -9,6 +9,7 @@ Future<SodiumSumo> ensureSodium() async {
   final ns = await SodiumSumoInit.init();
   Sign.bindSodium(ns);
   Kex.bindSodium(ns);
+  SealedBox.bindSodium(ns);
   _sodium = ns;
   return ns;
 }

@@ -26,6 +26,7 @@ import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/api/api_client.dart';
 import 'package:miuchio/data/api/avatar_api.dart';
 import 'package:miuchio/data/api/cover_api.dart';
+import 'package:miuchio/data/api/safety_api.dart';
 import 'package:miuchio/data/api/epoch_api.dart' as data_epoch;
 import 'package:miuchio/data/api/invite_json_client.dart';
 import 'package:miuchio/data/api/media_api.dart';
@@ -45,6 +46,7 @@ import 'package:miuchio/data/storage/media_catalog.dart';
 import 'package:miuchio/data/storage/media_plaintext_cache.dart';
 import 'package:miuchio/data/storage/media_sealed_cache.dart';
 import 'package:miuchio/data/storage/name_cache.dart';
+import 'package:miuchio/data/storage/safety_store.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
 import 'package:miuchio/data/storage/secure_storage.dart';
 import 'package:miuchio/data/storage/storage_service.dart';
@@ -64,6 +66,7 @@ import 'package:miuchio/domain/activity/trust_alarm.dart';
 import 'package:miuchio/domain/albums/album_cleanup.dart';
 import 'package:miuchio/domain/albums/cover_setter.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
+import 'package:miuchio/domain/safety/reporter.dart';
 import 'package:miuchio/domain/upload/upload_coordinator.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/display_name.dart';
@@ -105,6 +108,7 @@ void main() async {
   final sodium = await SodiumSumoInit.init();
   Sign.bindSodium(sodium);
   Kex.bindSodium(sodium);
+  SealedBox.bindSodium(sodium);
 
   installErrorHandlers();
 
@@ -182,6 +186,7 @@ void main() async {
     fetch: avatarFetcher(albumKeyStore, avatarApi),
   );
   final coverApi = CoverApi(apiClient);
+  final safetyApi = SafetyApi(apiClient);
   final coverCache = await CoverCache.open(
     cacheRootKey: cacheRootKey,
     fetch: coverFetcher(albumKeyStore, coverApi),
@@ -312,6 +317,7 @@ void main() async {
   final mediaPlaintextCache = MediaPlaintextCache();
   // Seen state must survive media cache eviction
   final seenStore = await SealedSeenStore.open(cacheRootKey: cacheRootKey);
+  final safetyStore = await SafetyStore.open(cacheRootKey: cacheRootKey);
   final mediaCacheManager = MediaCacheManager(
     plaintext: mediaPlaintextCache,
     ciphertext: mediaSealedCache,
@@ -333,6 +339,17 @@ void main() async {
 
   appState.addListener(seedWatermarks);
   seedWatermarks();
+
+  // Only albums someone else made wait for the gate
+  void acceptOwnAlbums() {
+    safetyStore.reconcile(appState.albums);
+    for (final a in appState.albums) {
+      if (a.myRole == 'admin') unawaited(safetyStore.accept(a));
+    }
+  }
+
+  appState.addListener(acceptOwnAlbums);
+  acceptOwnAlbums();
 
   appState.attachSummaryRefresh(() async {
     final fresh = await albumService.getMyAlbums();
@@ -533,6 +550,7 @@ void main() async {
     mediaCache: mediaCacheManager,
     sealedCache: mediaSealedCache,
     seenStore: seenStore,
+    safetyStore: safetyStore,
     albumKeys: albumKeyStore,
     appState: appState,
     nameCache: nameCache,
@@ -585,6 +603,7 @@ void main() async {
       (name: 'own avatar', run: ownAvatar.wipe),
       (name: 'pins', run: identityPinStore.clear),
       (name: 'seen', run: seenStore.clear),
+      (name: 'safety', run: safetyStore.clear),
       (name: 'debug log', run: DebugLog.shutdown),
       // Block late key installs before deleting the keystore
       (name: 'key handles', run: () async => albumKeyStore.forgetAll()),
@@ -660,6 +679,13 @@ void main() async {
         Provider<AlbumCatalog>.value(value: mediaSealedCache),
         ListenableProvider<ShelfCovers>.value(value: shelfCovers),
         ListenableProvider<SeenStore>.value(value: seenStore),
+        ChangeNotifierProvider<SafetyStore>.value(value: safetyStore),
+        Provider<SafetyApi>.value(value: safetyApi),
+        Provider<Reporter>.value(
+            value: Reporter(
+                api: safetyApi,
+                aks: albumKeyStore,
+                cache: mediaCacheManager)),
         Provider<SodiumSumo>.value(value: sodium),
         Provider<MediaApi>.value(value: mediaApi),
         ChangeNotifierProvider<UploadQueueModel>.value(value: uploadQueue),

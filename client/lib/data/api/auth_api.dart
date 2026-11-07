@@ -14,6 +14,10 @@ class AccountDeletingException implements Exception {
   const AccountDeletingException();
 }
 
+class AccountSuspendedException implements Exception {
+  const AccountSuspendedException();
+}
+
 // Too many wrong codes, so retyping cannot help yet
 class TooManyAttemptsException implements Exception {
   const TooManyAttemptsException();
@@ -94,6 +98,9 @@ class AuthService {
       final error = ApiError.tryParse(response);
       if (error?.code == 'E_ACCOUNT_DELETING') {
         throw const AccountDeletingException();
+      }
+      if (error?.code == 'E_ACCOUNT_SUSPENDED') {
+        throw const AccountSuspendedException();
       }
       if (error?.isRateLimited ?? false) {
         throw const TooManyAttemptsException();

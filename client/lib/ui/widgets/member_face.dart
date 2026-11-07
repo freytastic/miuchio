@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:miuchio/data/models/avatar_ref.dart';
 import 'package:miuchio/data/storage/avatar_cache.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
+import 'package:miuchio/data/storage/safety_store.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
@@ -61,8 +62,11 @@ Uint8List? memberPhoto(BuildContext context, String? albumId, String token) {
       (s) => id == null ? null : s?.avatarOf(id, token));
   final cached = context.select<AvatarCache?, Uint8List?>((c) =>
       id == null || ref == null ? null : c?.peek(id, token, ref.avatarId));
+  final gated = context.select<SafetyStore?, bool>(
+      (g) => id != null && g?.accepted(id) == false);
   // Our own face comes from this phone, not from the album's copy
   if (self) return own;
+  if (gated) return null;
   if (id != null && ref != null && cached == null) {
     context.read<AvatarCache?>()?.ensure(id, token, ref);
   }

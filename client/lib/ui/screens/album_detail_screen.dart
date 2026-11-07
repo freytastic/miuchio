@@ -28,6 +28,7 @@ import 'package:miuchio/ui/album/photo_delete.dart';
 import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/album/photo_peek.dart';
 import 'package:miuchio/ui/album/photo_select.dart';
+import 'package:miuchio/ui/album/safety_flows.dart';
 import 'package:miuchio/ui/providers/latest_only.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/widgets/upload_pill.dart';
@@ -218,8 +219,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 
   Future<void> _removeMember(AlbumMember m, {required bool invited}) async {
-    final albumId = uuidToBytes(widget.album.id);
-    if (albumId == null) return;
     final messenger = ScaffoldMessenger.of(context);
     final removal = context.read<MemberRemovalCoordinator>();
     if (!await confirmSheet(
@@ -234,6 +233,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     )) {
       return;
     }
+    await _kick(m, removal, messenger);
+  }
+
+  Future<void> _kick(AlbumMember m, MemberRemovalCoordinator removal,
+      ScaffoldMessengerState messenger) async {
+    final albumId = uuidToBytes(widget.album.id);
+    if (albumId == null) return;
     try {
       await removal.kick(
           albumId, base64.decode(base64.normalize(m.memberToken)));
@@ -274,15 +280,19 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   Future<void> _openPerson(AlbumMember m) async {
     final album = ModalRoute.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final removal = context.read<MemberRemovalCoordinator>();
+    void say(String text) => messenger.showSnackBar(_note(text));
     final name = _resolvedNames()[m.memberToken];
+    // The creator can't be removed, they delete the album instead
+    final canRemove = _viewerIsAdmin && m.role != 'admin';
     final action = await showPersonSheet(
       context,
       face: _face(m.memberToken, name, 46),
       name: name,
       owner: m.role == 'admin',
       canVerify: _peerIk(m) != null,
-      // The creator can't be removed, they delete the album instead
-      canRemove: _viewerIsAdmin && m.role != 'admin',
+      canRemove: canRemove,
     );
     if (!mounted) return;
     switch (action) {
@@ -291,6 +301,28 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         setState(() => _filterToken = m.memberToken);
       case PersonAction.safetyNumber:
         await _openSafetyNumber(m);
+      case PersonAction.report:
+        await reportPerson(context,
+            albumId: widget.album.id,
+            memberToken: m.memberToken,
+            name: name,
+            say: say);
+      case PersonAction.block:
+        final then = await blockPerson(context,
+            albumId: widget.album.id,
+            memberToken: m.memberToken,
+            name: name,
+            canRemove: canRemove,
+            say: say);
+        if (!mounted) return;
+        switch (then) {
+          case BlockChoice.andRemove:
+            await _kick(m, removal, messenger);
+          case BlockChoice.andLeave:
+            await _leave();
+          case BlockChoice.blockOnly || null:
+            break;
+        }
       case PersonAction.remove:
         await _removeMember(m, invited: false);
       case null:
@@ -443,11 +475,18 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         faceOf: (token, size) => _face(token, _uploaderName(token), size),
         isOwner: (r) => r.uploaderToken == widget.album.memberToken,
         onDelete: _deleteFromViewer,
+        onReport: _reportFromViewer,
       ),
     ));
   }
 
   Future<bool> _deleteFromViewer(MediaRecord record) => _deletePhoto(record);
+
+  Future<void> _reportFromViewer(MediaRecord record) {
+    final messenger = ScaffoldMessenger.of(context);
+    return reportPhoto(context, record,
+        say: (text) => messenger.showSnackBar(_note(text)));
+  }
 
   bool _isMine(MediaRecord r) {
     final me = widget.album.memberToken;

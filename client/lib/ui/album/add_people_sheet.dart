@@ -15,6 +15,7 @@ import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
 
 import 'album_copy.dart';
+import 'safety_copy.dart';
 import 'member_avatars.dart';
 
 typedef SendInvite = Future<void> Function(String miuchioId);
@@ -176,6 +177,7 @@ class _AddPeopleSheetState extends State<AddPeopleSheet>
         HandleNotFoundException() => AlbumCopy.addUnknown,
         ApiError(code: 'E_CONFLICT') => AlbumCopy.addAlready,
         ApiError(code: 'E_ALBUM_FULL') => AlbumCopy.addFull,
+        ApiError(code: 'E_BLOCKED') => SafetyCopy.addBlocked,
         ApiError(code: 'E_EPOCH_PENDING_ROTATION') => AlbumCopy.addRotating,
         _ => AlbumCopy.addFailed,
       };
