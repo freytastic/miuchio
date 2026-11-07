@@ -38,7 +38,7 @@ void main() {
       'We’ll send a one-time sign-in code to your email.',
     ));
     final field = tester.getRect(find.byType(TextField));
-    final action = tester.getRect(find.text('Send code'));
+    final action = tester.getRect(find.text('Agree and send code'));
 
     expect(print.bottom, lessThanOrEqualTo(description.top));
     expect(description.bottom, lessThan(field.top));
