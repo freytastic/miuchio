@@ -127,7 +127,7 @@ func (r *AlbumRepository) ListForUser(ctx context.Context, userID uuid.UUID) ([]
 	handle := r.linker.Hash(userID)
 	rows, err := r.DB.Query(ctx, `
 		SELECT a.id, a.name_ct, a.created_at, a.updated_at, a.media_generation,
-		       am.role, ami.member_token,
+		       am.role, ami.member_token, am.joins,
 		       COALESCE(stats.media_count, 0),
 		       stats.latest_activity_at,
 		       COALESCE(members.active_count, 0),
@@ -164,7 +164,7 @@ func (r *AlbumRepository) ListForUser(ctx context.Context, userID uuid.UUID) ([]
 		var a model.AlbumWithMemberInfo
 		var cov coverColumns
 		if err := rows.Scan(&a.ID, &a.NameCT, &a.CreatedAt, &a.UpdatedAt,
-			&a.Summary.MediaGeneration, &a.UserRole, &a.MemberToken,
+			&a.Summary.MediaGeneration, &a.UserRole, &a.MemberToken, &a.Joins,
 			&a.Summary.MediaCount, &a.Summary.LatestActivityAt,
 			&a.Summary.ActiveMemberCount, &a.Summary.RotationRequired,
 			&cov.id, &cov.setBy, &cov.mediaID, &cov.size, &cov.sha, &cov.keyCT); err != nil {

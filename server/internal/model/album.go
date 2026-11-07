@@ -24,6 +24,7 @@ type AlbumWithMemberInfo struct {
 	Album
 	UserRole    string `json:"user_role"`
 	MemberToken []byte `json:"member_token"`
+	Joins       int    `json:"joins"`
 	Summary     AlbumSummary
 	// Nil while the newest photo leads
 	Cover *CoverRef

@@ -22,6 +22,7 @@ type User struct {
 	SPKTs  *int64 `json:"spk_ts,omitempty" db:"spk_ts"`
 
 	DeletingAt         *time.Time `json:"-" db:"deleting_at"`
+	SuspendedAt        *time.Time `json:"-" db:"suspended_at"`
 	DeleteMediaOnLeave bool       `json:"-" db:"delete_media_on_leave"`
 }
 

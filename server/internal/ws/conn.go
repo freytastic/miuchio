@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -23,6 +24,8 @@ type Conn struct {
 	ws     *websocket.Conn
 	hub    *Hub
 	outbox chan Event
+	stop   chan struct{}
+	once   sync.Once
 }
 
 // NewConn constructs a Conn. Caller must call hub.Register then conn.Run
@@ -32,7 +35,12 @@ func NewConn(userID uuid.UUID, ws *websocket.Conn, hub *Hub) *Conn {
 		ws:     ws,
 		hub:    hub,
 		outbox: make(chan Event, sendBufSize),
+		stop:   make(chan struct{}),
 	}
+}
+
+func (c *Conn) close() {
+	c.once.Do(func() { close(c.stop) })
 }
 
 // send queues an event without blocking and drops it if the outbox is full
@@ -60,6 +68,9 @@ func (c *Conn) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			return
+
+		case <-c.stop:
 			return
 
 		case <-pingTick.C:

@@ -373,6 +373,10 @@ func (r *AccountDeletionRepository) FinishAccount(ctx context.Context, userID uu
 	if remaining {
 		return false, tx.Commit(ctx)
 	}
+	// Blocks against this account can never match again, so only its own go
+	if _, err := tx.Exec(ctx, `DELETE FROM blocks WHERE blocker_hash = $1`, r.linker.BlockerHash(userID)); err != nil {
+		return false, err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID); err != nil {
 		return false, err
 	}

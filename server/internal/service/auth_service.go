@@ -45,9 +45,10 @@ var installIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 const sessionTTL = 30 * 24 * time.Hour
 
 var (
-	ErrInvalidOTP      = errors.New("invalid or expired OTP")
-	ErrAccountDeleting = errors.New("account is being deleted")
-	ErrTooManyRequests = errors.New("too many requests, please try again later")
+	ErrInvalidOTP       = errors.New("invalid or expired OTP")
+	ErrAccountDeleting  = errors.New("account is being deleted")
+	ErrAccountSuspended = errors.New("account is suspended")
+	ErrTooManyRequests  = errors.New("too many requests, please try again later")
 	// ErrSessionInvalid marks failures that may invalidate client credentials
 	ErrSessionInvalid = errors.New("invalid or expired session")
 )
@@ -218,6 +219,9 @@ func (s *AuthService) VerifyOTP(ctx context.Context, email, otp, installID strin
 	}
 	if user.DeletingAt != nil {
 		return VerifiedSession{}, ErrAccountDeleting
+	}
+	if user.SuspendedAt != nil {
+		return VerifiedSession{}, ErrAccountSuspended
 	}
 
 	token, err := generateToken(32)

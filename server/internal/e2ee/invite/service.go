@@ -150,6 +150,8 @@ func (s *Service) DeliverExistingUser(ctx context.Context, albumID uuid.UUID, ca
 		return nil, uuid.Nil, apierr.EpochPendingRotation("album keys are being replaced ; invite again once they update")
 	case errors.Is(err, ErrTargetDeleting):
 		return nil, uuid.Nil, apierr.NotFound("user not found")
+	case errors.Is(err, ErrBlocked):
+		return nil, uuid.Nil, apierr.Blocked("this person can't be added")
 	}
 	if err != nil {
 		return nil, uuid.Nil, err

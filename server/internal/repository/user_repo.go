@@ -29,11 +29,11 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 // The HMAC is computed in the auth service : the repo never sees the plaintext
 func (r *UserRepository) GetByEmailHMAC(ctx context.Context, hmac []byte) (*model.User, error) {
 	var user model.User
-	query := `SELECT id, email_hmac, miuchio_id, created_at, updated_at, ik_pub, lk_pub, spk_pub, spk_sig, spk_ts, deleting_at, delete_media_on_leave FROM users WHERE email_hmac = $1`
+	query := `SELECT id, email_hmac, miuchio_id, created_at, updated_at, ik_pub, lk_pub, spk_pub, spk_sig, spk_ts, deleting_at, suspended_at, delete_media_on_leave FROM users WHERE email_hmac = $1`
 	err := r.DB.QueryRow(ctx, query, hmac).Scan(
 		&user.ID, &user.EmailHMAC, &user.MiuchioID, &user.CreatedAt, &user.UpdatedAt,
 		&user.IKPub, &user.LKPub, &user.SPKPub, &user.SPKSig, &user.SPKTs,
-		&user.DeletingAt, &user.DeleteMediaOnLeave,
+		&user.DeletingAt, &user.SuspendedAt, &user.DeleteMediaOnLeave,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, ErrUserNotFound
@@ -46,11 +46,11 @@ func (r *UserRepository) GetByEmailHMAC(ctx context.Context, hmac []byte) (*mode
 
 func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	var user model.User
-	query := `SELECT id, email_hmac, miuchio_id, created_at, updated_at, ik_pub, lk_pub, spk_pub, spk_sig, spk_ts, deleting_at, delete_media_on_leave FROM users WHERE id = $1`
+	query := `SELECT id, email_hmac, miuchio_id, created_at, updated_at, ik_pub, lk_pub, spk_pub, spk_sig, spk_ts, deleting_at, suspended_at, delete_media_on_leave FROM users WHERE id = $1`
 	err := r.DB.QueryRow(ctx, query, id).Scan(
 		&user.ID, &user.EmailHMAC, &user.MiuchioID, &user.CreatedAt, &user.UpdatedAt,
 		&user.IKPub, &user.LKPub, &user.SPKPub, &user.SPKSig, &user.SPKTs,
-		&user.DeletingAt, &user.DeleteMediaOnLeave,
+		&user.DeletingAt, &user.SuspendedAt, &user.DeleteMediaOnLeave,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, ErrUserNotFound
@@ -104,4 +104,36 @@ func (r *UserRepository) SetDeleteMediaOnLeave(ctx context.Context, id uuid.UUID
 		return ErrUserNotFound
 	}
 	return nil
+}
+
+// Active is false for an account being deleted or suspended, or one that is gone
+func (r *UserRepository) Active(ctx context.Context, id uuid.UUID) (bool, error) {
+	var active bool
+	err := r.DB.QueryRow(ctx,
+		`SELECT deleting_at IS NULL AND suspended_at IS NULL FROM users WHERE id = $1`, id,
+	).Scan(&active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return active, err
+}
+
+func (r *UserRepository) InactiveAmong(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.DB.Query(ctx,
+		`SELECT want.id FROM unnest($1::uuid[]) AS want(id)
+		 LEFT JOIN users u ON u.id = want.id
+		 WHERE u.id IS NULL OR u.deleting_at IS NOT NULL OR u.suspended_at IS NOT NULL`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

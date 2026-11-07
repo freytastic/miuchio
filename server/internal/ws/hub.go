@@ -2,7 +2,9 @@ package ws
 
 import (
 	"context"
+	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -38,6 +40,51 @@ func (h *Hub) Unregister(userID uuid.UUID, c *Conn) {
 		delete(h.conns, userID)
 	} else {
 		h.conns[userID] = out
+	}
+}
+
+// Disconnect closes every connection the user holds
+func (h *Hub) Disconnect(userID uuid.UUID) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, c := range h.conns[userID] {
+		c.close()
+	}
+}
+
+func (h *Hub) users() []uuid.UUID {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make([]uuid.UUID, 0, len(h.conns))
+	for id := range h.conns {
+		out = append(out, id)
+	}
+	return out
+}
+
+// RunEviction closes connections of accounts that lost access elsewhere, such
+// as a suspension made by the moderation tool in another process
+func (h *Hub) RunEviction(ctx context.Context, every time.Duration, inactive func(context.Context, []uuid.UUID) ([]uuid.UUID, error)) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ids := h.users()
+			if len(ids) == 0 {
+				continue
+			}
+			gone, err := inactive(ctx, ids)
+			if err != nil {
+				slog.ErrorContext(ctx, "ws eviction check failed", "err", err)
+				continue
+			}
+			for _, id := range gone {
+				h.Disconnect(id)
+			}
+		}
 	}
 }
 

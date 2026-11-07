@@ -117,6 +117,14 @@ func AccountDeleting(message string) *APIError {
 	return &APIError{Code: "E_ACCOUNT_DELETING", HTTPStatus: http.StatusConflict, Message: message}
 }
 
+func AccountSuspended(message string) *APIError {
+	return &APIError{Code: "E_ACCOUNT_SUSPENDED", HTTPStatus: http.StatusForbidden, Message: message}
+}
+
+func Blocked(message string) *APIError {
+	return &APIError{Code: "E_BLOCKED", HTTPStatus: http.StatusForbidden, Message: message}
+}
+
 func DeletionPlanStale(message string) *APIError {
 	return &APIError{Code: "E_DELETION_PLAN_STALE", HTTPStatus: http.StatusConflict, Message: message}
 }

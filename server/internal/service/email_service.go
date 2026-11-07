@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type EmailService interface {
@@ -26,6 +28,11 @@ func (ConsoleEmailService) SendOTP(email, otp string) error {
 
 func (ConsoleEmailService) SendDeletionCode(_ context.Context, email, code string) error {
 	fmt.Printf("dev deletion code: %s -> %s\n", email, code)
+	return nil
+}
+
+func (ConsoleEmailService) SendReportAlert(_ context.Context, to string, reportID uuid.UUID) error {
+	fmt.Printf("dev report alert: %s -> %s\n", to, reportID)
 	return nil
 }
 
@@ -54,6 +61,11 @@ func (s *ResendEmailService) SendDeletionCode(ctx context.Context, email, code s
 			"<p>If it was you, your code is <strong>%s</strong>. It expires in 5 minutes.</p>"+
 			"<p>If it was not you, ignore this email. Nothing happens without the code. "+
 			"Never share it with anyone, including someone who says they are from Miuchio.</p>", code))
+}
+
+func (s *ResendEmailService) SendReportAlert(ctx context.Context, to string, reportID uuid.UUID) error {
+	return s.send(ctx, to, "New Miuchio report", fmt.Sprintf(
+		"<p>A new report is waiting.</p><p>Report <strong>%s</strong></p>", reportID))
 }
 
 func (s *ResendEmailService) send(ctx context.Context, email, subject, html string) error {

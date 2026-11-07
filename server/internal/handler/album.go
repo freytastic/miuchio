@@ -147,6 +147,7 @@ func (h *AlbumHandler) ListAlbums(w http.ResponseWriter, r *http.Request) {
 			"updated_at":          a.UpdatedAt,
 			"role":                a.UserRole,
 			"member_token":        base64.StdEncoding.EncodeToString(a.MemberToken),
+			"joins":               a.Joins,
 			"media_count":         a.Summary.MediaCount,
 			"active_member_count": a.Summary.ActiveMemberCount,
 			"latest_activity_at":  a.Summary.LatestActivityAt,

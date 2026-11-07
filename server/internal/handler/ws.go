@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -12,13 +13,18 @@ import (
 	"github.com/google/uuid"
 )
 
-type WSHandler struct {
-	hub     *ws.Hub
-	tickets ws.Tickets
+type accountStatus interface {
+	Active(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
-func NewWSHandler(hub *ws.Hub, tickets ws.Tickets) *WSHandler {
-	return &WSHandler{hub: hub, tickets: tickets}
+type WSHandler struct {
+	hub      *ws.Hub
+	tickets  ws.Tickets
+	accounts accountStatus
+}
+
+func NewWSHandler(hub *ws.Hub, tickets ws.Tickets, accounts accountStatus) *WSHandler {
+	return &WSHandler{hub: hub, tickets: tickets, accounts: accounts}
 }
 
 // IssueTicket handles POST /api/v1/ws-ticket
@@ -51,6 +57,16 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, ok := h.tickets.Consume(r.Context(), ticket)
 	if !ok {
+		apierr.Write(w, r, apierr.Auth("invalid or expired ticket"))
+		return
+	}
+	// A ticket issued before a suspension or deletion must not open a socket
+	active, err := h.accounts.Active(r.Context(), userID)
+	if err != nil {
+		apierr.Write(w, r, apierr.Internal("failed to check account").WithCause(err))
+		return
+	}
+	if !active {
 		apierr.Write(w, r, apierr.Auth("invalid or expired ticket"))
 		return
 	}

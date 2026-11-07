@@ -22,6 +22,7 @@ var (
 	ErrEpochMoved      = errors.New("invite: envelopes no longer reach the current epoch")
 	ErrPendingRotation = errors.New("invite: album owes a rotation")
 	ErrTargetDeleting  = errors.New("invite: target account is being deleted")
+	ErrBlocked         = errors.New("invite: one of the two has blocked the other")
 )
 
 type Repo struct {
@@ -150,7 +151,7 @@ func (r *Repo) recheckUnderLock(ctx context.Context, tx pgx.Tx, in DeliverMember
 	// FOR SHARE waits out an account deletion being accepted, so neither side
 	// can join an album the deletion job has already enumerated
 	rows, err := tx.Query(ctx,
-		`SELECT id, deleting_at IS NOT NULL FROM users
+		`SELECT id, deleting_at IS NOT NULL OR suspended_at IS NOT NULL FROM users
 		 WHERE id = ANY($1) ORDER BY id FOR SHARE`,
 		[]uuid.UUID{sender, in.UserID},
 	)
@@ -176,6 +177,18 @@ func (r *Repo) recheckUnderLock(ctx context.Context, tx pgx.Tx, in DeliverMember
 	}
 	if d, ok := deleting[in.UserID]; !ok || d {
 		return ErrTargetDeleting
+	}
+
+	pair := r.linker.BlockPair(sender, in.UserID)
+	if err := repository.LockBlockPair(ctx, tx, pair); err != nil {
+		return err
+	}
+	blocked, err := repository.PairBlocked(ctx, tx, pair)
+	if err != nil {
+		return err
+	}
+	if blocked {
+		return ErrBlocked
 	}
 
 	var current int
@@ -275,7 +288,7 @@ func (r *Repo) DeliverMember(ctx context.Context, in DeliverMemberInput) ([]byte
 		// The old encrypted name was sealed under an epoch the returning member
 		// no longer holds
 		if _, err := tx.Exec(ctx,
-			`UPDATE album_members SET revoked_at = NULL, role = 'member', name_ct = NULL
+			`UPDATE album_members SET revoked_at = NULL, role = 'member', name_ct = NULL, joins = joins + 1
 			 WHERE album_id = $1 AND member_token = $2`,
 			in.AlbumID, token,
 		); err != nil {

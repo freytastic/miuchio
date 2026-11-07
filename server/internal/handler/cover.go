@@ -28,7 +28,7 @@ func NewCoverHandler(svc *service.CoverService) *CoverHandler {
 // SetCover takes {"media_id": id} for one of the album's photos, or null to
 // go back to the newest
 func (h *CoverHandler) SetCover(w http.ResponseWriter, r *http.Request) {
-	userID, albumID, token, ok := coverCaller(w, r)
+	userID, albumID, token, ok := scopedCaller(w, r)
 	if !ok {
 		return
 	}
@@ -57,7 +57,7 @@ func (h *CoverHandler) SetCover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CoverHandler) RequestUploadURL(w http.ResponseWriter, r *http.Request) {
-	_, albumID, token, ok := coverCaller(w, r)
+	_, albumID, token, ok := scopedCaller(w, r)
 	if !ok {
 		return
 	}
@@ -105,7 +105,7 @@ func (h *CoverHandler) RequestUploadURL(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *CoverHandler) Confirm(w http.ResponseWriter, r *http.Request) {
-	userID, albumID, token, ok := coverCaller(w, r)
+	userID, albumID, token, ok := scopedCaller(w, r)
 	if !ok {
 		return
 	}
@@ -151,7 +151,7 @@ func (h *CoverHandler) DownloadURL(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func coverCaller(w http.ResponseWriter, r *http.Request) (uuid.UUID, uuid.UUID, []byte, bool) {
+func scopedCaller(w http.ResponseWriter, r *http.Request) (uuid.UUID, uuid.UUID, []byte, bool) {
 	userID, ok := middleware.MustGetUserID(w, r)
 	if !ok {
 		return uuid.Nil, uuid.Nil, nil, false
