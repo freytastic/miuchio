@@ -10,6 +10,8 @@ class AlbumModel {
   // Caller token when returned by an album scoped endpoint
   final String? memberToken;
   final String? myRole;
+  // Rises each time this account is added back, so an old acceptance lapses
+  final int joins;
 
   final int mediaCount;
   final int activeMemberCount;
@@ -32,6 +34,7 @@ class AlbumModel {
     required this.updatedAt,
     this.memberToken,
     this.myRole,
+    this.joins = 1,
     this.mediaCount = 0,
     this.activeMemberCount = 0,
     this.latestActivityAt,
@@ -59,6 +62,7 @@ class AlbumModel {
         updatedAt: updatedAt,
         memberToken: memberToken,
         myRole: myRole,
+        joins: joins,
         mediaCount: mediaCount ?? this.mediaCount,
         activeMemberCount: activeMemberCount,
         latestActivityAt: latestActivityAt ?? this.latestActivityAt,
@@ -82,6 +86,7 @@ class AlbumModel {
           : DateTime.now(),
       memberToken: json['member_token'] as String?,
       myRole: json['role'] as String?,
+      joins: (json['joins'] as num?)?.toInt() ?? 1,
       hasSummary: json.containsKey('media_generation'),
       mediaCount: json['media_count'] as int? ?? 0,
       activeMemberCount: json['active_member_count'] as int? ?? 0,
@@ -104,6 +109,7 @@ class AlbumModel {
         'updated_at': updatedAt.toIso8601String(),
         'member_token': memberToken,
         'role': myRole,
+        'joins': joins,
         'media_count': mediaCount,
         'active_member_count': activeMemberCount,
         'latest_activity_at': latestActivityAt?.toIso8601String(),

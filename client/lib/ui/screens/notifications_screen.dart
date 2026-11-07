@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/data/storage/activity_store.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
+import 'package:miuchio/data/storage/safety_store.dart';
 import 'package:miuchio/domain/activity/activity_event.dart';
 import 'package:miuchio/domain/activity/activity_sync.dart';
 import 'package:miuchio/e2ee/identity_trust.dart';
@@ -26,6 +27,7 @@ class NotificationsScreen extends StatelessWidget {
     final store = context.read<ActivityFeed>();
     final trust = context.read<IdentityTrust>();
     final sync = context.read<ActivitySync>();
+    final safety = context.watch<SafetyStore>();
     final names = ActivityNames(
       memberName: (albumId, token) =>
           state.memberDisplayName(albumId, token) ?? 'Someone',
@@ -38,10 +40,13 @@ class NotificationsScreen extends StatelessWidget {
         await sync.flush();
         await _settleVerified(store, trust);
       },
-      thumb: (record) => EncryptedThumbnail(
-        record: record,
-        cache: context.read<MediaCacheManager>(),
-      ),
+      // Photos in an album not yet opened stay hidden, as on the shelf
+      thumb: (record) => safety.accepted(record.albumId)
+          ? EncryptedThumbnail(
+              record: record,
+              cache: context.read<MediaCacheManager>(),
+            )
+          : const SizedBox.expand(),
       names: names,
       onOpenAlbum: (albumId) => Navigator.of(context).pop(albumId),
       onCompare: (e) => _compare(context, e, names, store, trust),

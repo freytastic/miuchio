@@ -19,6 +19,8 @@ class PhotoViewerScreen extends StatefulWidget {
   final bool Function(MediaRecord record) isOwner;
   // The page goes at once, false brings it back
   final Future<bool> Function(MediaRecord record) onDelete;
+  // Offered on photos that aren't yours
+  final Future<void> Function(MediaRecord record)? onReport;
   final Widget Function(MediaRecord record, int cacheWidth)? imageBuilder;
 
   const PhotoViewerScreen({
@@ -30,6 +32,7 @@ class PhotoViewerScreen extends StatefulWidget {
     required this.faceOf,
     required this.isOwner,
     required this.onDelete,
+    this.onReport,
     this.imageBuilder,
   });
 
@@ -65,14 +68,20 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   String? _nameOf(MediaRecord r) =>
       widget.isOwner(r) ? AlbumCopy.you : widget.nameOf(r.uploaderToken);
 
-  Future<void> _details() => showPhotoDetails(
-        context,
-        record: _current,
-        face: widget.faceOf(_current.uploaderToken, 40),
-        name: _nameOf(_current),
-        mine: widget.isOwner(_current),
-        position: '${_index + 1} / ${_records.length}',
-      );
+  Future<void> _details() {
+    final record = _current;
+    final report = widget.onReport;
+    final mine = widget.isOwner(record);
+    return showPhotoDetails(
+      context,
+      record: record,
+      face: widget.faceOf(record.uploaderToken, 40),
+      name: _nameOf(record),
+      mine: mine,
+      position: '${_index + 1} / ${_records.length}',
+      onReport: report == null || mine ? null : () => report(record),
+    );
+  }
 
   bool get _held => _zoomed || _fingers > 1;
 

@@ -39,8 +39,12 @@ func newTestWSHandler() *WSHandler {
 			}
 			return uuid.Nil, false
 		},
-	})
+	}, activeAccounts{})
 }
+
+type activeAccounts struct{}
+
+func (activeAccounts) Active(context.Context, uuid.UUID) (bool, error) { return true, nil }
 
 func withUserCtx(r *http.Request, userID uuid.UUID) *http.Request {
 	ctx := context.WithValue(r.Context(), middleware.UserIDKey, userID)

@@ -8,6 +8,7 @@ import 'package:miuchio/diagnostics/perf_probe.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/data/storage/cover_cache.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
+import 'package:miuchio/data/storage/safety_store.dart';
 import 'package:miuchio/domain/avatar/avatar_publisher.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/album_rename.dart';

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -21,6 +22,7 @@ import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/screens/main_shell.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/caret_blink.dart';
+import 'package:miuchio/ui/widgets/external_link.dart';
 import 'package:miuchio/ui/widgets/hello_wordmark.dart';
 import 'package:miuchio/ui/widgets/polaroid_stage.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
@@ -121,7 +123,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   String get _ctaLabel => switch (_phase) {
         _Phase.intro => 'Continue',
-        _Phase.email => 'Send code',
+        // Agreeing comes before the account exists and before any upload
+        _Phase.email => 'Agree and send code',
         _ => 'Verify',
       };
 
@@ -256,6 +259,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _otpCtrl.clear();
       setState(() => _busy = false);
       _showError('This account is still being deleted. Try again later.');
+    } on AccountSuspendedException {
+      if (!mounted) return;
+      _otpCtrl.clear();
+      setState(() => _busy = false);
+      _showError('This account is suspended.');
     } on TooManyAttemptsException {
       if (!mounted) return;
       _otpCtrl.clear();
@@ -387,6 +395,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  double _legalHeight(BuildContext context, double width) =>
+      _kLegalGap +
+      (TextPainter(
+        text: _legalSpan(),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout(maxWidth: width))
+          .height;
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
@@ -409,7 +427,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final footExtent = _kDotsExtent +
         _kDotsGap +
         (onIntro ? 0 : Warm.fieldHeight + _kDotsGap) +
-        Warm.ctaHeight;
+        Warm.ctaHeight +
+        // Kept through the code step too, so the print doesn't jump
+        (onIntro ? 0 : _legalHeight(context, size.width - Warm.pagePad * 2));
     final footTop =
         size.height - size.height * Warm.ctaBottomInset - footExtent;
     final copyFloor = footTop - _kFootClearance - _kCopyLead - copyBody;

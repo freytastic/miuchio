@@ -83,6 +83,16 @@ func (r *RateLimiter) ProbeDistinctMiddleware(
 
 // Middleware returns an http middleware that applies the limiter
 func (r *RateLimiter) Middleware(keyFn func(*http.Request) string, max int, window time.Duration) func(http.Handler) http.Handler {
+	return r.middleware(keyFn, max, window, true)
+}
+
+// StrictMiddleware refuses while Redis is down, for routes whose writes the
+// limit exists to bound
+func (r *RateLimiter) StrictMiddleware(keyFn func(*http.Request) string, max int, window time.Duration) func(http.Handler) http.Handler {
+	return r.middleware(keyFn, max, window, false)
+}
+
+func (r *RateLimiter) middleware(keyFn func(*http.Request) string, max int, window time.Duration, failOpen bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			key := keyFn(req)
@@ -94,6 +104,10 @@ func (r *RateLimiter) Middleware(keyFn func(*http.Request) string, max int, wind
 				Key: key, Max: max, Window: window,
 			})
 			if err != nil {
+				if !failOpen {
+					apierr.Write(w, req, apierr.Internal("rate limiter unavailable").WithCause(err))
+					return
+				}
 				apierr.Internal("rate limiter unavailable").WithCause(err)
 				next.ServeHTTP(w, req)
 				return

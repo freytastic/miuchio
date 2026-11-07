@@ -7,6 +7,8 @@
 //	Seal(user_id, token)       32B AES-GCM blob with a nonce derived from the
 //	                           random token, for "which user owns this token"
 
+// A third subkey hashes blocks, so block rows cannot be joined to handles
+
 // Without the live key a leaked database does not reveal which user owns a
 // token, though the deterministic handles still correlate one user's rows. A
 // compromised live server has the key, so this is encryption at rest, not zero
@@ -14,6 +16,7 @@
 package userlink
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -38,6 +41,7 @@ const (
 var (
 	infoHandle = []byte("user-handle-v1")
 	infoEnc    = []byte("user-id-enc-v1")
+	infoBlock  = []byte("block-hash-v1")
 	// nonce is derived from member_token via SHA256 : the prefix domain
 	// separates this nonce from any other use of the member_token bytes
 	nonceInfo = []byte("user-id-enc-nonce-v1")
@@ -45,6 +49,7 @@ var (
 
 type Hasher struct {
 	handleKey []byte // 32B for HMAC-SHA256
+	blockKey  []byte
 	gcm       cipher.AEAD
 }
 
@@ -58,6 +63,10 @@ func New(masterKey []byte) (*Hasher, error) {
 	if _, err := io.ReadFull(hkdf.New(sha256.New, masterKey, nil, infoHandle), handleKey); err != nil {
 		return nil, fmt.Errorf("userlink: derive handle key: %w", err)
 	}
+	blockKey := make([]byte, 32)
+	if _, err := io.ReadFull(hkdf.New(sha256.New, masterKey, nil, infoBlock), blockKey); err != nil {
+		return nil, fmt.Errorf("userlink: derive block key: %w", err)
+	}
 	encKey := make([]byte, 32)
 	if _, err := io.ReadFull(hkdf.New(sha256.New, masterKey, nil, infoEnc), encKey); err != nil {
 		return nil, fmt.Errorf("userlink: derive enc key: %w", err)
@@ -70,7 +79,7 @@ func New(masterKey []byte) (*Hasher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("userlink: aes-gcm: %w", err)
 	}
-	return &Hasher{handleKey: handleKey, gcm: gcm}, nil
+	return &Hasher{handleKey: handleKey, blockKey: blockKey, gcm: gcm}, nil
 }
 
 // Hash returns the 32B deterministic handle for user_id. Same input always
@@ -78,6 +87,27 @@ func New(masterKey []byte) (*Hasher, error) {
 func (h *Hasher) Hash(userID uuid.UUID) []byte {
 	mac := hmac.New(sha256.New, h.handleKey)
 	mac.Write(userID[:])
+	return mac.Sum(nil)
+}
+
+func (h *Hasher) BlockerHash(userID uuid.UUID) []byte {
+	return h.blockMAC('b', userID)
+}
+
+// BlockPair is the same for (a, b) and (b, a)
+func (h *Hasher) BlockPair(a, b uuid.UUID) []byte {
+	if bytes.Compare(a[:], b[:]) > 0 {
+		a, b = b, a
+	}
+	return h.blockMAC('p', a, b)
+}
+
+func (h *Hasher) blockMAC(kind byte, ids ...uuid.UUID) []byte {
+	mac := hmac.New(sha256.New, h.blockKey)
+	mac.Write([]byte{kind})
+	for _, id := range ids {
+		mac.Write(id[:])
+	}
 	return mac.Sum(nil)
 }
 

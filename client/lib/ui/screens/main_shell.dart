@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
+import 'package:miuchio/ui/album/album_gate.dart';
 import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/people/everyone.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
@@ -70,6 +71,7 @@ class MainShell extends StatelessWidget {
   Future<void> _openAlbum(BuildContext context, AlbumModel album,
       {bool add = false}) async {
     final appState = context.read<AppState>();
+    if (!await passAlbumGate(context, album) || !context.mounted) return;
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(
             builder: (_) => AlbumDetailScreen(album: album, addOnOpen: add)));

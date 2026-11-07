@@ -97,6 +97,7 @@ func main() {
 	var emailService interface {
 		service.EmailService
 		service.DeletionCodeMailer
+		service.ReportAlerter
 	} = service.NewResendEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
 	if cfg.ResendAPIKey == "" {
 		emailService = service.ConsoleEmailService{} // config.Load only allows an empty key in dev mode
@@ -136,6 +137,9 @@ func main() {
 	webDeletions := service.NewWebDeletionService(repository.NewDeletionCodeRepository(rdb), userRepo,
 		repository.NewDeletionTicketRepository(rdb), accountDeletions, emailService, cfg.EmailHMACKey)
 
+	blockService := service.NewBlockService(repository.NewBlockRepository(dbPool), epochRepo, linker)
+	reportService := service.NewReportService(repository.NewReportRepository(dbPool), emailService, cfg.ModerationEmail)
+
 	rateLimiter := middleware.NewRateLimiter(rdb)
 
 	authHandler := handler.NewAuthHandler(authService)
@@ -147,7 +151,8 @@ func main() {
 	inviteHandler := handler.NewInviteHandler()
 	accountHandler := handler.NewAccountHandler(accountDeletions)
 	webDeletionHandler := handler.NewWebDeletionHandler(webDeletions)
-	wsHandler := handler.NewWSHandler(hub, ticketStore)
+	safetyHandler := handler.NewSafetyHandler(reportService, blockService)
+	wsHandler := handler.NewWSHandler(hub, ticketStore, userRepo)
 
 	authMiddleware := middleware.NewAuthMiddleware(sessionRepo)
 	requireMember := middleware.RequireMember(albumRepo, "id")
@@ -212,6 +217,9 @@ func main() {
 		),
 	).Methods(http.MethodGet)
 
+	authed.HandleFunc("/blocks", safetyHandler.ListBlocks).Methods(http.MethodGet)
+	authed.HandleFunc("/blocks/{bid}", safetyHandler.Unblock).Methods(http.MethodDelete)
+
 	authed.HandleFunc("/albums", albumHandler.CreateAlbum).Methods(http.MethodPost)
 	authed.HandleFunc("/albums", albumHandler.ListAlbums).Methods(http.MethodGet)
 	authed.HandleFunc("/invite/{code}/join", inviteHandler.JoinAlbum).Methods(http.MethodPost)
@@ -251,6 +259,18 @@ func main() {
 	scoped.HandleFunc("/media/{mid}/download-url", mediaHandler.RequestDownloadURL).Methods(http.MethodPost)
 	scoped.HandleFunc("/media/{mid}/pending", mediaHandler.AbortPendingUpload).Methods(http.MethodDelete)
 	scoped.HandleFunc("/media/{mid}", mediaHandler.DeleteMedia).Methods(http.MethodDelete)
+	scoped.Handle(
+		"/reports",
+		rateLimiter.StrictMiddleware(handler.KeyReports, handler.MaxReports, handler.ReportsWindow)(
+			http.HandlerFunc(safetyHandler.Report),
+		),
+	).Methods(http.MethodPost)
+	scoped.Handle(
+		"/blocks",
+		rateLimiter.StrictMiddleware(handler.KeyBlocks, handler.MaxBlocks, handler.BlocksWindow)(
+			http.HandlerFunc(safetyHandler.Block),
+		),
+	).Methods(http.MethodPost)
 	scoped.HandleFunc("/epoch", epochHandler.SetEpoch).Methods(http.MethodPost)
 	scoped.HandleFunc("/epoch", epochHandler.GetCurrent).Methods(http.MethodGet)
 	scoped.HandleFunc("/epoch/{n}/wrap", epochHandler.GetWrap).Methods(http.MethodGet)
@@ -305,6 +325,8 @@ func main() {
 		accountDeletions.Run(cleanupCtx)
 	}()
 	go webDeletions.RunMailer(cleanupCtx)
+	go reportService.RunRetention(cleanupCtx)
+	go hub.RunEviction(cleanupCtx, 30*time.Second, userRepo.InactiveAmong)
 
 	serverErrors := make(chan error, 1)
 	go func() {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:miuchio/domain/safety/reporter.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/create/glass_sheet.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
@@ -9,6 +10,7 @@ import 'package:miuchio/ui/widgets/warm_field.dart';
 import 'album_copy.dart';
 import 'album_stats.dart';
 import 'leave_photos_choice.dart';
+import 'safety_copy.dart';
 
 Future<T?> _paperSheet<T>(BuildContext context, WidgetBuilder builder,
     {Color background = Warm.paper}) {
@@ -107,7 +109,7 @@ Future<bool?> confirmLeave(BuildContext context, {required bool deletePhotos}) =
     _paperSheet<bool>(
         context, (_) => _LeaveSheet(deletePhotos: deletePhotos));
 
-enum PersonAction { photos, safetyNumber, remove }
+enum PersonAction { photos, safetyNumber, report, block, remove }
 
 // Null when dismissed. Remove is left out for anyone who can't use it, while
 // a safety number not yet available stays visible but greyed
@@ -148,6 +150,35 @@ Future<T?> askChoice<T>(
     _paperSheet<T>(
         context, (_) => _ChoiceSheet<T>(title: title, choices: choices));
 
+// Null when dismissed
+Future<ReportDraft?> askReport(BuildContext context,
+        {required bool photo, String? name}) =>
+    _paperSheet<ReportDraft>(
+        context, (_) => _ReportSheet(photo: photo, name: name));
+
+enum BlockChoice { blockOnly, andLeave, andRemove }
+
+// Null when dismissed. The follow up is removing them for an owner, otherwise
+// leaving
+Future<BlockChoice?> askBlock(BuildContext context,
+        {required String? name, required bool canRemove}) =>
+    _paperSheet<BlockChoice>(
+        context, (_) => _BlockSheet(name: name, canRemove: canRemove));
+
+enum AlbumGateChoice { open, leave, block }
+
+// Null when dismissed
+Future<AlbumGateChoice?> askAlbumGate(
+  BuildContext context, {
+  required String? title,
+  required String? addedBy,
+  required bool canBlock,
+}) =>
+    _paperSheet<AlbumGateChoice>(
+      context,
+      (_) => _GateSheet(title: title, addedBy: addedBy, canBlock: canBlock),
+    );
+
 // Trimmed new name, or null when dismissed or unchanged
 Future<String?> askAlbumName(BuildContext context, String current) =>
     _paperSheet<String>(context, (_) => _RenameSheet(current: current));
@@ -160,6 +191,7 @@ Future<void> showPhotoDetails(
   required String? name,
   required bool mine,
   required String position,
+  VoidCallback? onReport,
   DateTime? now,
 }) =>
     _paperSheet<void>(
@@ -170,6 +202,7 @@ Future<void> showPhotoDetails(
         name: name,
         mine: mine,
         position: position,
+        onReport: onReport,
         now: now,
       ),
       background: Colors.transparent,
@@ -385,8 +418,19 @@ class _PersonSheet extends StatelessWidget {
               label: AlbumCopy.safetyNumber,
               onTap: canVerify ? () => pick(PersonAction.safetyNumber) : null,
             ),
+            const _Rule(),
+            _PersonRow(
+              key: const Key('person-report'),
+              label: SafetyCopy.report,
+              onTap: () => pick(PersonAction.report),
+            ),
+            _PersonRow(
+              key: const Key('person-block'),
+              label: SafetyCopy.block,
+              danger: true,
+              onTap: () => pick(PersonAction.block),
+            ),
             if (canRemove) ...[
-              const _Rule(),
               _PersonRow(
                 key: const Key('person-remove'),
                 label: AlbumCopy.removeFromAlbum,
@@ -613,12 +657,243 @@ class _RenameSheetState extends State<_RenameSheet> {
   }
 }
 
+class _QuietButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+
+  const _QuietButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  @override
+  Widget build(BuildContext context) => PressableScale(
+        onTap: onTap,
+        child: SizedBox(
+          height: 46,
+          child: Center(
+            child: Text(label,
+                style: Warm.acBtnQuiet.copyWith(
+                    fontSize: 15, color: danger ? Warm.warn : null)),
+          ),
+        ),
+      );
+}
+
+class _ReportSheet extends StatefulWidget {
+  final bool photo;
+  final String? name;
+
+  const _ReportSheet({required this.photo, required this.name});
+
+  @override
+  State<_ReportSheet> createState() => _ReportSheetState();
+}
+
+class _ReportSheetState extends State<_ReportSheet> {
+  final TextEditingController _note = TextEditingController();
+  ReportReason? _reason;
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reason = _reason;
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _Grab(),
+              const SizedBox(height: 20),
+              Text(
+                  widget.photo
+                      ? SafetyCopy.reportPhotoTitle
+                      : SafetyCopy.reportPersonTitle(widget.name),
+                  style: Warm.cardTitle),
+              const SizedBox(height: 4),
+              Text(SafetyCopy.reportAsk, style: Warm.note),
+              const SizedBox(height: 8),
+              for (final r in ReportReason.values)
+                PressableScale(
+                  key: Key('report-${r.code}'),
+                  onTap: () => setState(() => _reason = r),
+                  child: SizedBox(
+                    height: 46,
+                    child: Row(
+                      children: [
+                        Expanded(
+                            child: Text(SafetyCopy.reason(r),
+                                style: Warm.rowTitle)),
+                        Icon(
+                          r == reason
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          size: 20,
+                          color: r == reason ? Warm.ink : Warm.inkFaint,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              WarmField(
+                key: const Key('report-note'),
+                controller: _note,
+                label: SafetyCopy.reportNote,
+                maxLength: SafetyCopy.reportNoteMax,
+                textInputAction: TextInputAction.done,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                  widget.photo
+                      ? SafetyCopy.reportPhotoConsent
+                      : SafetyCopy.reportPersonConsent,
+                  style: Warm.meta),
+              const SizedBox(height: 18),
+              WarmButton(
+                key: const Key('report-send'),
+                label: SafetyCopy.reportSend,
+                onTap: reason == null
+                    ? null
+                    : () => Navigator.of(context)
+                        .pop(ReportDraft(reason, note: _note.text)),
+              ),
+              const SizedBox(height: 6),
+              _QuietButton(
+                label: SafetyCopy.cancel,
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BlockSheet extends StatelessWidget {
+  final String? name;
+  final bool canRemove;
+
+  const _BlockSheet({required this.name, required this.canRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    void pick(BlockChoice c) => Navigator.of(context).pop(c);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _Grab(),
+            const SizedBox(height: 20),
+            Text(SafetyCopy.blockTitle(name), style: Warm.cardTitle),
+            const SizedBox(height: 6),
+            Text(SafetyCopy.blockBody, style: Warm.note),
+            const SizedBox(height: 22),
+            WarmButton(
+              key: const Key('block-follow-up'),
+              label: canRemove
+                  ? SafetyCopy.blockAndRemove
+                  : SafetyCopy.blockAndLeave,
+              onTap: () => pick(
+                  canRemove ? BlockChoice.andRemove : BlockChoice.andLeave),
+            ),
+            const SizedBox(height: 6),
+            _QuietButton(
+              key: const Key('block-only'),
+              label: SafetyCopy.blockOnly,
+              danger: true,
+              onTap: () => pick(BlockChoice.blockOnly),
+            ),
+            _QuietButton(
+              label: SafetyCopy.cancel,
+              onTap: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GateSheet extends StatelessWidget {
+  final String? title;
+  final String? addedBy;
+  final bool canBlock;
+
+  const _GateSheet(
+      {required this.title, required this.addedBy, required this.canBlock});
+
+  @override
+  Widget build(BuildContext context) {
+    void pick(AlbumGateChoice c) => Navigator.of(context).pop(c);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _Grab(),
+            const SizedBox(height: 20),
+            Text(title ?? SafetyCopy.untitled,
+                style: Warm.cardTitle, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 2),
+            Text(SafetyCopy.gateAddedBy(addedBy), style: Warm.meta),
+            const SizedBox(height: 12),
+            Text(SafetyCopy.gateBody, style: Warm.note),
+            const SizedBox(height: 22),
+            WarmButton(
+              key: const Key('gate-open'),
+              label: SafetyCopy.gateOpen,
+              onTap: () => pick(AlbumGateChoice.open),
+            ),
+            const SizedBox(height: 6),
+            _QuietButton(
+              key: const Key('gate-leave'),
+              label: SafetyCopy.gateLeave,
+              onTap: () => pick(AlbumGateChoice.leave),
+            ),
+            if (canBlock)
+              _QuietButton(
+                key: const Key('gate-block'),
+                label: SafetyCopy.blockAndLeave,
+                danger: true,
+                onTap: () => pick(AlbumGateChoice.block),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DetailsSheet extends StatelessWidget {
   final MediaRecord record;
   final Widget face;
   final String? name;
   final bool mine;
   final String position;
+  final VoidCallback? onReport;
   final DateTime? now;
 
   const _DetailsSheet({
@@ -627,6 +902,7 @@ class _DetailsSheet extends StatelessWidget {
     required this.name,
     required this.mine,
     required this.position,
+    this.onReport,
     this.now,
   });
 
@@ -711,6 +987,29 @@ class _DetailsSheet extends StatelessWidget {
                   AlbumCopy.privateNote,
                   style: TextStyle(
                       fontSize: 13, height: 1.4, color: Warm.glassInkSoft),
+                ),
+              ],
+              if (onReport != null) ...[
+                const SizedBox(height: 18),
+                PressableScale(
+                  key: const Key('photo-details-report'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onReport!();
+                  },
+                  child: const SizedBox(
+                    height: 40,
+                    child: Row(
+                      children: [
+                        Icon(Icons.flag_outlined,
+                            size: 17, color: Warm.glassInkSoft),
+                        SizedBox(width: 8),
+                        Text(SafetyCopy.reportPhotoAction,
+                            style: TextStyle(
+                                fontSize: 14, color: Warm.glassInkSoft)),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ],

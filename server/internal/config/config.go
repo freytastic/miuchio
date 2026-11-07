@@ -40,6 +40,9 @@ type Config struct {
 	S3Region         string
 	UsePathStyle     bool
 
+	// Gets a content free alert for each new report, off when unset
+	ModerationEmail string
+
 	// Upload limits in bytes, zero turns one off. The total is the backstop
 	// against many accounts each filling their own quota
 	UserStorageQuota  int64
@@ -60,6 +63,7 @@ func Load() *Config {
 		UserLinkKey:       loadKeyOrDevPlaceholder("MIUCHIO_USER_LINK_KEY", "miuchio-dev-userlink-placeholder-do-not-deploy", devMode),
 		ReviewEmail:       reviewEmail,
 		ReviewCode:        reviewCode,
+		ModerationEmail:   getEnv("MODERATION_EMAIL", ""),
 		S3Endpoint:        getEnv("S3_ENDPOINT", "http://localhost:9000"),
 		S3PublicEndpoint:  getEnv("S3_PUBLIC_ENDPOINT", ""),
 		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),

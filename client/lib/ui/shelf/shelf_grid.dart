@@ -271,6 +271,7 @@ class _ShelfCardState extends State<_ShelfCard> {
     final covers = _covers;
     if (covers != null) context.watch<ShelfCovers>();
     context.watch<CoverCache?>();
+    context.watch<SafetyStore?>();
     context.watch<AppState>();
 
     final card = Opacity(

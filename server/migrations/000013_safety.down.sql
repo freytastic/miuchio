@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS moderation_actions;
+DROP TABLE IF EXISTS reports;
+DROP TABLE IF EXISTS blocks;
+ALTER TABLE album_members DROP COLUMN IF EXISTS joins;
+ALTER TABLE users DROP COLUMN IF EXISTS suspended_at;

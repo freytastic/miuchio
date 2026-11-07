@@ -80,6 +80,10 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 			apierr.Write(w, r, apierr.AccountDeleting("this account is being deleted"))
 			return
 		}
+		if errors.Is(err, service.ErrAccountSuspended) {
+			apierr.Write(w, r, apierr.AccountSuspended("this account is suspended"))
+			return
+		}
 		if errors.Is(err, service.ErrTooManyRequests) {
 			apierr.Write(w, r, apierr.RateLimited(err.Error()))
 			return

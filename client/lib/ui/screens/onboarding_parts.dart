@@ -236,9 +236,53 @@ class _Foot extends StatelessWidget {
                 ),
         ),
         _Cta(label: label, ready: ready, busy: busy, onTap: onSubmit),
+        // The button still says agree while the keyboard hides the links
+        if (phase == _Phase.email && !compact) const _Legal(),
       ],
     );
   }
+}
+
+const _kLegalGap = 12.0;
+
+// Shared with the layout so the foot's height counts the legal line
+TextSpan _legalSpan({GestureRecognizer? terms, GestureRecognizer? privacy}) {
+  final link = Warm.footMark
+      .copyWith(color: Warm.inkSoft, decoration: TextDecoration.underline);
+  return TextSpan(style: Warm.footMark, children: [
+    const TextSpan(text: 'By continuing you agree to the '),
+    TextSpan(text: 'Terms', style: link, recognizer: terms),
+    const TextSpan(text: ' and have read the '),
+    TextSpan(text: 'Privacy Policy', style: link, recognizer: privacy),
+  ]);
+}
+
+class _Legal extends StatefulWidget {
+  const _Legal();
+
+  @override
+  State<_Legal> createState() => _LegalState();
+}
+
+class _LegalState extends State<_Legal> {
+  late final _terms = TapGestureRecognizer()..onTap = () => _open('terms');
+  late final _privacy = TapGestureRecognizer()..onTap = () => _open('privacy');
+
+  void _open(String path) => openExternalLink(context, '$kSiteUrl/$path');
+
+  @override
+  void dispose() {
+    _terms.dispose();
+    _privacy.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: _kLegalGap),
+        child: Text.rich(_legalSpan(terms: _terms, privacy: _privacy),
+            textAlign: TextAlign.center),
+      );
 }
 
 class _Dots extends StatelessWidget {

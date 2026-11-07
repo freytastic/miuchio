@@ -17,8 +17,8 @@ abstract class DebugLogAllowlist {
     'selfSignerMismatch', 'signerMismatch', 'unknownSigner', 'localKeyMissing',
     'replayRejected', 'wrapUnavailable', 'verificationFailed',
     // Server and keystore error codes
-    'E_ACCOUNT_DELETING', 'E_ALBUM_FULL', 'E_AUTH', 'E_CONFLICT',
-    'E_DELETION_ACCEPTED', 'E_DELETION_PLAN_STALE',
+    'E_ACCOUNT_DELETING', 'E_ACCOUNT_SUSPENDED', 'E_ALBUM_FULL', 'E_AUTH',
+    'E_BLOCKED', 'E_CONFLICT', 'E_DELETION_ACCEPTED', 'E_DELETION_PLAN_STALE',
     'E_EPOCH_PENDING_ROTATION', 'E_EPOCH_REPLAY', 'E_FORBIDDEN',
     'E_IDENTITY_ALREADY_SET', 'E_INTERNAL', 'E_INVITE_CONSUMED',
     'E_INVITE_EXPIRED', 'E_KEY_NOT_FOUND', 'E_KEY_TAMPER',

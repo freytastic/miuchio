@@ -109,3 +109,23 @@ func TestKeySeparation_HandleAndEncDiffer(t *testing.T) {
 		t.Error("different master keys must give different handles")
 	}
 }
+
+func TestBlockPair_OrderIndependent(t *testing.T) {
+	h := newTestHasher(t)
+	a, b := uuid.New(), uuid.New()
+	if !bytes.Equal(h.BlockPair(a, b), h.BlockPair(b, a)) {
+		t.Error("BlockPair must not depend on argument order")
+	}
+	if bytes.Equal(h.BlockPair(a, b), h.BlockPair(a, uuid.New())) {
+		t.Error("different pairs must not collide")
+	}
+}
+
+// A blocker hash equal to the album handle would join blocks to memberships
+func TestBlockerHash_SeparateFromHandle(t *testing.T) {
+	h := newTestHasher(t)
+	u := uuid.New()
+	if bytes.Equal(h.BlockerHash(u), h.Hash(u)) {
+		t.Error("BlockerHash must use its own subkey")
+	}
+}
