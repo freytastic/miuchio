@@ -26,7 +26,7 @@ type AlbumStore interface {
 	ListForUser(ctx context.Context, userID uuid.UUID) ([]model.AlbumWithMemberInfo, error)
 	LookupMember(ctx context.Context, userID, albumID uuid.UUID) ([]byte, string, error)
 	ListMembers(ctx context.Context, albumID uuid.UUID) ([]model.MemberWithProfile, error)
-	UpdateName(ctx context.Context, albumID uuid.UUID, nameCT []byte) error
+	UpdateName(ctx context.Context, albumID uuid.UUID, callerToken, nameCT []byte) error
 	UpdateMemberNameCT(ctx context.Context, albumID uuid.UUID, memberToken, nameCT []byte) error
 	// Deletes under the album lock, re checking the caller is the active admin
 	DeleteAlbumTx(ctx context.Context, albumID uuid.UUID, callerToken []byte) (repository.AlbumRemoval, error)
@@ -34,6 +34,9 @@ type AlbumStore interface {
 	// Shares the album lock with rotation and upload reservation
 	// Rechecks caller state and the last admin guard before revoking
 	RevokeMemberTx(ctx context.Context, albumID uuid.UUID, callerToken, targetToken []byte, media repository.DepartingMedia) (repository.Revocation, error)
+
+	HandoverTx(ctx context.Context, q repository.HandoverRequest) (repository.HandoverResult, error)
+	HandoverOutcome(ctx context.Context, operationID uuid.UUID) (uuid.UUID, byte, error)
 }
 
 // Deletes objects already queued for durable cleanup
@@ -90,7 +93,7 @@ func (s *AlbumService) ListUserAlbums(ctx context.Context, userID uuid.UUID) ([]
 }
 
 func (s *AlbumService) UpdateAlbum(ctx context.Context, albumID, userID uuid.UUID, nameCT []byte) error {
-	_, role, err := s.albumRepo.LookupMember(ctx, userID, albumID)
+	token, role, err := s.albumRepo.LookupMember(ctx, userID, albumID)
 	if err != nil {
 		return ErrUnauthorized
 	}
@@ -100,7 +103,12 @@ func (s *AlbumService) UpdateAlbum(ctx context.Context, albumID, userID uuid.UUI
 	if len(nameCT) == 0 {
 		return errors.New("name_ct is required")
 	}
-	return s.albumRepo.UpdateName(ctx, albumID, nameCT)
+	err = s.albumRepo.UpdateName(ctx, albumID, token, nameCT)
+	if errors.Is(err, repository.ErrNotAlbumAdmin) || errors.Is(err, repository.ErrCallerRevoked) ||
+		errors.Is(err, repository.ErrAlbumNotFound) {
+		return ErrUnauthorized
+	}
+	return err
 }
 
 // DeleteAlbum returns the members who must be told the album is gone
@@ -166,6 +174,8 @@ func (s *AlbumService) RemoveMember(ctx context.Context, albumID, callerUserID u
 			return nil, ErrMemberNotFound
 		case errors.Is(err, repository.ErrLastAdmin):
 			return nil, ErrLastAdmin
+		case errors.Is(err, repository.ErrNotAlbumAdmin):
+			return nil, ErrUnauthorized
 		default:
 			return nil, err
 		}
@@ -189,4 +199,20 @@ func (s *AlbumService) UpdateMemberNameCT(ctx context.Context, albumID uuid.UUID
 		return errors.New("name_ct is required")
 	}
 	return s.albumRepo.UpdateMemberNameCT(ctx, albumID, memberToken, nameCT)
+}
+
+// Every check that matters runs under the album lock in the repository
+func (s *AlbumService) Handover(ctx context.Context, q repository.HandoverRequest) (repository.HandoverResult, error) {
+	res, err := s.albumRepo.HandoverTx(ctx, q)
+	if err != nil {
+		return repository.HandoverResult{}, err
+	}
+	if s.cleaner != nil {
+		s.cleaner.CleanupObjectKeys(ctx, res.Media.Keys)
+	}
+	return res, nil
+}
+
+func (s *AlbumService) HandoverOutcome(ctx context.Context, operationID uuid.UUID) (uuid.UUID, byte, error) {
+	return s.albumRepo.HandoverOutcome(ctx, operationID)
 }

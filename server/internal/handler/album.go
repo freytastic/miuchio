@@ -302,6 +302,8 @@ func (h *AlbumHandler) ListAlbumMembers(w http.ResponseWriter, r *http.Request) 
 			"member_token": base64.StdEncoding.EncodeToString(m.MemberToken),
 			"role":         m.Role,
 			"revoked":      m.Revoked,
+			"generation":   m.Generation,
+			"joined":       m.Joined,
 			"joined_at":    m.JoinedAt,
 			"profile":      profile,
 		}

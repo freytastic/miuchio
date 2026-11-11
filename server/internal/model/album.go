@@ -66,9 +66,13 @@ type MemberProfile struct {
 }
 
 type MemberWithProfile struct {
-	MemberToken []byte        `json:"member_token"`
-	Role        string        `json:"role"`
-	Revoked     bool          `json:"revoked"`
-	JoinedAt    time.Time     `json:"joined_at"`
-	Profile     MemberProfile `json:"profile"`
+	MemberToken []byte `json:"member_token"`
+	Role        string `json:"role"`
+	Revoked     bool   `json:"revoked"`
+	// Rises on every re add of the same token
+	Generation int `json:"generation"`
+	// True once the member proved they installed this membership's keys
+	Joined   bool          `json:"joined"`
+	JoinedAt time.Time     `json:"joined_at"`
+	Profile  MemberProfile `json:"profile"`
 }

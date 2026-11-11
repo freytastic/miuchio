@@ -14,6 +14,7 @@ import (
 
 	"github.com/freytastic/miuchio/internal/apierr"
 	"github.com/freytastic/miuchio/internal/config"
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/e2ee/epoch"
 	"github.com/freytastic/miuchio/internal/e2ee/invite"
 	"github.com/freytastic/miuchio/internal/e2ee/prekey"
@@ -126,6 +127,8 @@ func main() {
 	inviteRepo := invite.NewRepo(dbPool, linker, userRepo)
 	inviteService := invite.NewService(inviteRepo)
 	memberInviteHandler := invite.NewHandler(inviteService, inviteRepo, hub)
+	authorityRepo := authority.NewRepo(dbPool)
+	authorityHandler := authority.NewHandler(authorityRepo)
 
 	mediaService := service.NewMediaService(mediaRepo, epochRepo, &s3Adapter{s3Client}, hub, inviteRepo)
 	// Deletions queue their objects transactionally, this only deletes them sooner
@@ -220,6 +223,7 @@ func main() {
 	authed.HandleFunc("/blocks", safetyHandler.ListBlocks).Methods(http.MethodGet)
 	authed.HandleFunc("/blocks/{bid}", safetyHandler.Unblock).Methods(http.MethodDelete)
 
+	authed.HandleFunc("/album-handovers/{operation_id}", albumHandler.HandoverOutcome).Methods(http.MethodGet)
 	authed.HandleFunc("/albums", albumHandler.CreateAlbum).Methods(http.MethodPost)
 	authed.HandleFunc("/albums", albumHandler.ListAlbums).Methods(http.MethodGet)
 	authed.HandleFunc("/invite/{code}/join", inviteHandler.JoinAlbum).Methods(http.MethodPost)
@@ -230,6 +234,7 @@ func main() {
 	scoped.HandleFunc("", albumHandler.UpdateAlbum).Methods(http.MethodPatch)
 	scoped.HandleFunc("", albumHandler.DeleteAlbum).Methods(http.MethodDelete)
 	scoped.HandleFunc("/members", albumHandler.ListAlbumMembers).Methods(http.MethodGet)
+	scoped.HandleFunc("/handover", albumHandler.Handover).Methods(http.MethodPost)
 	// Onboarding stays on the E2EE invite path so membership includes MK delivery
 	scoped.HandleFunc("/members/me/profile-ct", albumHandler.UpdateMyProfileCT).Methods(http.MethodPut)
 	scoped.HandleFunc("/members/me/avatar/upload-url", avatarHandler.RequestUploadURL).Methods(http.MethodPost)
@@ -274,6 +279,8 @@ func main() {
 	scoped.HandleFunc("/epoch", epochHandler.SetEpoch).Methods(http.MethodPost)
 	scoped.HandleFunc("/epoch", epochHandler.GetCurrent).Methods(http.MethodGet)
 	scoped.HandleFunc("/epoch/{n}/wrap", epochHandler.GetWrap).Methods(http.MethodGet)
+	scoped.HandleFunc("/notes", authorityHandler.ListNotes).Methods(http.MethodGet)
+	scoped.HandleFunc("/handovers", authorityHandler.ListHandovers).Methods(http.MethodGet)
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, "OK")

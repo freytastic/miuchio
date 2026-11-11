@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -95,7 +96,7 @@ func (r *AlbumRepository) CreateWithAdmin(ctx context.Context, nameCT []byte, cr
 	}
 
 	_, err = tx.Exec(ctx,
-		`INSERT INTO album_members (album_id, member_token, role) VALUES ($1, $2, 'admin')`,
+		`INSERT INTO album_members (album_id, member_token, role, acked_joins) VALUES ($1, $2, 'admin', 1)`,
 		a.ID, token)
 	if err != nil {
 		return nil, nil, err
@@ -347,6 +348,8 @@ func (r *AlbumRepository) ListMembers(ctx context.Context, albumID uuid.UUID) ([
 			am.member_token,
 			am.role,
 			am.revoked_at IS NOT NULL,
+			am.joins,
+			am.acked_joins = am.joins,
 			ami.joined_at,
 			ami.user_id_enc,
 			am.name_ct,
@@ -375,6 +378,8 @@ func (r *AlbumRepository) ListMembers(ctx context.Context, albumID uuid.UUID) ([
 			&m.MemberToken,
 			&m.Role,
 			&m.Revoked,
+			&m.Generation,
+			&m.Joined,
 			&m.JoinedAt,
 			&sealed,
 			&m.Profile.NameCT,
@@ -468,13 +473,15 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 		return Revocation{}, err
 	}
 
-	// Caller must still be an active member at commit time
+	// Caller must still be an active member at commit time, and still the
+	// admin to remove anyone else, since a handover can demote them meanwhile
+	var callerRole string
 	var callerRevoked bool
 	err = tx.QueryRow(ctx,
-		`SELECT revoked_at IS NOT NULL FROM album_members
+		`SELECT role, revoked_at IS NOT NULL FROM album_members
 		 WHERE album_id = $1 AND member_token = $2`,
 		albumID, callerToken,
-	).Scan(&callerRevoked)
+	).Scan(&callerRole, &callerRevoked)
 	if err == pgx.ErrNoRows {
 		return Revocation{}, ErrCallerRevoked
 	}
@@ -484,10 +491,22 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 	if callerRevoked {
 		return Revocation{}, ErrCallerRevoked
 	}
+	if callerRole != "admin" && !bytes.Equal(callerToken, targetToken) {
+		return Revocation{}, ErrNotAlbumAdmin
+	}
 
+	out, err := r.revokeLocked(ctx, tx, albumID, targetToken, media)
+	if err != nil {
+		return Revocation{}, err
+	}
+	return out, tx.Commit(ctx)
+}
+
+// Runs under the album lock. An already revoked target is reported, not an error
+func (r *AlbumRepository) revokeLocked(ctx context.Context, tx pgx.Tx, albumID uuid.UUID, targetToken []byte, media DepartingMedia) (Revocation, error) {
 	var role string
 	var revoked bool
-	err = tx.QueryRow(ctx,
+	err := tx.QueryRow(ctx,
 		`SELECT role, revoked_at IS NOT NULL FROM album_members
 		 WHERE album_id = $1 AND member_token = $2`,
 		albumID, targetToken,
@@ -499,10 +518,6 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 		return Revocation{}, err
 	}
 	if revoked {
-		// Already revoked, commit to release the lock
-		if err := tx.Commit(ctx); err != nil {
-			return Revocation{}, err
-		}
 		return Revocation{Role: role, AlreadyRevoked: true}, nil
 	}
 
@@ -554,9 +569,6 @@ func (r *AlbumRepository) RevokeMemberTx(ctx context.Context, albumID uuid.UUID,
 			return Revocation{}, err
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return Revocation{}, err
-	}
 	return out, nil
 }
 
@@ -593,12 +605,25 @@ func (r *AlbumRepository) preferredMedia(ctx context.Context, tx pgx.Tx, memberT
 	return KeepMedia, nil
 }
 
-func (r *AlbumRepository) UpdateName(ctx context.Context, albumID uuid.UUID, nameCT []byte) error {
-	_, err := r.DB.Exec(ctx,
+// The role is read under the album lock. A single statement would not do,
+// its role lookup can see a snapshot from before a concurrent handover
+func (r *AlbumRepository) UpdateName(ctx context.Context, albumID uuid.UUID, callerToken, nameCT []byte) error {
+	tx, err := r.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockAlbumAdmin(ctx, tx, albumID, callerToken); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
 		`UPDATE albums SET name_ct = $1, updated_at = date_trunc('hour', now())
 		 WHERE id = $2`,
-		nameCT, albumID)
-	return err
+		nameCT, albumID,
+	); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *AlbumRepository) Delete(ctx context.Context, id uuid.UUID) error {
