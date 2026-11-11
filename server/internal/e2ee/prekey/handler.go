@@ -31,6 +31,7 @@ type HandleResolver interface {
 // Resolves rotation targets without exposing their UUIDs
 type MemberResolver interface {
 	UserIDByAlbumMemberToken(ctx context.Context, albumID uuid.UUID, token []byte) (uuid.UUID, error)
+	RotationRequired(ctx context.Context, albumID uuid.UUID) (bool, error)
 }
 
 type Handler struct {
@@ -269,21 +270,30 @@ func (h *Handler) GetPrekeyBundleByHandle(w http.ResponseWriter, r *http.Request
 	h.writeBundle(w, norm, bundle, targetID)
 }
 
-// Admin-only rotation lookup returns an album token instead of an account UUID
+// Rotation lookup returns an album token instead of an account UUID. Members
+// other than the admin may use it only while a rotation is owed, so it cannot
+// be used to drain a member's one time prekeys at will
 func (h *Handler) GetPrekeyBundleByMemberToken(w http.ResponseWriter, r *http.Request) {
 	role, ok := middleware.MustGetMemberRole(r)
 	if !ok {
 		apierr.Write(w, r, apierr.Auth("missing member context"))
 		return
 	}
-	if role != "admin" {
-		apierr.Write(w, r, apierr.Forbidden("only the admin can fetch a member's prekey bundle"))
-		return
-	}
 	albumID, err := uuid.Parse(mux.Vars(r)["id"])
 	if err != nil {
 		apierr.Write(w, r, apierr.Validation("invalid album id").WithCause(err))
 		return
+	}
+	if role != "admin" {
+		owed, err := h.memberResolver.RotationRequired(r.Context(), albumID)
+		if err != nil {
+			apierr.Write(w, r, apierr.Internal("rotation check failed").WithCause(err))
+			return
+		}
+		if !owed {
+			apierr.Write(w, r, apierr.Forbidden("no rotation is owed for this album"))
+			return
+		}
 	}
 	token, err := decodeMemberTokenPath(mux.Vars(r)["token"])
 	if err != nil {

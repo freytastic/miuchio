@@ -1,3 +1,4 @@
+import 'package:miuchio/secure_store/key_store_exceptions.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -124,7 +125,13 @@ class AlbumKeyStore {
     if (handles == null) return;
     // Keep failed deletions in the map for retry
     for (final epoch in handles.keys.toList()) {
-      await _store.delete(handles[epoch]!);
+      final h = handles[epoch];
+      if (h == null) continue;
+      try {
+        await _store.delete(h);
+      } on KeyNotFoundException {
+        // A wipe running alongside got there first
+      }
       handles.remove(epoch);
     }
     _present.remove(hex);

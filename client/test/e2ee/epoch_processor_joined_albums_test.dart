@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:miuchio/e2ee/authority_records.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/epoch_api.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
@@ -34,6 +35,8 @@ class _CapturingInvites implements InviteApi {
     required Uint8List ekPub,
     int? opkIdx,
     required List<DeliverEnvelope> envelopes,
+    required SignedNote note,
+    List<SignedNote> extraNotes = const [],
   }) =>
       throw UnimplementedError();
 }
@@ -76,11 +79,13 @@ void main() {
     }
     final invites = _CapturingInvites()
       ..throwOnJoinComplete = joinCompleteThrows;
+    final directory = MemberDirectory(singletonAdminFetcher(admin));
     final proc = EpochProcessor(
       api: api,
       identity: bob.svc,
       store: bobAks,
-      directory: MemberDirectory(singletonAdminFetcher(admin)),
+      directory: directory,
+      senders: DirectorySenders(directory),
       signerGate: tofuGate(),
       invites: invites,
     );

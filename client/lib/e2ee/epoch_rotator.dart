@@ -6,7 +6,9 @@ import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/crypto/wire_format.dart';
 import 'package:miuchio/secure_store/key_handle_adapter.dart';
 
+import 'album_authority.dart';
 import 'album_keys.dart';
+import 'authority_records.dart';
 import 'epoch_api.dart';
 import 'identity.dart';
 import 'prekey_api.dart';
@@ -52,6 +54,7 @@ class EpochRotator {
   final IdentityService _identity;
   final AlbumKeyStore _aks;
   final MemberBundleFetcher? _memberBundles;
+  final AlbumAuthority? _authority;
   final Now _now;
 
   EpochRotator({
@@ -60,12 +63,14 @@ class EpochRotator {
     required IdentityService identity,
     required AlbumKeyStore aks,
     MemberBundleFetcher? memberBundles,
+    AlbumAuthority? authority,
     Now? now,
   })  : _epochs = epochs,
         _prekeys = prekeys,
         _identity = identity,
         _aks = aks,
         _memberBundles = memberBundles,
+        _authority = authority,
         _now = now ?? DateTime.now;
 
   Future<void> bootstrap({
@@ -73,6 +78,27 @@ class EpochRotator {
     required Uint8List creatorMemberToken,
     required String creatorUserId,
   }) async {
+    final ikPub = await _identity.currentIkPub();
+    final lkPub = await _identity.currentLkPub();
+    // Term 0 starts here: the creator vouches for themselves, and everyone
+    // invited later takes this note as where the album's authority begins
+    final note = MemberNote(
+      albumId: albumIdBytes,
+      memberToken: creatorMemberToken,
+      generation: 1,
+      ikPub: ikPub,
+      lkPub: lkPub,
+      issuerTerm: 0,
+    );
+    final sig = await _identity.useIk<Uint8List>((seed) async =>
+        Sign.sign(await KeyHandleAdapter.toEd25519(seed), note.signedBytes()));
+    // Durable before the first key exists, so it never lacks its anchor
+    await _authority?.anchorCreator(
+      albumId: albumIdBytes,
+      selfToken: creatorMemberToken,
+      ikPub: ikPub,
+      lkPub: lkPub,
+    );
     await rotate(
       albumIdBytes: albumIdBytes,
       epoch: 0,
@@ -80,9 +106,10 @@ class EpochRotator {
         RotateRecipient(
           memberToken: creatorMemberToken,
           userId: creatorUserId,
-          expectedIk: await _identity.currentIkPub(),
+          expectedIk: ikPub,
         ),
       ],
+      signerNote: SignedNote(note, sig),
     );
   }
 
@@ -92,6 +119,7 @@ class EpochRotator {
     required Uint8List albumIdBytes,
     required int epoch,
     required List<RotateRecipient> recipients,
+    SignedNote? signerNote,
   }) async {
     if (albumIdBytes.length != 16) {
       throw ArgumentError(
@@ -194,6 +222,7 @@ class EpochRotator {
           memberSetHash: memberSetHash,
           wraps: wraps,
           envelopeSig: envelopeSig,
+          signerNote: signerNote,
         ),
       );
 

@@ -120,6 +120,20 @@ class MemberLeft extends ActivityEvent {
       );
 }
 
+// Owning an album decides who can add and remove people
+class OwnerChanged extends ActivityEvent {
+  final bool nowMine;
+  const OwnerChanged({
+    required super.id,
+    required super.albumId,
+    required super.at,
+    required this.nowMine,
+  });
+
+  @override
+  ActivityLane get lane => ActivityLane.security;
+}
+
 // Only a chosen cover is news, going back to the newest photo is not
 class CoverChanged extends ActivityEvent {
   final String setBy;

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/e2ee/epoch"
 	"github.com/freytastic/miuchio/internal/repository"
 	"github.com/freytastic/miuchio/internal/userlink"
@@ -51,14 +52,24 @@ type inviteAlbum struct {
 	id          uuid.UUID
 	senderID    uuid.UUID
 	senderToken []byte
+	pool        *pgxpool.Pool
 }
+
+// Signing keys of the seeded accounts, so tests can issue real notes
+var seededKeys = map[uuid.UUID]ed25519.PrivateKey{}
 
 func seedUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
 	id := uuid.New()
-	if _, err := pool.Exec(ctx, `INSERT INTO users (id, email_hmac, miuchio_id) VALUES ($1, $2, $3)`,
-		id, id[:], id.String()); err != nil {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seededKeys[id] = priv
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO users (id, email_hmac, miuchio_id, ik_pub, lk_pub) VALUES ($1, $2, $3, $4, $5)`,
+		id, id[:], id.String(), []byte(pub), randToken(t)); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	t.Cleanup(func() {
@@ -70,7 +81,7 @@ func seedUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 func seedInviteAlbum(t *testing.T, pool *pgxpool.Pool, linker *userlink.Hasher, current int) inviteAlbum {
 	t.Helper()
 	ctx := context.Background()
-	a := inviteAlbum{id: uuid.New(), senderID: seedUser(t, pool), senderToken: randToken(t)}
+	a := inviteAlbum{id: uuid.New(), senderID: seedUser(t, pool), senderToken: randToken(t), pool: pool}
 	if _, err := pool.Exec(ctx, `INSERT INTO albums (id, name_ct) VALUES ($1, $2)`, a.id, []byte("nm")); err != nil {
 		t.Fatalf("seed album: %v", err)
 	}
@@ -95,7 +106,56 @@ func seedInviteAlbum(t *testing.T, pool *pgxpool.Pool, linker *userlink.Hasher, 
 	for e := 0; e <= current; e++ {
 		a.addEpoch(t, pool, e, a.senderToken)
 	}
+	if err := a.storeNote(a.note(a.senderID, a.senderToken, 1, 0)); err != nil {
+		t.Fatalf("seed creator note: %v", err)
+	}
 	return a
+}
+
+// A note for the account's published keys, signed by the album's sender
+func (a inviteAlbum) note(userID uuid.UUID, token []byte, generation, term uint32) authority.SignedNote {
+	n := authority.Note{AlbumID: a.id, MemberToken: token, Generation: generation, IssuerTerm: term}
+	if err := a.pool.QueryRow(context.Background(),
+		`SELECT ik_pub, lk_pub FROM users WHERE id = $1`, userID,
+	).Scan(&n.IKPub, &n.LKPub); err != nil {
+		panic(err)
+	}
+	return authority.SignedNote{Note: n, Sig: ed25519.Sign(seededKeys[a.senderID], authority.NoteMsg(n))}
+}
+
+func (a inviteAlbum) storeNote(n authority.SignedNote) error {
+	_, err := a.pool.Exec(context.Background(),
+		`INSERT INTO member_notes (album_id, member_token, generation, issuer_term, ik_pub, lk_pub, sig)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		a.id, n.MemberToken, int32(n.Generation), int32(n.IssuerTerm), n.IKPub, n.LKPub, n.Sig)
+	return err
+}
+
+func (a inviteAlbum) term() uint32 {
+	var term int32
+	if err := a.pool.QueryRow(context.Background(),
+		`SELECT admin_term FROM albums WHERE id = $1`, a.id).Scan(&term); err != nil {
+		panic(err)
+	}
+	return uint32(term)
+}
+
+// Invites the way the app does: propose a fresh token, and when the server
+// names an existing membership sign that one and send again
+func (a inviteAlbum) send(repo *Repo, in DeliverMemberInput) ([]byte, error) {
+	in.AlbumID, in.SenderToken = a.id, a.senderToken
+	token := make([]byte, 32)
+	if _, err := rand.Read(token); err != nil {
+		return nil, err
+	}
+	in.Note = a.note(in.UserID, token, 1, a.term())
+	out, err := repo.DeliverMember(context.Background(), in)
+	var mismatch *TokenMismatchError
+	if errors.As(err, &mismatch) {
+		in.Note = a.note(in.UserID, mismatch.Token, uint32(mismatch.Generation), a.term())
+		return repo.DeliverMember(context.Background(), in)
+	}
+	return out, err
 }
 
 func (a inviteAlbum) addEpoch(t *testing.T, pool *pgxpool.Pool, epoch int, recipients ...[]byte) {
@@ -116,12 +176,10 @@ func (a inviteAlbum) addEpoch(t *testing.T, pool *pgxpool.Pool, epoch int, recip
 }
 
 func (a inviteAlbum) deliver(repo *Repo, target uuid.UUID, epochs ...int) ([]byte, error) {
-	return repo.DeliverMember(context.Background(), DeliverMemberInput{
-		AlbumID:     a.id,
-		UserID:      target,
-		SenderToken: a.senderToken,
-		EKPub:       make([]byte, 32),
-		Envelopes:   envs(epochs...),
+	return a.send(repo, DeliverMemberInput{
+		UserID:    target,
+		EKPub:     make([]byte, 32),
+		Envelopes: envs(epochs...),
 	})
 }
 
@@ -138,13 +196,11 @@ func TestDeliverMember_WritesRowsAndConsumesOPK(t *testing.T) {
 	}
 
 	idx := 5
-	token, err := repo.DeliverMember(ctx, DeliverMemberInput{
-		AlbumID:     albumID,
-		UserID:      targetID,
-		SenderToken: album.senderToken,
-		EKPub:       make([]byte, 32),
-		OPKIdxUsed:  &idx,
-		Envelopes:   envs(0, 1, 2),
+	token, err := album.send(repo, DeliverMemberInput{
+		UserID:     targetID,
+		EKPub:      make([]byte, 32),
+		OPKIdxUsed: &idx,
+		Envelopes:  envs(0, 1, 2),
 	})
 	if err != nil {
 		t.Fatalf("DeliverMember: %v", err)
@@ -250,6 +306,195 @@ func TestDeliverMember_ReactivatesRevokedMember(t *testing.T) {
 	}
 	if wrapCount != 3 {
 		t.Fatalf("wrap rows = %d, want 3 (epochs 0..2 upserted)", wrapCount)
+	}
+
+	var generations []int32
+	if err := pool.QueryRow(ctx,
+		`SELECT array_agg(generation ORDER BY generation) FROM member_notes
+		 WHERE album_id = $1 AND member_token = $2`, albumID, first,
+	).Scan(&generations); err != nil {
+		t.Fatal(err)
+	}
+	if len(generations) != 2 || generations[0] != 1 || generations[1] != 2 {
+		t.Fatalf("note generations = %v, want the old membership's and the new one's", generations)
+	}
+}
+
+// The admin signs before the server knows who it is for, so a returning
+// member's token comes back for a second signature and nothing is written
+func TestDeliverMember_HandsBackAReturningMembersToken(t *testing.T) {
+	repo, linker, pool := testRepo(t)
+	ctx := context.Background()
+	album := seedInviteAlbum(t, pool, linker, 0)
+	target := seedUser(t, pool)
+	first, err := album.deliver(repo, target, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, pool, `UPDATE album_members SET revoked_at = NOW() WHERE member_token = $1`, first)
+	album.addEpoch(t, pool, 1, album.senderToken)
+
+	in := DeliverMemberInput{
+		AlbumID: album.id, UserID: target, SenderToken: album.senderToken,
+		EKPub: make([]byte, 32), Envelopes: envs(0, 1),
+		Note: album.note(target, randToken(t), 1, 0),
+	}
+	_, err = repo.DeliverMember(ctx, in)
+	var mismatch *TokenMismatchError
+	if !errors.As(err, &mismatch) || !bytes.Equal(mismatch.Token, first) || mismatch.Generation != 2 {
+		t.Fatalf("err = %v, want the first token at generation 2", err)
+	}
+	var revoked bool
+	if err := pool.QueryRow(ctx,
+		`SELECT revoked_at IS NOT NULL FROM album_members WHERE member_token = $1`, first,
+	).Scan(&revoked); err != nil {
+		t.Fatal(err)
+	}
+	if !revoked {
+		t.Fatal("a refused invite must not reactivate the membership")
+	}
+}
+
+func TestDeliverMember_RefusesNotesThatDoNotMatch(t *testing.T) {
+	repo, linker, pool := testRepo(t)
+	ctx := context.Background()
+	cases := []struct {
+		name   string
+		mutate func(a inviteAlbum, n *authority.SignedNote)
+		want   error
+	}{
+		{"signed by someone other than the admin", func(_ inviteAlbum, n *authority.SignedNote) {
+			_, stranger, _ := ed25519.GenerateKey(rand.Reader)
+			n.Sig = ed25519.Sign(stranger, authority.NoteMsg(n.Note))
+		}, ErrNoteSig},
+		{"keys the account never published", func(a inviteAlbum, n *authority.SignedNote) {
+			n.IKPub = randToken(t)
+			n.Sig = ed25519.Sign(seededKeys[a.senderID], authority.NoteMsg(n.Note))
+		}, ErrNoteInvalid},
+		{"issued under another admin term", func(a inviteAlbum, n *authority.SignedNote) {
+			n.IssuerTerm = 3
+			n.Sig = ed25519.Sign(seededKeys[a.senderID], authority.NoteMsg(n.Note))
+		}, ErrNoteInvalid},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			album := seedInviteAlbum(t, pool, linker, 0)
+			target := seedUser(t, pool)
+			note := album.note(target, randToken(t), 1, 0)
+			tc.mutate(album, &note)
+			_, err := repo.DeliverMember(ctx, DeliverMemberInput{
+				AlbumID: album.id, UserID: target, SenderToken: album.senderToken,
+				EKPub: make([]byte, 32), Envelopes: envs(0), Note: note,
+			})
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+			var n int
+			if err := pool.QueryRow(ctx,
+				`SELECT count(*) FROM album_members WHERE album_id = $1`, album.id).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			if n != 1 {
+				t.Fatal("a refused invite must not leave a membership behind")
+			}
+		})
+	}
+}
+
+// After a handover the new admin's first invite must vouch for everyone
+// again, or the newcomer could not verify members it only knows through them
+func TestDeliverMember_NeedsEveryMemberNotedUnderTheCurrentTerm(t *testing.T) {
+	repo, linker, pool := testRepo(t)
+	ctx := context.Background()
+	album := seedInviteAlbum(t, pool, linker, 0)
+	earlier := seedUser(t, pool)
+	earlierToken, err := album.deliver(repo, earlier, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, pool, `UPDATE albums SET admin_term = 1 WHERE id = $1`, album.id)
+
+	target := seedUser(t, pool)
+	in := DeliverMemberInput{
+		AlbumID: album.id, UserID: target, SenderToken: album.senderToken,
+		EKPub: make([]byte, 32), Envelopes: envs(0),
+		Note: album.note(target, randToken(t), 1, 1),
+	}
+	if _, err := repo.DeliverMember(ctx, in); !errors.Is(err, ErrNotesMissing) {
+		t.Fatalf("err = %v, want ErrNotesMissing", err)
+	}
+
+	in.ExtraNotes = []authority.SignedNote{
+		album.note(album.senderID, album.senderToken, 1, 1),
+		album.note(earlier, earlierToken, 2, 1),
+	}
+	if _, err := repo.DeliverMember(ctx, in); !errors.Is(err, ErrNoteInvalid) {
+		t.Fatalf("a note for a generation that is not active: err = %v, want ErrNoteInvalid", err)
+	}
+
+	in.ExtraNotes[1] = album.note(earlier, earlierToken, 1, 1)
+	if _, err := repo.DeliverMember(ctx, in); err != nil {
+		t.Fatalf("invite with everyone noted: %v", err)
+	}
+}
+
+// The receipt signs the invite's one time value, which pins it to one
+// membership. A late one from before a rejoin must not count as joined
+func TestAckJoin_CountsOnlyForTheActiveMembership(t *testing.T) {
+	repo, linker, pool := testRepo(t)
+	ctx := context.Background()
+	album := seedInviteAlbum(t, pool, linker, 1)
+	target := seedUser(t, pool)
+	firstEK, secondEK := randToken(t), randToken(t)
+	token, err := album.send(repo, DeliverMemberInput{UserID: target, EKPub: firstEK, Envelopes: envs(0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acked := func() (acked, joins, lastEpoch int) {
+		if err := pool.QueryRow(ctx,
+			`SELECT m.acked_joins, m.joins, COALESCE(i.last_received_epoch, -1)
+			 FROM album_members m JOIN album_member_identities i ON i.member_token = m.member_token
+			 WHERE m.member_token = $1`, token).Scan(&acked, &joins, &lastEpoch); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	if err := repo.AckJoin(ctx, album.id, token, 1, secondEK); !errors.Is(err, ErrReceiptStale) {
+		t.Fatalf("receipt for another invite: err = %v, want ErrReceiptStale", err)
+	}
+	if a, _, _ := acked(); a != 0 {
+		t.Fatalf("acked_joins = %d before any valid receipt", a)
+	}
+	if err := repo.AckJoin(ctx, album.id, token, 1, firstEK); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.AckJoin(ctx, album.id, token, 0, firstEK); err != nil {
+		t.Fatal(err)
+	}
+	if a, j, last := acked(); a != 1 || j != 1 || last != 1 {
+		t.Fatalf("acked %d joins %d last epoch %d, want 1 1 1 (high water held)", a, j, last)
+	}
+
+	mustExec(t, pool, `UPDATE album_members SET revoked_at = NOW() WHERE member_token = $1`, token)
+	if err := repo.AckJoin(ctx, album.id, token, 1, firstEK); !errors.Is(err, ErrReceiptStale) {
+		t.Fatalf("receipt from a revoked member: err = %v, want ErrReceiptStale", err)
+	}
+	album.addEpoch(t, pool, 2, album.senderToken)
+	if _, err := album.send(repo, DeliverMemberInput{UserID: target, EKPub: secondEK, Envelopes: envs(0, 1, 2)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.AckJoin(ctx, album.id, token, 1, firstEK); !errors.Is(err, ErrReceiptStale) {
+		t.Fatalf("receipt from the earlier membership: err = %v, want ErrReceiptStale", err)
+	}
+	if a, j, _ := acked(); a != 1 || j != 2 {
+		t.Fatalf("acked %d joins %d, want the rejoin still unacknowledged", a, j)
+	}
+	if err := repo.AckJoin(ctx, album.id, token, 1, secondEK); err != nil {
+		t.Fatal(err)
+	}
+	if a, j, _ := acked(); a != 2 || j != 2 {
+		t.Fatalf("acked %d joins %d, want 2 2", a, j)
 	}
 }
 
@@ -372,7 +617,7 @@ func TestDeliverMember_RaceWithRotationNeverStrandsTheInvitee(t *testing.T) {
 	}
 }
 
-func TestIKByMemberToken_And_MarkReceivedHighWaterMark(t *testing.T) {
+func TestIKByMemberToken(t *testing.T) {
 	repo, linker, pool := testRepo(t)
 	ctx := context.Background()
 
@@ -412,34 +657,6 @@ func TestIKByMemberToken_And_MarkReceivedHighWaterMark(t *testing.T) {
 	}
 	if !bytes.Equal(gotIK, pub) {
 		t.Fatal("resolved IK does not match seeded ik_pub")
-	}
-
-	readEpoch := func() int {
-		var e int
-		if err := pool.QueryRow(ctx,
-			`SELECT last_received_epoch FROM album_member_identities WHERE member_token = $1`, token).Scan(&e); err != nil {
-			t.Fatalf("read last_received_epoch: %v", err)
-		}
-		return e
-	}
-
-	if err := repo.MarkReceived(ctx, token, 2); err != nil {
-		t.Fatal(err)
-	}
-	if got := readEpoch(); got != 2 {
-		t.Fatalf("after mark(2): %d, want 2", got)
-	}
-	if err := repo.MarkReceived(ctx, token, 1); err != nil { // stale, must not regress
-		t.Fatal(err)
-	}
-	if got := readEpoch(); got != 2 {
-		t.Fatalf("after stale mark(1): %d, want 2 (high-water held)", got)
-	}
-	if err := repo.MarkReceived(ctx, token, 5); err != nil {
-		t.Fatal(err)
-	}
-	if got := readEpoch(); got != 5 {
-		t.Fatalf("after mark(5): %d, want 5", got)
 	}
 
 	// Unknown token → ErrIKNotFound

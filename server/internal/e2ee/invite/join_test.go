@@ -34,7 +34,7 @@ func TestJoinComplete_VerifiesSignature(t *testing.T) {
 		t.Fatalf("happy path: %v", err)
 	}
 	if marked != epoch {
-		t.Fatalf("MarkReceived epoch = %d, want %d", marked, epoch)
+		t.Fatalf("acknowledged epoch = %d, want %d", marked, epoch)
 	}
 
 	_, wrongPriv, _ := ed25519.GenerateKey(rand.Reader)

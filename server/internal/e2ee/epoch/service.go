@@ -13,13 +13,14 @@ import (
 
 	"github.com/freytastic/miuchio/internal/apierr"
 	"github.com/freytastic/miuchio/internal/crypto"
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/google/uuid"
 )
 
 // store is the repo surface the service needs
 type store interface {
 	CurrentEpoch(ctx context.Context, albumID uuid.UUID) (int, bool, time.Time, error)
-	AdminIKByMemberToken(ctx context.Context, memberToken []byte) ([]byte, error)
+	SignerIKByMemberToken(ctx context.Context, memberToken []byte) ([]byte, error)
 	InsertEpoch(ctx context.Context, in InsertEpochInput) error
 	GetWrap(ctx context.Context, albumID uuid.UUID, epoch int, recipient []byte) (*Wrap, error)
 	PendingMembers(ctx context.Context, albumID uuid.UUID, newEpoch int) ([][]byte, error)
@@ -58,13 +59,13 @@ type SetEpochInput struct {
 	MemberSetHash []byte
 	Wraps         []WrapInput
 	EnvelopeSig   []byte
+	// The creator's self signed note, carried by epoch 0 only
+	SignerNote *authority.SignedNote
 }
 
-// Validates an admin rotation and atomically stores its epoch and wraps
-func (s *Service) SetEpoch(ctx context.Context, albumID uuid.UUID, callerToken []byte, callerRole string, in SetEpochInput) ([][]byte, error) {
-	if callerRole != "admin" {
-		return nil, apierr.Forbidden("only the admin can rotate epoch")
-	}
+// Validates a rotation and atomically stores its epoch and wraps. Who may
+// rotate is decided under the album lock, where the role cannot change
+func (s *Service) SetEpoch(ctx context.Context, albumID uuid.UUID, callerToken []byte, in SetEpochInput) ([][]byte, error) {
 	if in.Epoch < 0 {
 		return nil, apierr.Validation("epoch must be >= 0")
 	}
@@ -115,15 +116,27 @@ func (s *Service) SetEpoch(ctx context.Context, albumID uuid.UUID, callerToken [
 	wHash := WrapsHash(in.Wraps)
 	signedMsg := EnvelopeSignMsg(albumID, in.Epoch, in.MemberSetHash, wHash)
 
-	ikPub, err := s.repo.AdminIKByMemberToken(ctx, callerToken)
+	ikPub, err := s.repo.SignerIKByMemberToken(ctx, callerToken)
 	if err != nil {
-		if errors.Is(err, ErrAdminNotFound) {
+		if errors.Is(err, ErrSignerNotFound) {
 			return nil, apierr.IdentityNotSet("caller has no published identity")
 		}
 		return nil, err
 	}
 	if err := crypto.VerifyEd25519(ed25519.PublicKey(ikPub), signedMsg, in.EnvelopeSig); err != nil {
 		return nil, apierr.SigInvalid("envelope_sig verification failed").WithCause(err)
+	}
+	if (in.Epoch == 0) != (in.SignerNote != nil) {
+		return nil, apierr.Validation("signer_note is required for epoch 0 only")
+	}
+	if n := in.SignerNote; n != nil {
+		if n.AlbumID != albumID || !bytes.Equal(n.MemberToken, callerToken) ||
+			n.Generation != 1 || n.IssuerTerm != 0 || !bytes.Equal(n.IKPub, ikPub) {
+			return nil, apierr.Validation("signer_note does not describe the creator")
+		}
+		if err := authority.VerifyNote(*n, ikPub); err != nil {
+			return nil, apierr.SigInvalid("signer_note verification failed").WithCause(err)
+		}
 	}
 
 	wraps := make([]WrapInsert, len(in.Wraps))
@@ -145,6 +158,7 @@ func (s *Service) SetEpoch(ctx context.Context, albumID uuid.UUID, callerToken [
 		SenderToken:           callerToken,
 		Wraps:                 wraps,
 		ExpectedMemberSetHash: in.MemberSetHash,
+		SignerNote:            in.SignerNote,
 	})
 	switch {
 	case errors.Is(err, ErrEpochReplay):
@@ -156,7 +170,15 @@ func (s *Service) SetEpoch(ctx context.Context, albumID uuid.UUID, callerToken [
 	case errors.Is(err, ErrCallerRevoked):
 		return nil, apierr.MemberRevoked("your access to this album has been revoked")
 	case errors.Is(err, ErrCallerNotAdmin):
-		return nil, apierr.Forbidden("only the admin can rotate epoch")
+		return nil, apierr.Forbidden("only the creator can set the first epoch")
+	case errors.Is(err, ErrRotationNotOwed):
+		return nil, apierr.Forbidden("no rotation is owed for this album")
+	case errors.Is(err, ErrCallerNoNote):
+		return nil, apierr.Forbidden("this membership is not authorized to rotate")
+	case errors.Is(err, ErrSignerNotFound):
+		return nil, apierr.IdentityNotSet("caller has no published identity")
+	case errors.Is(err, ErrNoteKeyMismatch):
+		return nil, apierr.Validation("signer_note keys do not match the published identity")
 	}
 	if err != nil {
 		return nil, err

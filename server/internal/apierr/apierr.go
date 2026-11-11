@@ -77,6 +77,15 @@ func Conflict(message string) *APIError {
 	return &APIError{Code: "E_CONFLICT", HTTPStatus: http.StatusConflict, Message: message}
 }
 
+// Detail carries the member_token and generation the note must name
+func MemberTokenMismatch(message string) *APIError {
+	return &APIError{Code: "E_MEMBER_TOKEN_MISMATCH", HTTPStatus: http.StatusConflict, Message: message}
+}
+
+func SuccessorIneligible(message string) *APIError {
+	return &APIError{Code: "E_SUCCESSOR_INELIGIBLE", HTTPStatus: http.StatusConflict, Message: message}
+}
+
 func AlbumFull(message string) *APIError {
 	return &APIError{Code: "E_ALBUM_FULL", HTTPStatus: http.StatusConflict, Message: message}
 }

@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/middleware"
 	"github.com/freytastic/miuchio/internal/repository"
 	"github.com/freytastic/miuchio/internal/userlink"
@@ -215,13 +217,59 @@ func buildSetEpochBody(t *testing.T, env *testEnv, signer testUser, epoch int, r
 	wHash := WrapsHash(wraps)
 	envSig := ed25519.Sign(signer.priv, EnvelopeSignMsg(env.albumID, epoch, memHash, wHash))
 
-	body, _ := json.Marshal(map[string]any{
+	req := map[string]any{
 		"epoch":           epoch,
 		"member_set_hash": base64.StdEncoding.EncodeToString(memHash),
 		"wraps":           itemsJSON,
 		"envelope_sig":    base64.StdEncoding.EncodeToString(envSig),
-	})
+	}
+	if epoch == 0 {
+		req["signer_note"] = authority.NotesJSON([]authority.SignedNote{signNote(env, signer, signer, 1)})[0]
+	}
+	body, _ := json.Marshal(req)
 	return body
+}
+
+func signNote(env *testEnv, issuer, member testUser, generation uint32) authority.SignedNote {
+	note := authority.Note{
+		AlbumID:     env.albumID,
+		MemberToken: member.token,
+		Generation:  generation,
+		IKPub:       member.pub,
+		LKPub:       make([]byte, 32),
+	}
+	return authority.SignedNote{Note: note, Sig: ed25519.Sign(issuer.priv, authority.NoteMsg(note))}
+}
+
+// Stands in for the invite, which is what stores a member's note
+func (env *testEnv) giveNote(member testUser) {
+	env.t.Helper()
+	n := signNote(env, env.users["admin"], member, 1)
+	if _, err := env.pool.Exec(context.Background(),
+		`INSERT INTO member_notes (album_id, member_token, generation, issuer_term, ik_pub, lk_pub, sig)
+		 VALUES ($1, $2, 1, 0, $3, $4, $5)`,
+		env.albumID, n.MemberToken, n.IKPub, n.LKPub, n.Sig,
+	); err != nil {
+		env.t.Fatalf("seed note: %v", err)
+	}
+}
+
+func (env *testEnv) setEpoch(caller testUser, body []byte) (int, string) {
+	env.t.Helper()
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, authReq(http.MethodPost,
+		"/api/v1/albums/"+env.albumID.String()+"/epoch", body, caller.userID))
+	var resp struct{ Code string }
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	return rec.Code, resp.Code
+}
+
+func (env *testEnv) revoke(member testUser) {
+	env.t.Helper()
+	if _, err := env.albumRepo.RevokeMemberTx(context.Background(), env.albumID,
+		env.users["admin"].token, member.token, repository.KeepMedia); err != nil {
+		env.t.Fatalf("revoke: %v", err)
+	}
 }
 
 func TestSetEpoch_HappyPath(t *testing.T) {
@@ -268,6 +316,9 @@ func TestSetEpoch_HappyPath(t *testing.T) {
 	_ = json.NewDecoder(rec2.Body).Decode(&cur)
 	if v, _ := cur["current_epoch"].(float64); v != 0 {
 		t.Errorf("current_epoch = %v, want 0", cur["current_epoch"])
+	}
+	if _, ok := cur["join_acked"].(bool); !ok {
+		t.Errorf("join_acked missing: %v", cur)
 	}
 
 	// each member can fetch their own wrap
@@ -345,24 +396,138 @@ func TestSetEpoch_TamperedEnvelopeSig(t *testing.T) {
 	}
 }
 
-func TestSetEpoch_AuthzMemberRejected(t *testing.T) {
+func TestSetEpoch_FirstEpochIsTheCreatorsAlone(t *testing.T) {
 	env := newEnv(t)
-	// member tries to rotate , caller is the plain member, sig is signed by them too
 	body := buildSetEpochBody(t, env, env.users["member"], 0,
 		env.users["admin"], env.users["peer"], env.users["member"])
 
-	rec := httptest.NewRecorder()
-	req := authReq(http.MethodPost,
-		"/api/v1/albums/"+env.albumID.String()+"/epoch", body, env.users["member"].userID)
-	env.router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403; body=%s", rec.Code, rec.Body.String())
+	if status, code := env.setEpoch(env.users["member"], body); status != http.StatusForbidden || code != "E_FORBIDDEN" {
+		t.Fatalf("got %d %s, want 403 E_FORBIDDEN", status, code)
 	}
-	var resp struct{ Code string }
-	_ = json.NewDecoder(rec.Body).Decode(&resp)
-	if resp.Code != "E_FORBIDDEN" {
-		t.Errorf("code = %q, want E_FORBIDDEN", resp.Code)
+}
+
+func TestSetEpoch_MemberRotatesOnlyWhatIsOwed(t *testing.T) {
+	env := newEnv(t)
+	admin, peer, member := env.users["admin"], env.users["peer"], env.users["member"]
+	if status, code := env.setEpoch(admin, buildSetEpochBody(t, env, admin, 0, admin, peer, member)); status != http.StatusCreated {
+		t.Fatalf("epoch 0: %d %s", status, code)
+	}
+	env.giveNote(member)
+
+	if status, code := env.setEpoch(member, buildSetEpochBody(t, env, member, 1, admin, peer, member)); status != http.StatusForbidden || code != "E_FORBIDDEN" {
+		t.Fatalf("nothing owed: got %d %s, want 403 E_FORBIDDEN", status, code)
+	}
+
+	env.revoke(peer)
+	if status, code := env.setEpoch(member, buildSetEpochBody(t, env, member, 1, admin, member)); status != http.StatusCreated {
+		t.Fatalf("owed rotation by a member: %d %s", status, code)
+	}
+
+	var sender []byte
+	var generation int
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT sender_token, sender_generation FROM album_epoch_wraps
+		 WHERE album_id = $1 AND epoch = 1 AND recipient_token = $2`,
+		env.albumID, admin.token,
+	).Scan(&sender, &generation); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sender, member.token) || generation != 1 {
+		t.Fatalf("wrap sender = %x generation %d, want the member at generation 1", sender, generation)
+	}
+
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, authReq(http.MethodGet,
+		"/api/v1/albums/"+env.albumID.String()+"/epoch/1/wrap", nil, admin.userID))
+	var wrap struct {
+		SenderGeneration int                  `json:"sender_generation"`
+		SenderNotes      []authority.NoteJSON `json:"sender_notes"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&wrap); err != nil {
+		t.Fatal(err)
+	}
+	if wrap.SenderGeneration != 1 || len(wrap.SenderNotes) != 1 ||
+		wrap.SenderNotes[0].IKPub != base64.StdEncoding.EncodeToString(member.pub) {
+		t.Fatalf("wrap did not carry the member's note: %+v", wrap)
+	}
+}
+
+func TestSetEpoch_MemberWithoutNoteCannotRotate(t *testing.T) {
+	env := newEnv(t)
+	admin, peer, member := env.users["admin"], env.users["peer"], env.users["member"]
+	if status, code := env.setEpoch(admin, buildSetEpochBody(t, env, admin, 0, admin, peer, member)); status != http.StatusCreated {
+		t.Fatalf("epoch 0: %d %s", status, code)
+	}
+	env.revoke(peer)
+
+	if status, code := env.setEpoch(member, buildSetEpochBody(t, env, member, 1, admin, member)); status != http.StatusForbidden || code != "E_FORBIDDEN" {
+		t.Fatalf("got %d %s, want 403 E_FORBIDDEN", status, code)
+	}
+}
+
+// A member removed while its rotation is in flight must not mint the key
+func TestSetEpoch_RevokedMemberCannotRotate(t *testing.T) {
+	env := newEnv(t)
+	admin, peer, member := env.users["admin"], env.users["peer"], env.users["member"]
+	if status, code := env.setEpoch(admin, buildSetEpochBody(t, env, admin, 0, admin, peer, member)); status != http.StatusCreated {
+		t.Fatalf("epoch 0: %d %s", status, code)
+	}
+	env.giveNote(member)
+	env.revoke(peer)
+	body := buildSetEpochBody(t, env, member, 1, admin, member)
+	env.revoke(member)
+
+	in := InsertEpochInput{AlbumID: env.albumID, Epoch: 1, SenderToken: member.token}
+	if err := NewRepo(env.pool, env.linker).InsertEpoch(context.Background(), in); !errors.Is(err, ErrCallerRevoked) {
+		t.Fatalf("err = %v, want ErrCallerRevoked", err)
+	}
+	if status, _ := env.setEpoch(member, body); status != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", status)
+	}
+}
+
+// Members racing to settle the same debt: one key, the rest told to catch up
+func TestSetEpoch_MembersRaceForOneOwedRotation(t *testing.T) {
+	env := newEnv(t)
+	admin, peer, member := env.users["admin"], env.users["peer"], env.users["member"]
+	if status, code := env.setEpoch(admin, buildSetEpochBody(t, env, admin, 0, admin, peer, member)); status != http.StatusCreated {
+		t.Fatalf("epoch 0: %d %s", status, code)
+	}
+	env.giveNote(peer)
+	env.giveNote(member)
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE albums SET rotation_required = TRUE WHERE id = $1`, env.albumID); err != nil {
+		t.Fatal(err)
+	}
+
+	racers := []testUser{peer, member, admin}
+	statuses := make([]int, len(racers))
+	codes := make([]string, len(racers))
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i, u := range racers {
+		body := buildSetEpochBody(t, env, u, 1, admin, peer, member)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			statuses[i], codes[i] = env.setEpoch(u, body)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	won := 0
+	for i := range racers {
+		switch {
+		case statuses[i] == http.StatusCreated:
+			won++
+		case codes[i] != "E_EPOCH_REPLAY" && codes[i] != "E_FORBIDDEN":
+			t.Errorf("loser got %d %s", statuses[i], codes[i])
+		}
+	}
+	if won != 1 {
+		t.Fatalf("winners = %d, want exactly 1", won)
 	}
 }
 

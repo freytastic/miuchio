@@ -54,5 +54,9 @@ func (s *Service) JoinComplete(ctx context.Context, albumID uuid.UUID, callerTok
 	if err := crypto.VerifyEd25519(ed25519.PublicKey(ikPub), JoinCompleteMsg(albumID, in.Epoch, in.EKPubAdmin), in.Sig); err != nil {
 		return apierr.SigInvalid("join-complete signature verification failed").WithCause(err)
 	}
-	return s.repo.MarkReceived(ctx, callerToken, in.Epoch)
+	err = s.repo.AckJoin(ctx, albumID, callerToken, in.Epoch, in.EKPubAdmin)
+	if errors.Is(err, ErrReceiptStale) {
+		return apierr.Conflict("receipt does not match the active membership")
+	}
+	return err
 }

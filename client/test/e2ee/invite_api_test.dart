@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:miuchio/e2ee/authority_records.dart';
 import 'package:miuchio/e2ee/invite_api.dart';
 import 'package:miuchio/e2ee/prekey_api.dart';
 
@@ -38,6 +39,18 @@ class _Fake404PrekeyClient implements PrekeyJsonClient {
   Future<void> putJson(String path, Map<String, dynamic> body) async {}
 }
 
+SignedNote _note(int generation) => SignedNote(
+      MemberNote(
+        albumId: Uint8List(16),
+        memberToken: Uint8List(32),
+        generation: generation,
+        ikPub: Uint8List(32),
+        lkPub: Uint8List(32),
+        issuerTerm: 0,
+      ),
+      Uint8List(64),
+    );
+
 void main() {
   test('deliverExistingUser encodes the server wire shape', () async {
     final fake = _FakeInviteJsonClient()
@@ -61,6 +74,8 @@ void main() {
             wrapTagCt: Uint8List(48),
             senderSig: Uint8List(64)),
       ],
+      note: _note(9),
+      extraNotes: [_note(4)],
     );
 
     expect(fake.path, '/albums/alb-1/invites/existing-user');
@@ -72,6 +87,17 @@ void main() {
     expect(e0['epoch'], 0);
     expect(
         e0.keys.toSet(), {'epoch', 'wrap_nonce', 'wrap_tag_ct', 'sender_sig'});
+    final note = fake.body!['note'] as Map<String, dynamic>;
+    expect(note.keys.toSet(), {
+      'member_token',
+      'generation',
+      'issuer_term',
+      'ik_pub',
+      'lk_pub',
+      'sig'
+    });
+    expect(note['generation'], 9);
+    expect((fake.body!['extra_notes'] as List).single['generation'], 4);
     expect(token.length, 32);
     expect(token[0], 7);
   });

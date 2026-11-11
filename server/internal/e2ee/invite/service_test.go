@@ -1,7 +1,10 @@
 package invite
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"errors"
 	"testing"
 
 	"github.com/freytastic/miuchio/internal/apierr"
@@ -29,7 +32,7 @@ func (m *mockStore) DeliverMember(ctx context.Context, in DeliverMemberInput) ([
 func (m *mockStore) IKByMemberToken(ctx context.Context, t []byte) ([]byte, error) {
 	return m.ikFn(ctx, t)
 }
-func (m *mockStore) MarkReceived(ctx context.Context, t []byte, epoch int) error {
+func (m *mockStore) AckJoin(ctx context.Context, _ uuid.UUID, t []byte, epoch int, _ []byte) error {
 	return m.markFn(ctx, t, epoch)
 }
 
@@ -182,5 +185,20 @@ func TestDeliverExistingUser_AlbumFull(t *testing.T) {
 	_, _, err := svc.DeliverExistingUser(context.Background(), uuid.New(), nil, "admin", baseInput())
 	if !apierr.IsCode(err, "E_ALBUM_FULL") {
 		t.Fatalf("err = %v, want E_ALBUM_FULL", err)
+	}
+}
+
+func TestDeliver_HandsBackTheTokenToSign(t *testing.T) {
+	want := bytes.Repeat([]byte{0x5A}, 32)
+	store := newAlbumStore(2, func(_ context.Context, _ DeliverMemberInput) ([]byte, error) {
+		return nil, &TokenMismatchError{Token: want, Generation: 2}
+	})
+	_, _, err := NewService(store).DeliverExistingUser(context.Background(), uuid.New(), make([]byte, 32), "admin", baseInput())
+	var ae *apierr.APIError
+	if !errors.As(err, &ae) || ae.Code != "E_MEMBER_TOKEN_MISMATCH" {
+		t.Fatalf("err = %v, want E_MEMBER_TOKEN_MISMATCH", err)
+	}
+	if ae.Detail["member_token"] != base64.StdEncoding.EncodeToString(want) || ae.Detail["generation"] != 2 {
+		t.Fatalf("detail = %v, want the existing token at generation 2", ae.Detail)
 	}
 }

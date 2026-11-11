@@ -1,9 +1,37 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 
+import 'package:miuchio/secure_store/key_handle.dart';
+import 'package:miuchio/secure_store/key_store_exceptions.dart';
+
 import '../secure_store/mock_secure_key_store.dart';
+
+// Throws like the platform keystore once a handle is already gone
+class _StrictDeleteStore extends MockSecureKeyStore {
+  final Set<String> _deleted = {};
+  @override
+  Future<void> delete(KeyHandle h) async {
+    if (!_deleted.add(h.id)) throw KeyNotFoundException();
+    await super.delete(h);
+  }
+}
+
+// Holds the first delete open so another wipe can finish meanwhile
+class _SlowFirstDeleteStore extends MockSecureKeyStore {
+  final entered = Completer<void>();
+  final release = Completer<void>();
+  @override
+  Future<void> delete(KeyHandle h) async {
+    if (!entered.isCompleted) {
+      entered.complete();
+      await release.future;
+    }
+    await super.delete(h);
+  }
+}
 
 Uint8List _albumId([int seed = 0xA1]) =>
     Uint8List.fromList(List<int>.filled(16, seed));
@@ -204,5 +232,36 @@ void main() {
       await expectLater(a, throwsA(anything));
       await expectLater(b, throwsA(anything));
     });
+  });
+
+  test('two wipes of one album at once both finish', () async {
+    final aks = await _newStore(_StrictDeleteStore());
+    final id = _albumId();
+    for (var e = 0; e < 3; e++) {
+      await aks.installVerified(
+          albumId: id, epoch: e, mk: _mk(e + 1), backfill: e < 2);
+    }
+
+    await Future.wait([aks.deleteAlbumMKs(id), aks.deleteAlbumMKs(id)]);
+
+    expect(await aks.presentEpochs(id), isEmpty);
+  });
+
+  test('a slow wipe finishes after a faster one removed every epoch', () async {
+    final store = _SlowFirstDeleteStore();
+    final aks = await _newStore(store);
+    final id = _albumId();
+    for (var e = 0; e < 3; e++) {
+      await aks.installVerified(
+          albumId: id, epoch: e, mk: _mk(e + 1), backfill: e < 2);
+    }
+
+    final slow = aks.deleteAlbumMKs(id);
+    await store.entered.future;
+    await aks.deleteAlbumMKs(id);
+    store.release.complete();
+    await slow;
+
+    expect(await aks.presentEpochs(id), isEmpty);
   });
 }

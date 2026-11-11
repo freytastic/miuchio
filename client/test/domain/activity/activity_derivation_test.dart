@@ -330,4 +330,20 @@ void main() {
       expect(derive([snap('a', role: 'admin', self: 'me')], [mine]), isEmpty);
     });
   });
+
+  group('ownership', () {
+    test('taking the album over and handing it on are both news', () {
+      final gained = derive([snap('a')], [snap('a', role: 'admin')]);
+      expect(gained.single,
+          isA<OwnerChanged>().having((e) => e.nowMine, 'nowMine', isTrue));
+
+      final lost = derive([snap('a', role: 'admin')], [snap('a')]);
+      expect(lost.single,
+          isA<OwnerChanged>().having((e) => e.nowMine, 'nowMine', isFalse));
+    });
+
+    test('an album made here is not a change of owner', () {
+      expect(derive([], [snap('a', role: 'admin', generation: 0)]), isEmpty);
+    });
+  });
 }

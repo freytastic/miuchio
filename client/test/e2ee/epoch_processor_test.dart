@@ -82,6 +82,7 @@ Future<_Stack> _bootStack({
     identity: responder.svc,
     store: aks,
     directory: directory,
+    senders: DirectorySenders(directory),
     signerGate: resolver,
     backoff: backoff == null ? null : (_) => backoff,
   );
@@ -160,6 +161,7 @@ void main() {
         identity: respA.svc,
         store: aksA,
         directory: dirA,
+        senders: DirectorySenders(dirA),
         signerGate: tofuGate(),
       );
       final pB = EpochProcessor(
@@ -167,6 +169,7 @@ void main() {
         identity: respB.svc,
         store: aksB,
         directory: dirB,
+        senders: DirectorySenders(dirB),
         signerGate: tofuGate(),
       );
       final idA = _albumId(0xA1);
@@ -304,6 +307,7 @@ void main() {
         identity: resp.svc,
         store: aks,
         directory: dirB,
+        senders: DirectorySenders(dirB),
         signerGate: tofuGate(),
         backoff: (_) => Duration.zero,
       );
@@ -899,11 +903,13 @@ void main() {
       final pins = <String, Uint8List>{
         _hex(admin.senderToken): admin.ikPub,
       };
+      final directory = MemberDirectory(roster.fetcher);
       final processor = EpochProcessor(
         api: api,
         identity: responder.svc,
         store: aks,
-        directory: MemberDirectory(roster.fetcher),
+        directory: directory,
+        senders: DirectorySenders(directory),
         signerGate: ExpectedIkResolver.responder(
           selfToken: (_) => null,
           pinned: (_, __) => null,

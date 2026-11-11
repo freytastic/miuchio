@@ -14,6 +14,10 @@ class WrapEnvelope {
   final Uint8List senderSig;
   final int? opkIdxUsed;
   final DateTime deliveredAt;
+  // Which of the sender's memberships signed this, and the notes vouching for
+  // it. Served even after the sender left, unverified until the resolver runs
+  final int senderGeneration;
+  final List<Map<String, dynamic>> senderNotes;
 
   const WrapEnvelope({
     required this.epoch,
@@ -23,6 +27,8 @@ class WrapEnvelope {
     required this.senderSig,
     required this.opkIdxUsed,
     required this.deliveredAt,
+    this.senderGeneration = 1,
+    this.senderNotes = const [],
   });
 
   factory WrapEnvelope.fromJson(Map<String, dynamic> json) {
@@ -36,6 +42,11 @@ class WrapEnvelope {
           ? null
           : (json['opk_idx_used'] as num).toInt(),
       deliveredAt: DateTime.parse(json['delivered_at'] as String),
+      senderGeneration: (json['sender_generation'] as num?)?.toInt() ?? 1,
+      senderNotes: [
+        for (final n in (json['sender_notes'] as List? ?? const []))
+          n as Map<String, dynamic>,
+      ],
     );
   }
 

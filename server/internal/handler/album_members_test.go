@@ -40,7 +40,7 @@ func (m *mockAlbumStore) GetByID(_ context.Context, _ uuid.UUID) (*model.Album, 
 func (m *mockAlbumStore) ListForUser(_ context.Context, _ uuid.UUID) ([]model.AlbumWithMemberInfo, error) {
 	return nil, nil
 }
-func (m *mockAlbumStore) UpdateName(_ context.Context, _ uuid.UUID, _ []byte) error { return nil }
+func (m *mockAlbumStore) UpdateName(_ context.Context, _ uuid.UUID, _, _ []byte) error { return nil }
 func (m *mockAlbumStore) UpdateMemberNameCT(_ context.Context, _ uuid.UUID, _, _ []byte) error {
 	return nil
 }
@@ -259,4 +259,11 @@ func TestListAlbumMembers_ProfileCarriesAvatarRef(t *testing.T) {
 	if len(got) != 4 {
 		t.Errorf("avatar has %d fields, want exactly 4: %v", len(got), got)
 	}
+}
+
+func (m *mockAlbumStore) HandoverTx(context.Context, repository.HandoverRequest) (repository.HandoverResult, error) {
+	return repository.HandoverResult{}, nil
+}
+func (m *mockAlbumStore) HandoverOutcome(context.Context, uuid.UUID) (uuid.UUID, byte, error) {
+	return uuid.Nil, 0, nil
 }

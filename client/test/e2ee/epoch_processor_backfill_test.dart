@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:miuchio/crypto/primitives.dart';
+import 'package:miuchio/e2ee/authority_records.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/epoch_api.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
@@ -41,6 +42,8 @@ class _CaptureJoinApi implements InviteApi {
     required Uint8List ekPub,
     int? opkIdx,
     required List<DeliverEnvelope> envelopes,
+    required SignedNote note,
+    List<SignedNote> extraNotes = const [],
   }) =>
       throw UnimplementedError();
 }
@@ -59,12 +62,18 @@ void main() {
 
   // Wires an admin who has delivered wraps for epochs 0..current to a fresh responder
   Future<
-      ({
-        EpochProcessor proc,
-        AlbumKeyStore aks,
-        _CaptureJoinApi invites,
-        Uint8List bobIk,
-      })> scenario({int currentEpoch = 2}) async {
+          ({
+            EpochProcessor proc,
+            AlbumKeyStore aks,
+            _CaptureJoinApi invites,
+            Uint8List bobIk,
+            FakeEpochApi api,
+          })>
+      scenario(
+          {int currentEpoch = 2,
+          int? invitedThrough,
+          bool joinAcked = true}) async {
+    invitedThrough ??= currentEpoch;
     final admin = await SyntheticAdmin.create(now: fixed);
     final bob = await newResponderIdentity(now: fixed);
     final bobAks = AlbumKeyStore(bob.store);
@@ -72,9 +81,18 @@ void main() {
         await buildResponderBundle(responder: bob.svc, spkTs: spkTs);
 
     final api = FakeEpochApi();
-    api.currents[albumStr] =
-        EpochCurrent(currentEpoch: currentEpoch, startedAt: fixed);
-    for (var e = 0; e <= currentEpoch; e++) {
+    api.currents[albumStr] = EpochCurrent(
+        currentEpoch: currentEpoch, startedAt: fixed, joinAcked: joinAcked);
+    // The invite covered epochs before invitedAt, later ones are rotations
+    final invited = await admin.buildInviteWraps(
+      albumId: albumId,
+      mks: [for (var e = 0; e < invitedThrough + 1; e++) mks[e]!],
+      responderBundle: bobBundle,
+    );
+    for (final w in invited) {
+      api.putWrap(albumStr, w.epoch, w);
+    }
+    for (var e = invitedThrough + 1; e <= currentEpoch; e++) {
       api.putWrap(
         albumStr,
         e,
@@ -87,17 +105,19 @@ void main() {
     }
 
     final invites = _CaptureJoinApi();
+    final directory = MemberDirectory(singletonAdminFetcher(admin));
     final proc = EpochProcessor(
       api: api,
       identity: bob.svc,
       store: bobAks,
-      directory: MemberDirectory(singletonAdminFetcher(admin)),
+      directory: directory,
+      senders: DirectorySenders(directory),
       signerGate: tofuGate(),
       invites: invites,
     );
     final bobIk = await bob.svc.useIk<Uint8List>(
         (seed) async => (await KeyHandleAdapter.toEd25519(seed)).publicKey);
-    return (proc: proc, aks: bobAks, invites: invites, bobIk: bobIk);
+    return (proc: proc, aks: bobAks, invites: invites, bobIk: bobIk, api: api);
   }
 
   test('live joined event backfills all epochs and posts one receipt',
@@ -140,5 +160,40 @@ void main() {
     await s.proc.handleEvent(albumId: albumId, epoch: 2, joined: true);
     expect(await s.aks.presentEpochs(albumId), [0, 1, 2]);
     expect(s.invites.calls, 2); // each event posts : server GREATEST dedupes
+  });
+
+  test('a rotation before the first open pairs the invite key with its epoch',
+      () async {
+    final s = await scenario(invitedThrough: 1);
+    await s.proc.handleEvent(albumId: albumId, epoch: 2, joined: true);
+
+    expect(await s.aks.presentEpochs(albumId), [0, 1, 2]);
+    final invite = s.api.wraps['$albumStr:0']!.ekPub;
+    expect(s.invites.lastEpoch, 1);
+    expect(s.invites.lastEk, equals(invite));
+    expect(
+        await Sign.verify(
+            s.bobIk, joinCompleteMsg(albumId, 1, invite), s.invites.lastSig!),
+        isTrue);
+  });
+
+  test('a receipt the server lacks is sent again once keys are in place',
+      () async {
+    final s = await scenario(invitedThrough: 1, joinAcked: false);
+    await s.proc.handleEvent(albumId: albumId, epoch: 2);
+    expect(s.invites.calls, 0);
+
+    await s.proc.catchUp(albumId);
+
+    expect(s.invites.calls, 1);
+    expect(s.invites.lastEpoch, 1);
+    expect(s.invites.lastEk, equals(s.api.wraps['$albumStr:0']!.ekPub));
+  });
+
+  test('an acknowledged join sends nothing more', () async {
+    final s = await scenario();
+    await s.proc.handleEvent(albumId: albumId, epoch: 2);
+    await s.proc.catchUp(albumId);
+    expect(s.invites.calls, 0);
   });
 }

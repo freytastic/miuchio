@@ -9,6 +9,7 @@ import 'package:miuchio/e2ee/identity.dart';
 import 'package:miuchio/e2ee/member_directory.dart';
 import 'package:miuchio/e2ee/prekey_api.dart';
 import 'package:miuchio/e2ee/prekey_bundle.dart';
+import 'package:miuchio/e2ee/sender_resolver.dart';
 import 'package:miuchio/e2ee/wrap_envelope.dart';
 import 'package:miuchio/e2ee/x3dh_session.dart';
 import 'package:miuchio/secure_store/key_handle_adapter.dart';
@@ -79,6 +80,8 @@ class SyntheticAdmin {
 
   SyntheticAdmin._(this._svc, this.senderToken, this.ikPub, this.lkPub);
 
+  IdentityService get identity => _svc;
+
   static Future<SyntheticAdmin> create({DateTime? now}) async {
     final fixed = now ?? DateTime.utc(2026, 5, 4, 12);
     final store = MockSecureKeyStore();
@@ -143,6 +146,44 @@ class SyntheticAdmin {
       opkIdxUsed: init.opkIdx,
       deliveredAt: deliveredAt ?? DateTime.utc(2026, 5, 7, 12),
     );
+  }
+}
+
+extension InviteWraps on SyntheticAdmin {
+  // One handshake for every epoch, the way an invite delivers them
+  Future<List<WrapEnvelope>> buildInviteWraps({
+    required Uint8List albumId,
+    required List<Uint8List> mks,
+    required PrekeyBundle responderBundle,
+  }) async {
+    final init = await X3dhSession.initiate(
+      bundle: responderBundle,
+      albumId: albumId,
+      identity: identity,
+    );
+    final out = <WrapEnvelope>[];
+    for (var e = 0; e < mks.length; e++) {
+      final wrap = await Aead.encrypt(
+        version: 0x01,
+        key: init.sharedSecret,
+        plaintext: mks[e],
+        aad: _aad(albumId, e),
+      );
+      final msg = await _msgToSign(albumId, e, wrap);
+      final sig = await identity.useIk<Uint8List>((seed) async =>
+          Sign.sign(await KeyHandleAdapter.toEd25519(seed), msg));
+      out.add(WrapEnvelope(
+        epoch: e,
+        ekPub: init.ekPub,
+        wrap: wrap,
+        senderToken: senderToken,
+        senderSig: sig,
+        opkIdxUsed: init.opkIdx,
+        deliveredAt: DateTime.utc(2026, 5, 7, 12),
+      ));
+    }
+    init.sharedSecret.fillRange(0, init.sharedSecret.length, 0);
+    return out;
   }
 }
 
@@ -297,4 +338,18 @@ Future<Uint8List> _msgToSign(
   buf.setRange(20, buf.length, wrap);
   final h = await cg.Sha256().hash(buf);
   return Uint8List.fromList(h.bytes);
+}
+
+// Names senders from the server roster, the way the processor did before
+// notes existed, so gate tests keep exercising the gate alone
+class DirectorySenders implements SenderResolver {
+  final MemberDirectory directory;
+  DirectorySenders(this.directory);
+
+  @override
+  Future<ResolvedSender?> resolve(Uint8List albumId, WrapEnvelope envelope,
+      {required bool allowTofu}) async {
+    final pubs = await directory.lookup(albumId, envelope.senderToken);
+    return pubs == null ? null : ResolvedSender(pubs: pubs, vouched: false);
+  }
 }

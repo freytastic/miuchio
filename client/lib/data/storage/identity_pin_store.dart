@@ -9,6 +9,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/wire_format.dart';
 
+class AuthorityNotSaved implements Exception {
+  const AuthorityNotSaved();
+}
+
 // Keeps roster and signer trust separate and sealed under the device cache key
 // Trust survives logout so substituted keys cannot become a new first sight
 class IdentityPinStore {
@@ -23,6 +27,9 @@ class IdentityPinStore {
   // device may sign: the marker is flushed immediately to narrow the crash
   // window between album creation and bootstrap
   final Set<String> _creating = {};
+  // albumId -> the admin keys this device trusts, as JSON. Where an album's
+  // signing authority starts, so it shares the fate of the signer bindings
+  final Map<String, String> _authority = {};
   Timer? _flushTimer;
   int _gen = 0;
   Future<void> _inFlight = Future.value();
@@ -60,6 +67,55 @@ class IdentityPinStore {
     if (_signers[k] == v) return;
     _signers[k] = v;
     _scheduleFlush();
+  }
+
+  // Only what reached disk, so a failed save never authorizes a key install
+  // While a save is in flight readers keep the value saved before it
+  String? authority(String albumId) => _savingAuthority.containsKey(albumId)
+      ? _savingAuthority[albumId]
+      : _authority[albumId];
+
+  // Last value known on disk, held while a save of a newer one is in flight
+  final Map<String, String?> _savingAuthority = {};
+  final Map<String, Future<void>> _authorityQueue = {};
+
+  // Durable before returning: keys must never install without their anchor
+  // Saves of one album run one at a time, so a failure rolls back to the last
+  // value that reached disk and never to one from before an earlier success
+  Future<void> saveAuthority(String albumId, String json) {
+    final run = (_authorityQueue[albumId] ?? Future<void>.value())
+        .then((_) => _saveAuthority(albumId, json));
+    final tail = run.then<void>((_) {}, onError: (_) {});
+    _authorityQueue[albumId] = tail;
+    tail.then((_) {
+      if (identical(_authorityQueue[albumId], tail)) {
+        _authorityQueue.remove(albumId);
+      }
+    });
+    return run;
+  }
+
+  Future<void> _saveAuthority(String albumId, String json) async {
+    if (_authority[albumId] == json) return;
+    final saved = _authority[albumId];
+    _savingAuthority[albumId] = saved;
+    _authority[albumId] = json;
+    try {
+      await flush();
+      if (!_writeFailed) return;
+      // A wipe of the album meanwhile already dropped both values
+      if (!_savingAuthority.containsKey(albumId)) {
+        throw const AuthorityNotSaved();
+      }
+      if (saved == null) {
+        _authority.remove(albumId);
+      } else {
+        _authority[albumId] = saved;
+      }
+      throw const AuthorityNotSaved();
+    } finally {
+      _savingAuthority.remove(albumId);
+    }
   }
 
   bool isCreating(String albumId) => _creating.contains(albumId);
@@ -112,12 +168,16 @@ class IdentityPinStore {
   // to an album
   Future<void> clearAlbum(String albumId) async {
     final prefix = '$albumId:';
-    final before = _pins.length + _signers.length + _creating.length;
+    final before =
+        _pins.length + _signers.length + _creating.length + _authority.length;
     _pins.removeWhere((k, _) => k.startsWith(prefix));
     _signers.removeWhere((k, _) => k.startsWith(prefix));
     _creating.remove(albumId);
+    _authority.remove(albumId);
+    _savingAuthority.remove(albumId);
     // A failed earlier write may still hold these pins on disk
-    if (_pins.length + _signers.length + _creating.length == before &&
+    if (_pins.length + _signers.length + _creating.length + _authority.length ==
+            before &&
         !_writeFailed) {
       return;
     }
@@ -137,6 +197,8 @@ class IdentityPinStore {
     _verified.clear();
     _signers.clear();
     _creating.clear();
+    _authority.clear();
+    _savingAuthority.clear();
     try {
       await _inFlight;
     } catch (_) {}
@@ -154,6 +216,9 @@ class IdentityPinStore {
       _verified.clear();
       _signers.clear();
       _creating.clear();
+      _authority.clear();
+      (map['a'] as Map<String, dynamic>? ?? {})
+          .forEach((k, v) => _authority[k] = v as String);
       (map['p'] as Map<String, dynamic>? ?? {})
           .forEach((k, v) => _pins[k] = v as String);
       (map['v'] as Map<String, dynamic>? ?? {})
@@ -171,6 +236,7 @@ class IdentityPinStore {
       _verified.clear();
       _signers.clear();
       _creating.clear();
+      _authority.clear();
     }
   }
 
@@ -183,6 +249,7 @@ class IdentityPinStore {
     final prefix = '$albumId:';
     return _writeFailed ||
         _creating.contains(albumId) ||
+        _authority.containsKey(albumId) ||
         _pins.keys.any((k) => k.startsWith(prefix)) ||
         _signers.keys.any((k) => k.startsWith(prefix));
   }
@@ -209,6 +276,7 @@ class IdentityPinStore {
         'v': _verified,
         's': _signers,
         'c': _creating.toList(),
+        'a': _authority,
       })));
       final sealed = await Aead.encrypt(
           version: kVerAesGcm, key: _cacheKey, plaintext: pt, aad: _aad);

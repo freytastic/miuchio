@@ -41,6 +41,8 @@ class AlbumSettingsScreen extends StatefulWidget {
   // Null unless the viewer may invite
   final VoidCallback? onAddSomeone;
   final VoidCallback onLeaveOrDelete;
+  // Owners only, null while nobody can take the album over
+  final VoidCallback? onLeaveAsOwner;
 
   const AlbumSettingsScreen({
     super.key,
@@ -53,6 +55,7 @@ class AlbumSettingsScreen extends StatefulWidget {
     required this.onAlbumInfo,
     required this.onLeaveOrDelete,
     this.onAddSomeone,
+    this.onLeaveAsOwner,
   });
 
   @override
@@ -156,6 +159,11 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
     widget.onLeaveOrDelete();
   }
 
+  void _leaveAsOwner() {
+    Navigator.of(context).pop();
+    widget.onLeaveAsOwner?.call();
+  }
+
   AlbumModel _album(AppState state) =>
       state.albums.where((a) => a.id == _id).firstOrNull ?? widget.album;
 
@@ -163,8 +171,10 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final album = _album(state);
-    // The roster may still be loading, the listing already knows the role
-    final owner = widget.owner || album.myRole == 'admin';
+    // The listing follows a handover, the role passed in is only for before
+    // the listing has this album
+    final listed = state.albums.any((a) => a.id == _id);
+    final owner = listed ? album.myRole == 'admin' : widget.owner;
     // Like uploads, a cover waits until the album's newest key is in place
     final locked = _busy ||
         album.rotationRequired ||
@@ -219,7 +229,7 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
                 const SizedBox(height: 18),
               ],
               GroupCard(children: [
-                if (widget.onAddSomeone != null)
+                if (owner && widget.onAddSomeone != null)
                   SettingsRow(
                     lead: SettingsRow.icon(Icons.person_add_alt_rounded),
                     title: AlbumCopy.addSomeone,
@@ -237,6 +247,14 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
               ]),
               const SizedBox(height: 18),
               GroupCard(children: [
+                if (owner && widget.onLeaveAsOwner != null)
+                  SettingsRow(
+                    lead: SettingsRow.icon(Icons.logout_rounded, warn: true),
+                    title: AlbumCopy.leaveAlbum,
+                    warn: true,
+                    trailing: const SizedBox.shrink(),
+                    onTap: _leaveAsOwner,
+                  ),
                 SettingsRow(
                   lead: SettingsRow.icon(
                       owner

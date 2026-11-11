@@ -15,4 +15,6 @@ var (
 	SaltPromote       = []byte("promote-v1")
 	SaltJoinComplete  = []byte("join-complete-v1")
 	SaltAlbumNameHint = []byte("album-name-v1")
+	SaltMemberNote    = []byte("member-note-v1")
+	SaltAdminHandover = []byte("admin-handover-v1")
 )

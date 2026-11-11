@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'authority_records.dart';
+
 // senderSig signs SHA256(album_id ‖ u32_be(epoch) ‖ wrap)
 class DeliverEnvelope {
   final int epoch;
@@ -15,14 +17,26 @@ class DeliverEnvelope {
   });
 }
 
+// The person was a member before. Their note must name this token and
+// generation, so the caller signs again and resends the same wraps
+class MemberTokenMismatch implements Exception {
+  final Uint8List memberToken;
+  final int generation;
+  const MemberTokenMismatch(
+      {required this.memberToken, required this.generation});
+}
+
 abstract class InviteApi {
-  // Returns the new member_token
+  // note vouches for the newcomer and proposes their member token. extraNotes
+  // are reissued for current members. Returns the member_token now active
   Future<Uint8List> deliverExistingUser({
     required String albumId,
     required String targetMiuchioId,
     required Uint8List ekPub,
     int? opkIdx,
     required List<DeliverEnvelope> envelopes,
+    required SignedNote note,
+    List<SignedNote> extraNotes,
   });
 
   // Signed receipt that the caller installed 'epoch'
@@ -51,6 +65,8 @@ class HttpInviteApi implements InviteApi {
     required Uint8List ekPub,
     int? opkIdx,
     required List<DeliverEnvelope> envelopes,
+    required SignedNote note,
+    List<SignedNote> extraNotes = const [],
   }) async {
     final body = await _client
         .postJsonForResult('/albums/$albumId/invites/existing-user', {
@@ -66,6 +82,8 @@ class HttpInviteApi implements InviteApi {
             'sender_sig': base64Encode(e.senderSig),
           },
       ],
+      'note': note.toJson(),
+      'extra_notes': [for (final n in extraNotes) n.toJson()],
     });
     return base64Decode(body['member_token'] as String);
   }

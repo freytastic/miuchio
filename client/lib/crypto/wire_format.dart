@@ -26,6 +26,10 @@ final Uint8List kSaltJoinComplete =
     Uint8List.fromList('join-complete-v1'.codeUnits);
 final Uint8List kSaltAlbumNameHint =
     Uint8List.fromList('album-name-v1'.codeUnits);
+final Uint8List kSaltMemberNote =
+    Uint8List.fromList('member-note-v1'.codeUnits);
+final Uint8List kSaltAdminHandover =
+    Uint8List.fromList('admin-handover-v1'.codeUnits);
 
 // LK_pub_A || LK_pub_B || album_id. Takes the X25519 LK keys used in DH1,
 // never the Ed25519 IK keys

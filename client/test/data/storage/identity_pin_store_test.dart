@@ -146,4 +146,19 @@ void main() {
     expect(s.signerIk('alb', 'bob'), isNull);
     expect(s.isCreating('alb'), isFalse);
   });
+
+  test('an authority that failed to save is never served', () async {
+    final store =
+        await IdentityPinStore.open(file: pinFile(), cacheRootKey: _key(1));
+    await store.saveAuthority('album-1', 'saved');
+    // Writes fail from here on
+    dir.deleteSync(recursive: true);
+
+    await expectLater(store.saveAuthority('album-1', 'newer'),
+        throwsA(isA<AuthorityNotSaved>()));
+    expect(store.authority('album-1'), 'saved');
+    await expectLater(store.saveAuthority('album-2', 'first'),
+        throwsA(isA<AuthorityNotSaved>()));
+    expect(store.authority('album-2'), isNull);
+  });
 }

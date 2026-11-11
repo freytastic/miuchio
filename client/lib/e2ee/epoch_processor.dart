@@ -14,6 +14,7 @@ import 'identity.dart';
 import 'invite_api.dart';
 import 'join.dart';
 import 'member_directory.dart';
+import 'sender_resolver.dart';
 import 'wrap_envelope.dart';
 import 'x3dh_session.dart';
 
@@ -79,6 +80,7 @@ class EpochProcessor {
   final IdentityService _identity;
   final AlbumKeyStore _store;
   final MemberDirectory _directory;
+  final SenderResolver _senders;
   final SignerGate _signerGate;
   final BackoffSchedule _backoff;
   final int _maxRetries;
@@ -111,6 +113,9 @@ class EpochProcessor {
     required IdentityService identity,
     required AlbumKeyStore store,
     required MemberDirectory directory,
+    // Required like the gate: without it the server's roster would name the
+    // keys a wrap is checked against
+    required SenderResolver senders,
     // Required, not optional: an unwired gate would silently restore the
     // server controlled verification loop this exists to break
     required SignerGate signerGate,
@@ -121,6 +126,7 @@ class EpochProcessor {
         _identity = identity,
         _store = store,
         _directory = directory,
+        _senders = senders,
         _signerGate = signerGate,
         _invites = invites,
         _backoff = backoff ?? _defaultBackoff,
@@ -179,6 +185,7 @@ class EpochProcessor {
           albumId: albumId, epoch: cur.currentEpoch, joined: true);
     } else {
       await handleEvent(albumId: albumId, epoch: cur.currentEpoch);
+      if (!cur.joinAcked) await _resendReceipt(albumId, cur.currentEpoch);
     }
   }
 
@@ -202,26 +209,60 @@ class EpochProcessor {
     // From local state, never the server's joined flag, or a forged join on an
     // established album would reopen TOFU
     final allowTofu = (await _store.latestEpoch(albumId)) < 0;
-    Uint8List? ekPubAdmin;
+    final eks = <Uint8List>[];
     for (var e = 0; e <= current; e++) {
-      final ek =
-          await _installEpoch(albumId, e, backfill: true, allowTofu: allowTofu);
-      ekPubAdmin ??= ek;
+      eks.add(await _installEpoch(albumId, e,
+          backfill: true, allowTofu: allowTofu));
     }
-    if (ekPubAdmin == null) return;
-    if (_invites == null) return;
-    final msg = joinCompleteMsg(albumId, current, ekPubAdmin);
+    await _sendReceipt(albumStr, albumId, eks);
+  }
+
+  // Keys already installed while the server lacks the receipt, because it was
+  // lost or an older build signed the wrong epoch. Never fails the catch up
+  Future<void> _resendReceipt(Uint8List albumId, int current) async {
+    final albumStr = uuidFromBytes(albumId);
+    try {
+      final eks = <Uint8List>[];
+      for (var e = 0; e <= current; e++) {
+        final ek = (await _fetchWithRetry(albumStr, e)).ekPub;
+        if (eks.isNotEmpty && !_sameBytes(ek, eks.first)) break;
+        eks.add(ek);
+      }
+      await _sendReceipt(albumStr, albumId, eks);
+    } catch (_) {}
+  }
+
+  // eks holds the one time key of each epoch from 0. The invite wrapped every
+  // epoch it knew under one key, and a later rotation uses another, so the
+  // receipt pairs that key with the newest epoch still carrying it
+  Future<void> _sendReceipt(
+      String albumStr, Uint8List albumId, List<Uint8List> eks) async {
+    final invites = _invites;
+    if (invites == null || eks.isEmpty) return;
+    var epoch = 0;
+    while (epoch + 1 < eks.length && _sameBytes(eks[epoch + 1], eks.first)) {
+      epoch++;
+    }
+    final msg = joinCompleteMsg(albumId, epoch, eks.first);
     final sig = await _identity.useIk<Uint8List>((seed) async {
       final kp = await KeyHandleAdapter.toEd25519(seed);
       return Sign.sign(kp, msg);
     });
-    await _invites.postJoinComplete(
+    await invites.postJoinComplete(
       albumId: albumStr,
-      epoch: current,
-      ekPubAdmin: ekPubAdmin,
+      epoch: epoch,
+      ekPubAdmin: eks.first,
       sig: sig,
     );
     _joined.add(albumId);
+  }
+
+  static bool _sameBytes(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   void dispose() {
@@ -299,22 +340,27 @@ class EpochProcessor {
     final envelope = await _fetchWithRetry(albumIdStr, epoch);
     envelope.verifyShape();
 
-    final pubs = await _directory.lookup(albumId, envelope.senderToken);
-    if (pubs == null) {
-      // The signer token is absent from the current roster
+    final sender =
+        await _senders.resolve(albumId, envelope, allowTofu: allowTofu);
+    if (sender == null) {
+      // Nothing names this signer
       throw const WrapVerificationException('sig_invalid');
     }
+    final pubs = sender.pubs;
 
-    // Trusting the server's roster IK alone would be circular. check() decides
-    // authority locally and writes nothing before the signature is proven
-    final trust = await _signerGate
-        .check(albumId, envelope.senderToken, pubs.ikPub, allowTofu: allowTofu);
+    // A vouched sender needs no first sight, the gate then only refuses a key
+    // that contradicts a binding this device already holds. Nothing is
+    // written before the signature is proven
+    final trust = await _signerGate.check(
+        albumId, envelope.senderToken, pubs.ikPub,
+        allowTofu: allowTofu || sender.vouched);
 
     final msg = await _msgToSign(albumId, epoch, envelope.wrap);
     final ok = await Sign.verify(pubs.ikPub, msg, envelope.senderSig);
     if (!ok) throw const WrapVerificationException('sig_invalid');
 
-    if (trust == SignerTrust.firstSight) {
+    await sender.adopt?.call();
+    if (trust == SignerTrust.firstSight && !sender.vouched) {
       await _signerGate.adopt(albumId, envelope.senderToken, pubs.ikPub);
     }
 

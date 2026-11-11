@@ -185,7 +185,23 @@ abstract final class AlbumCopy {
 
   static const removeFromAlbum = 'Remove from album';
   static const safetyNumber = 'Safety number';
-  static const madeThisAlbum = 'Made this album';
+  static const ownsThisAlbum = 'Owner';
+  static const makeOwner = 'Make owner';
+  static String makeOwnerTitle(String name) => 'Make $name the owner?';
+  static const makeOwnerBody = 'They can then add and remove people. You stay '
+      'in the album as a member.';
+  static const makeOwnerFailed = "Couldn't change the owner. Try again.";
+  static const newOwnerTitle = 'Who becomes the owner?';
+  static const deleteOrHandOverTitle = 'Delete this album or hand it on?';
+  static const handOverAndLeave = 'Make someone the owner and leave';
+  static const handOverAndLeaveNote = 'The album stays for everyone else.';
+  static const deleteForEveryoneNote = 'Every photo in it is deleted for '
+      'everyone.';
+  static const notOpenedYet = "Hasn't opened the album yet";
+  static const successorCantTakeOver = "They can't take over right now. Try "
+      'someone else.';
+  static const leaveUnconfirmed = "Couldn't confirm you left. It finishes "
+      "once you're back online.";
   static String removeTitle(String name) => 'Remove $name?';
   static const removeBody = 'The album disappears from their phone and they '
       "can't see anything added after now. The photos they added stay, unless "
@@ -199,5 +215,5 @@ abstract final class AlbumCopy {
   static const madeBy = 'Made by';
   static const madeByYou = 'You';
   static const ownerNote =
-      'You made this album, so you can add and remove people.';
+      "You're the owner, so you can add and remove people.";
 }

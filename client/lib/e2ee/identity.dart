@@ -596,6 +596,17 @@ class IdentityService {
     return _ikPubCache = pub;
   }
 
+  Uint8List? _lkPubCache;
+  Future<Uint8List> currentLkPub() async {
+    final cached = _lkPubCache;
+    if (cached != null) return cached;
+    final pub = await useLk<Uint8List>((priv) async {
+      final kp = await KeyHandleAdapter.toX25519(priv);
+      return kp.publicKey;
+    });
+    return _lkPubCache = pub;
+  }
+
   Future<T> useLk<T>(Future<T> Function(Uint8List priv) fn) {
     final id = _labels.handleId(kLabelLK);
     if (id == null) {

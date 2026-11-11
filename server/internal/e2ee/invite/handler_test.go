@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/freytastic/miuchio/internal/apierr"
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/middleware"
 	"github.com/freytastic/miuchio/internal/ws"
 	"github.com/google/uuid"
@@ -80,6 +81,10 @@ func deliverBody(miuchioID string, nEpochs int) []byte {
 		"ek_pub":            base64.StdEncoding.EncodeToString(make([]byte, 32)),
 		"opk_idx_used":      3,
 		"envelopes":         envs,
+		"note": authority.NotesJSON([]authority.SignedNote{{
+			Note: authority.Note{MemberToken: make([]byte, 32), Generation: 1, IKPub: make([]byte, 32), LKPub: make([]byte, 32)},
+			Sig:  make([]byte, 64),
+		}})[0],
 	})
 	return b
 }
