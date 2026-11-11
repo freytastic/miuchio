@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:miuchio/data/storage/safety_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -119,9 +121,16 @@ void main() {
   });
 
   Future<void> open(WidgetTester tester) async {
+    final safety = (await tester.runAsync(() async {
+      final dir = await Directory.systemTemp.createTemp('miuchio_safety');
+      addTearDown(() => dir.delete(recursive: true));
+      return SafetyStore.open(
+          file: File('${dir.path}/s.kec'), cacheRootKey: Uint8List(32));
+    }))!;
     await tester.pumpWidget(MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: AppState()),
+        ChangeNotifierProvider<SafetyStore>.value(value: safety),
         Provider<ActivityFeed>.value(value: feed),
         Provider<IdentityTrust>.value(value: trust),
         Provider<ActivitySync>.value(
