@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/repository"
 	"github.com/freytastic/miuchio/internal/userlink"
 	"github.com/google/uuid"
@@ -14,25 +15,29 @@ import (
 )
 
 var (
-	ErrAlbumNotFound  = errors.New("epoch: album not found")
-	ErrEpochReplay    = errors.New("epoch: replay or non-monotonic")
-	ErrMemberSetDrift = errors.New("epoch: active member set differs from request")
-	ErrWrapNotFound   = errors.New("epoch: wrap not found for this recipient")
-	ErrAdminNotFound  = errors.New("epoch: caller has no IK_pub on file")
-	ErrCallerRevoked  = errors.New("epoch: caller is no longer an active member")
-	ErrCallerNotAdmin = errors.New("epoch: caller is not the album admin")
+	ErrAlbumNotFound   = errors.New("epoch: album not found")
+	ErrEpochReplay     = errors.New("epoch: replay or non-monotonic")
+	ErrMemberSetDrift  = errors.New("epoch: active member set differs from request")
+	ErrWrapNotFound    = errors.New("epoch: wrap not found for this recipient")
+	ErrSignerNotFound  = errors.New("epoch: caller has no IK_pub on file")
+	ErrCallerRevoked   = errors.New("epoch: caller is no longer an active member")
+	ErrCallerNotAdmin  = errors.New("epoch: caller is not the album admin")
+	ErrRotationNotOwed = errors.New("epoch: a member may rotate only while a rotation is owed")
+	ErrCallerNoNote    = errors.New("epoch: caller holds no note for this membership")
+	ErrNoteKeyMismatch = errors.New("epoch: note keys differ from the published identity")
 )
 
 type Repo struct {
 	db     *pgxpool.Pool
 	linker *userlink.Hasher
+	notes  *authority.Repo
 }
 
 func NewRepo(db *pgxpool.Pool, linker *userlink.Hasher) *Repo {
 	if linker == nil {
 		panic("epoch.NewRepo: linker is required")
 	}
-	return &Repo{db: db, linker: linker}
+	return &Repo{db: db, linker: linker, notes: authority.NewRepo(db)}
 }
 
 // CurrentEpoch returns (max_epoch, exists, started_at). exists=false when the
@@ -57,26 +62,26 @@ func (r *Repo) CurrentEpoch(ctx context.Context, albumID uuid.UUID) (int, bool, 
 }
 
 // Opens the sealed user link before loading the epoch signer's identity key
-func (r *Repo) AdminIKByMemberToken(ctx context.Context, memberToken []byte) ([]byte, error) {
+func (r *Repo) SignerIKByMemberToken(ctx context.Context, memberToken []byte) ([]byte, error) {
 	var sealed []byte
 	err := r.db.QueryRow(ctx,
 		`SELECT user_id_enc FROM album_member_identities WHERE member_token = $1`,
 		memberToken,
 	).Scan(&sealed)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrAdminNotFound
+		return nil, ErrSignerNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
 	userID, err := r.linker.Open(sealed, memberToken)
 	if err != nil {
-		return nil, ErrAdminNotFound
+		return nil, ErrSignerNotFound
 	}
 	var ik []byte
 	err = r.db.QueryRow(ctx, `SELECT ik_pub FROM users WHERE id = $1`, userID).Scan(&ik)
 	if errors.Is(err, pgx.ErrNoRows) || len(ik) == 0 {
-		return nil, ErrAdminNotFound
+		return nil, ErrSignerNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -101,6 +106,7 @@ type InsertEpochInput struct {
 	SenderToken           []byte
 	Wraps                 []WrapInsert
 	ExpectedMemberSetHash []byte
+	SignerNote            *authority.SignedNote
 }
 
 // Rechecks signer, sequence and recipient set under the shared album lock
@@ -124,19 +130,20 @@ func (r *Repo) InsertEpoch(ctx context.Context, in InsertEpochInput) error {
 	// otherwise mint a key it is no longer entitled to know
 	var role string
 	var revoked bool
+	var generation int
 	err = tx.QueryRow(ctx,
-		`SELECT role, revoked_at IS NOT NULL FROM album_members
+		`SELECT role, revoked_at IS NOT NULL, joins FROM album_members
 		 WHERE album_id = $1 AND member_token = $2`,
 		in.AlbumID, in.SenderToken,
-	).Scan(&role, &revoked)
+	).Scan(&role, &revoked, &generation)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && revoked) {
 		return ErrCallerRevoked
 	}
 	if err != nil {
 		return err
 	}
-	if role != "admin" {
-		return ErrCallerNotAdmin
+	if err := r.authorizeSigner(ctx, tx, in, role, generation); err != nil {
+		return err
 	}
 
 	var maxEpoch int
@@ -194,10 +201,10 @@ func (r *Repo) InsertEpoch(ctx context.Context, in InsertEpochInput) error {
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO album_epoch_wraps
 			 (album_id, epoch, recipient_token, ek_pub, opk_idx_used,
-			  wrap_nonce, wrap_tag_ct, sender_token, sender_sig)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			  wrap_nonce, wrap_tag_ct, sender_token, sender_sig, sender_generation)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 			in.AlbumID, in.Epoch, w.RecipientToken, w.EkPub, opk,
-			w.WrapNonce, w.WrapTagCT, in.SenderToken, w.SenderSig,
+			w.WrapNonce, w.WrapTagCT, in.SenderToken, w.SenderSig, generation,
 		); err != nil {
 			return err
 		}
@@ -213,6 +220,69 @@ func (r *Repo) InsertEpoch(ctx context.Context, in InsertEpochInput) error {
 	return tx.Commit(ctx)
 }
 
+// The first epoch belongs to the creator and stores their self signed note
+// Later epochs need a note for the caller's current membership, and anyone but
+// the admin may only settle an owed rotation
+func (r *Repo) authorizeSigner(ctx context.Context, tx pgx.Tx, in InsertEpochInput, role string, generation int) error {
+	if in.Epoch == 0 {
+		if role != "admin" || in.SignerNote == nil {
+			return ErrCallerNotAdmin
+		}
+		lk, err := r.lkPub(ctx, tx, in.SenderToken)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(lk, in.SignerNote.LKPub) {
+			return ErrNoteKeyMismatch
+		}
+		return authority.InsertNote(ctx, tx, *in.SignerNote)
+	}
+	ok, err := authority.HasNote(ctx, tx, in.AlbumID, in.SenderToken, generation)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrCallerNoNote
+	}
+	if role == "admin" {
+		return nil
+	}
+	var owed bool
+	if err := tx.QueryRow(ctx,
+		`SELECT `+repository.RotationRequiredExpr("$1"), in.AlbumID,
+	).Scan(&owed); err != nil {
+		return err
+	}
+	if !owed {
+		return ErrRotationNotOwed
+	}
+	return nil
+}
+
+func (r *Repo) lkPub(ctx context.Context, tx pgx.Tx, memberToken []byte) ([]byte, error) {
+	var sealed []byte
+	err := tx.QueryRow(ctx,
+		`SELECT user_id_enc FROM album_member_identities WHERE member_token = $1`,
+		memberToken,
+	).Scan(&sealed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrSignerNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	userID, err := r.linker.Open(sealed, memberToken)
+	if err != nil {
+		return nil, ErrSignerNotFound
+	}
+	var lk []byte
+	err = tx.QueryRow(ctx, `SELECT lk_pub FROM users WHERE id = $1`, userID).Scan(&lk)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrSignerNotFound
+	}
+	return lk, err
+}
+
 type Wrap struct {
 	Epoch       int
 	EkPub       []byte
@@ -222,6 +292,9 @@ type Wrap struct {
 	SenderToken []byte
 	SenderSig   []byte
 	DeliveredAt time.Time
+	// Which of the sender's memberships signed, and the notes that vouch for it
+	SenderGeneration int
+	SenderNotes      []authority.SignedNote
 }
 
 // The caller must already have enforced recipient_token == self
@@ -231,11 +304,13 @@ func (r *Repo) GetWrap(ctx context.Context, albumID uuid.UUID, epochN int, recip
 		opk *int32
 	)
 	err := r.db.QueryRow(ctx,
-		`SELECT ek_pub, opk_idx_used, wrap_nonce, wrap_tag_ct, sender_token, sender_sig, delivered_at
+		`SELECT ek_pub, opk_idx_used, wrap_nonce, wrap_tag_ct, sender_token, sender_sig,
+		        delivered_at, sender_generation
 		 FROM album_epoch_wraps
 		 WHERE album_id = $1 AND epoch = $2 AND recipient_token = $3`,
 		albumID, epochN, recipient,
-	).Scan(&w.EkPub, &opk, &w.WrapNonce, &w.WrapTagCT, &w.SenderToken, &w.SenderSig, &w.DeliveredAt)
+	).Scan(&w.EkPub, &opk, &w.WrapNonce, &w.WrapTagCT, &w.SenderToken, &w.SenderSig,
+		&w.DeliveredAt, &w.SenderGeneration)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrWrapNotFound
 	}
@@ -244,6 +319,9 @@ func (r *Repo) GetWrap(ctx context.Context, albumID uuid.UUID, epochN int, recip
 	}
 	w.Epoch = epochN
 	w.OpkIdxUsed = opk
+	if w.SenderNotes, err = r.notes.NotesFor(ctx, albumID, w.SenderToken, w.SenderGeneration); err != nil {
+		return nil, err
+	}
 	return &w, nil
 }
 
@@ -254,6 +332,17 @@ func (r *Repo) RotationRequired(ctx context.Context, albumID uuid.UUID) (bool, e
 		`SELECT `+repository.RotationRequiredExpr("$1"), albumID,
 	).Scan(&required)
 	return required, err
+}
+
+// Whether the caller's receipt covers their current membership
+func (r *Repo) JoinAcked(ctx context.Context, albumID uuid.UUID, token []byte) (bool, error) {
+	var acked bool
+	err := r.db.QueryRow(ctx,
+		`SELECT acked_joins = joins FROM album_members
+		 WHERE album_id = $1 AND member_token = $2`,
+		albumID, token,
+	).Scan(&acked)
+	return acked, err
 }
 
 // Album scoping prevents a token from another album resolving here

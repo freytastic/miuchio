@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/e2ee/epoch"
 	"github.com/freytastic/miuchio/internal/model"
 	"github.com/freytastic/miuchio/internal/repository"
@@ -19,6 +20,7 @@ type rotationEnv struct {
 	epochs *epoch.Repo
 	album  uuid.UUID
 	owner  uuid.UUID
+	joiner uuid.UUID
 	admin  []byte
 	member []byte
 }
@@ -49,6 +51,7 @@ func newRotationEnv(t *testing.T) *rotationEnv {
 		epochs:     epoch.NewRepo(env.pool, linker),
 		album:      album.ID,
 		owner:      owner,
+		joiner:     joiner,
 		admin:      admin,
 		member:     member,
 	}
@@ -69,13 +72,30 @@ func (e *rotationEnv) epochInput(n int, recipients ...[]byte) epoch.InsertEpochI
 			SenderSig:      make([]byte, 64),
 		}
 	}
-	return epoch.InsertEpochInput{
+	in := epoch.InsertEpochInput{
 		AlbumID:               e.album,
 		Epoch:                 n,
 		EpochSig:              make([]byte, 64),
 		SenderToken:           e.admin,
 		Wraps:                 wraps,
 		ExpectedMemberSetHash: epoch.MemberSetHash(recipients),
+	}
+	if n == 0 {
+		// The service verifies the signature, the repo only matches the keys
+		note := authority.Note{AlbumID: e.album, MemberToken: e.admin, Generation: 1, IKPub: make([]byte, 32)}
+		if err := e.pool.QueryRow(context.Background(),
+			`SELECT lk_pub FROM users WHERE id = $1`, e.owner).Scan(&note.LKPub); err != nil {
+			panic(err)
+		}
+		in.SignerNote = &authority.SignedNote{Note: note, Sig: make([]byte, 64)}
+	}
+	return in
+}
+
+func (e *rotationEnv) rotate(t *testing.T, n int, recipients ...[]byte) {
+	t.Helper()
+	if err := e.epochs.InsertEpoch(context.Background(), e.epochInput(n, recipients...)); err != nil {
+		t.Fatalf("rotate to epoch %d: %v", n, err)
 	}
 }
 

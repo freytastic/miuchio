@@ -16,7 +16,12 @@ import (
 )
 
 type stubMemberResolver struct {
-	fn func(ctx context.Context, albumID uuid.UUID, token []byte) (uuid.UUID, error)
+	fn   func(ctx context.Context, albumID uuid.UUID, token []byte) (uuid.UUID, error)
+	owed bool
+}
+
+func (s stubMemberResolver) RotationRequired(context.Context, uuid.UUID) (bool, error) {
+	return s.owed, nil
 }
 
 func (s stubMemberResolver) UserIDByAlbumMemberToken(ctx context.Context, albumID uuid.UUID, token []byte) (uuid.UUID, error) {
@@ -86,12 +91,14 @@ func TestBundleByMemberToken_AdminGetsBundleWithTokenIdentity(t *testing.T) {
 	}
 }
 
-func TestBundleByMemberToken_NonAdminForbidden(t *testing.T) {
+// A member may look up bundles only to settle an owed rotation, so the route
+// cannot be used to drain someone's one time prekeys at will
+func TestBundleByMemberToken_MemberNeedsAnOwedRotation(t *testing.T) {
 	for _, role := range []string{"member", "co-admin"} {
 		store := &mockStore{}
 		svc := NewService(store)
 		resolver := stubMemberResolver{fn: func(context.Context, uuid.UUID, []byte) (uuid.UUID, error) {
-			t.Fatalf("%s: resolver must not be called for a non-admin caller", role)
+			t.Fatalf("%s: resolver must not be called when nothing is owed", role)
 			return uuid.Nil, nil
 		}}
 		h := NewHandler(svc, nil, nil, resolver)

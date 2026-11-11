@@ -9,22 +9,23 @@ import (
 	"time"
 
 	"github.com/freytastic/miuchio/internal/apierr"
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/google/uuid"
 )
 
 type mockStore struct {
-	currentEpochFn         func(ctx context.Context, albumID uuid.UUID) (int, bool, time.Time, error)
-	adminIKByMemberTokenFn func(ctx context.Context, memberToken []byte) ([]byte, error)
-	insertEpochFn          func(ctx context.Context, in InsertEpochInput) error
-	getWrapFn              func(ctx context.Context, albumID uuid.UUID, epoch int, recipient []byte) (*Wrap, error)
-	pendingMembersFn       func(ctx context.Context, albumID uuid.UUID, newEpoch int) ([][]byte, error)
+	currentEpochFn          func(ctx context.Context, albumID uuid.UUID) (int, bool, time.Time, error)
+	signerIKByMemberTokenFn func(ctx context.Context, memberToken []byte) ([]byte, error)
+	insertEpochFn           func(ctx context.Context, in InsertEpochInput) error
+	getWrapFn               func(ctx context.Context, albumID uuid.UUID, epoch int, recipient []byte) (*Wrap, error)
+	pendingMembersFn        func(ctx context.Context, albumID uuid.UUID, newEpoch int) ([][]byte, error)
 }
 
 func (m *mockStore) CurrentEpoch(ctx context.Context, albumID uuid.UUID) (int, bool, time.Time, error) {
 	return m.currentEpochFn(ctx, albumID)
 }
-func (m *mockStore) AdminIKByMemberToken(ctx context.Context, t []byte) ([]byte, error) {
-	return m.adminIKByMemberTokenFn(ctx, t)
+func (m *mockStore) SignerIKByMemberToken(ctx context.Context, t []byte) ([]byte, error) {
+	return m.signerIKByMemberTokenFn(ctx, t)
 }
 func (m *mockStore) InsertEpoch(ctx context.Context, in InsertEpochInput) error {
 	return m.insertEpochFn(ctx, in)
@@ -90,17 +91,31 @@ func (f *fixture) validRequest(t *testing.T, epoch int) SetEpochInput {
 	msg := EnvelopeSignMsg(f.albumID, epoch, memHash, wHash)
 	envSig := ed25519.Sign(f.adminPriv, msg)
 
-	return SetEpochInput{
+	in := SetEpochInput{
 		Epoch:         epoch,
 		MemberSetHash: memHash,
 		Wraps:         wraps,
 		EnvelopeSig:   envSig,
 	}
+	if epoch == 0 {
+		note := authority.Note{
+			AlbumID:     f.albumID,
+			MemberToken: f.caller,
+			Generation:  1,
+			IKPub:       f.adminPub,
+			LKPub:       bytes.Repeat([]byte{0x55}, keyLen),
+		}
+		in.SignerNote = &authority.SignedNote{
+			Note: note,
+			Sig:  ed25519.Sign(f.adminPriv, authority.NoteMsg(note)),
+		}
+	}
+	return in
 }
 
 func okStore(f *fixture) *mockStore {
 	return &mockStore{
-		adminIKByMemberTokenFn: func(_ context.Context, _ []byte) ([]byte, error) {
+		signerIKByMemberTokenFn: func(_ context.Context, _ []byte) ([]byte, error) {
 			return []byte(f.adminPub), nil
 		},
 		insertEpochFn: func(_ context.Context, _ InsertEpochInput) error { return nil },
@@ -118,7 +133,7 @@ func TestSetEpoch_ReturnsPendingMembers(t *testing.T) {
 		return want, nil
 	}
 	svc := NewService(store)
-	got, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", f.validRequest(t, 0))
+	got, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, f.validRequest(t, 0))
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -127,22 +142,56 @@ func TestSetEpoch_ReturnsPendingMembers(t *testing.T) {
 	}
 }
 
-func TestSetEpoch_RejectsNonAdmin(t *testing.T) {
-	f := newFixture(t)
-	svc := NewService(okStore(f))
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "member", f.validRequest(t, 0))
-	if !apierr.IsCode(err, "E_FORBIDDEN") {
-		t.Fatalf("err = %v, want E_FORBIDDEN", err)
+// Who may rotate is the repository's call, made under the album lock
+func TestSetEpoch_TranslatesAuthorityRefusals(t *testing.T) {
+	for _, refusal := range []error{ErrCallerNotAdmin, ErrRotationNotOwed, ErrCallerNoNote} {
+		f := newFixture(t)
+		store := okStore(f)
+		store.insertEpochFn = func(_ context.Context, _ InsertEpochInput) error { return refusal }
+		_, err := NewService(store).SetEpoch(context.Background(), f.albumID, f.caller, f.validRequest(t, 3))
+		if !apierr.IsCode(err, "E_FORBIDDEN") {
+			t.Fatalf("%v: err = %v, want E_FORBIDDEN", refusal, err)
+		}
 	}
 }
 
-// The dormant co-admin string grants no signing authority in Beta V1
-func TestSetEpoch_RejectsCoAdmin(t *testing.T) {
+func TestSetEpoch_SignerNoteBelongsToEpochZeroOnly(t *testing.T) {
 	f := newFixture(t)
 	svc := NewService(okStore(f))
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "co-admin", f.validRequest(t, 0))
-	if !apierr.IsCode(err, "E_FORBIDDEN") {
-		t.Fatalf("err = %v, want E_FORBIDDEN", err)
+
+	missing := f.validRequest(t, 0)
+	missing.SignerNote = nil
+	if _, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, missing); !apierr.IsCode(err, "E_VALIDATION") {
+		t.Fatalf("epoch 0 without note: err = %v, want E_VALIDATION", err)
+	}
+
+	extra := f.validRequest(t, 4)
+	extra.SignerNote = f.validRequest(t, 0).SignerNote
+	if _, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, extra); !apierr.IsCode(err, "E_VALIDATION") {
+		t.Fatalf("later epoch with note: err = %v, want E_VALIDATION", err)
+	}
+}
+
+func TestSetEpoch_RejectsSignerNoteNotAboutTheCreator(t *testing.T) {
+	f := newFixture(t)
+	svc := NewService(okStore(f))
+	for name, mutate := range map[string]func(*authority.SignedNote){
+		"another token":  func(n *authority.SignedNote) { n.MemberToken = f.recip },
+		"another key":    func(n *authority.SignedNote) { n.IKPub = bytes.Repeat([]byte{9}, keyLen) },
+		"later term":     func(n *authority.SignedNote) { n.IssuerTerm = 1 },
+		"not generation": func(n *authority.SignedNote) { n.Generation = 2 },
+	} {
+		in := f.validRequest(t, 0)
+		mutate(in.SignerNote)
+		if _, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, in); !apierr.IsCode(err, "E_VALIDATION") {
+			t.Fatalf("%s: err = %v, want E_VALIDATION", name, err)
+		}
+	}
+
+	forged := f.validRequest(t, 0)
+	forged.SignerNote.Sig = bytes.Repeat([]byte{7}, sigLen)
+	if _, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, forged); !apierr.IsCode(err, "E_SIG_INVALID") {
+		t.Fatalf("forged note: err = %v, want E_SIG_INVALID", err)
 	}
 }
 
@@ -152,7 +201,7 @@ func TestSetEpoch_RejectsTamperedEnvelopeSig(t *testing.T) {
 	in := f.validRequest(t, 0)
 	in.EnvelopeSig = bytes.Clone(in.EnvelopeSig)
 	in.EnvelopeSig[0] ^= 0x01
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", in)
+	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, in)
 	if !apierr.IsCode(err, "E_SIG_INVALID") {
 		t.Fatalf("err = %v, want E_SIG_INVALID", err)
 	}
@@ -163,7 +212,7 @@ func TestSetEpoch_RejectsBadMemberSetHash(t *testing.T) {
 	svc := NewService(okStore(f))
 	in := f.validRequest(t, 0)
 	in.MemberSetHash = bytes.Repeat([]byte{0xDE}, 32) // doesnt match recipients
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", in)
+	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, in)
 	if !apierr.IsCode(err, "E_VALIDATION") {
 		t.Fatalf("err = %v, want E_VALIDATION", err)
 	}
@@ -174,7 +223,7 @@ func TestSetEpoch_RejectsBadVERPrefix(t *testing.T) {
 	svc := NewService(okStore(f))
 	in := f.validRequest(t, 0)
 	in.Wraps[0].Wrap[0] = 0x02 // VER=0x02 (chacha) not allowed for MK wraps (where i belong 'chacha' also means uncle)
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", in)
+	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, in)
 	if !apierr.IsCode(err, "E_VALIDATION") {
 		t.Fatalf("err = %v, want E_VALIDATION", err)
 	}
@@ -187,7 +236,7 @@ func TestSetEpoch_RejectsDuplicateRecipient(t *testing.T) {
 	in.Wraps = append(in.Wraps, in.Wraps[0]) // duplicate
 	// member_set_hash + envelope_sig were computed on the original 1 wrap form
 	// so this fails on the duplicate check before getting to sig verify
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", in)
+	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, in)
 	if !apierr.IsCode(err, "E_VALIDATION") {
 		t.Fatalf("err = %v, want E_VALIDATION", err)
 	}
@@ -200,7 +249,7 @@ func TestSetEpoch_TranslatesEpochReplay(t *testing.T) {
 		return ErrEpochReplay
 	}
 	svc := NewService(store)
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", f.validRequest(t, 5))
+	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, f.validRequest(t, 5))
 	if !apierr.IsCode(err, "E_EPOCH_REPLAY") {
 		t.Fatalf("err = %v, want E_EPOCH_REPLAY", err)
 	}
@@ -213,7 +262,7 @@ func TestSetEpoch_TranslatesMemberSetDrift(t *testing.T) {
 		return ErrMemberSetDrift
 	}
 	svc := NewService(store)
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", f.validRequest(t, 0))
+	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, f.validRequest(t, 0))
 	if !apierr.IsCode(err, "E_MEMBER_SET_DRIFT") {
 		t.Fatalf("err = %v, want E_MEMBER_SET_DRIFT", err)
 	}
@@ -222,11 +271,11 @@ func TestSetEpoch_TranslatesMemberSetDrift(t *testing.T) {
 func TestSetEpoch_AdminWithoutIdentity(t *testing.T) {
 	f := newFixture(t)
 	store := okStore(f)
-	store.adminIKByMemberTokenFn = func(_ context.Context, _ []byte) ([]byte, error) {
-		return nil, ErrAdminNotFound
+	store.signerIKByMemberTokenFn = func(_ context.Context, _ []byte) ([]byte, error) {
+		return nil, ErrSignerNotFound
 	}
 	svc := NewService(store)
-	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", f.validRequest(t, 0))
+	_, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, f.validRequest(t, 0))
 	if !apierr.IsCode(err, "E_IDENTITY_NOT_SET") {
 		t.Fatalf("err = %v, want E_IDENTITY_NOT_SET", err)
 	}
@@ -242,7 +291,7 @@ func TestSetEpoch_PassesCorrectInsertInput(t *testing.T) {
 	}
 	svc := NewService(store)
 	in := f.validRequest(t, 7)
-	if _, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, "admin", in); err != nil {
+	if _, err := svc.SetEpoch(context.Background(), f.albumID, f.caller, in); err != nil {
 		t.Fatalf("err = %v", err)
 	}
 	if captured.AlbumID != f.albumID {

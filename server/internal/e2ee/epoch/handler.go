@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/freytastic/miuchio/internal/apierr"
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/middleware"
 	"github.com/freytastic/miuchio/internal/ws"
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ type Notifier interface {
 type memberLister interface {
 	UserIDsByMemberTokens(ctx context.Context, tokens [][]byte) ([]uuid.UUID, error)
 	RotationRequired(ctx context.Context, albumID uuid.UUID) (bool, error)
+	JoinAcked(ctx context.Context, albumID uuid.UUID, token []byte) (bool, error)
 }
 
 type Handler struct {
@@ -45,10 +47,11 @@ type wrapItem struct {
 }
 
 type setEpochReq struct {
-	Epoch         int        `json:"epoch"`
-	MemberSetHash string     `json:"member_set_hash"`
-	Wraps         []wrapItem `json:"wraps"`
-	EnvelopeSig   string     `json:"envelope_sig"`
+	Epoch         int                 `json:"epoch"`
+	MemberSetHash string              `json:"member_set_hash"`
+	Wraps         []wrapItem          `json:"wraps"`
+	EnvelopeSig   string              `json:"envelope_sig"`
+	SignerNote    *authority.NoteJSON `json:"signer_note"`
 }
 
 // SetEpoch handles POST /api/v1/albums/{id}/epoch
@@ -62,8 +65,6 @@ func (h *Handler) SetEpoch(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, r, apierr.Auth("missing member context"))
 		return
 	}
-	callerRole, _ := middleware.MustGetMemberRole(r)
-
 	var req setEpochReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apierr.Write(w, r, apierr.Validation("invalid request body").WithCause(err))
@@ -112,11 +113,22 @@ func (h *Handler) SetEpoch(w http.ResponseWriter, r *http.Request) {
 		tokens[i] = rt
 	}
 
-	pending, err := h.svc.SetEpoch(r.Context(), albumID, callerToken, callerRole, SetEpochInput{
+	var signerNote *authority.SignedNote
+	if req.SignerNote != nil {
+		n, err := req.SignerNote.Decode(albumID)
+		if err != nil {
+			apierr.Write(w, r, err)
+			return
+		}
+		signerNote = &n
+	}
+
+	pending, err := h.svc.SetEpoch(r.Context(), albumID, callerToken, SetEpochInput{
 		Epoch:         req.Epoch,
 		MemberSetHash: hash,
 		Wraps:         wraps,
 		EnvelopeSig:   envSig,
+		SignerNote:    signerNote,
 	})
 	if err != nil {
 		apierr.Write(w, r, err)
@@ -176,11 +188,19 @@ func (h *Handler) GetCurrent(w http.ResponseWriter, r *http.Request) {
 	// Drives client rotation recovery : a lookup failure reports false rather
 	// than failing the read, and the upload gate still refuses on its own
 	required := false
+	// False on a failed lookup, a needless resend is refused harmlessly while
+	// a receipt never sent keeps the member from ever taking the album over
+	acked := false
 	if h.repo != nil {
 		if p, perr := h.repo.RotationRequired(r.Context(), albumID); perr == nil {
 			required = p
 		} else {
 			slog.Default().Warn("epoch: rotation-required check failed", "album_id", albumID, "err", perr)
+		}
+		if token, ok := middleware.MustGetMemberToken(r); ok {
+			if a, aerr := h.repo.JoinAcked(r.Context(), albumID, token); aerr == nil {
+				acked = a
+			}
 		}
 	}
 
@@ -189,6 +209,7 @@ func (h *Handler) GetCurrent(w http.ResponseWriter, r *http.Request) {
 		"current_epoch":     res.CurrentEpoch,
 		"started_at":        res.StartedAt,
 		"rotation_required": required,
+		"join_acked":        acked,
 		// Older clients read this name
 		"pending_rotation": required,
 	})
@@ -230,6 +251,9 @@ func (h *Handler) GetWrap(w http.ResponseWriter, r *http.Request) {
 		"sender_token": base64.StdEncoding.EncodeToString(wr.SenderToken),
 		"sender_sig":   base64.StdEncoding.EncodeToString(wr.SenderSig),
 		"delivered_at": wr.DeliveredAt,
+		// Lets the recipient authenticate a sender who has since left
+		"sender_generation": wr.SenderGeneration,
+		"sender_notes":      authority.NotesJSON(wr.SenderNotes),
 	}
 	if wr.OpkIdxUsed != nil {
 		out["opk_idx_used"] = *wr.OpkIdxUsed

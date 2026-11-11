@@ -18,6 +18,12 @@ func (e *rotationEnv) secondSigner(t *testing.T, role string) []byte {
 	if err != nil {
 		t.Fatalf("add %s: %v", role, err)
 	}
+	if _, err := e.pool.Exec(context.Background(),
+		`INSERT INTO member_notes (album_id, member_token, generation, issuer_term, ik_pub, lk_pub, sig)
+		 VALUES ($1, $2, 1, 0, $3, $3, $4)`,
+		e.album, tok, make([]byte, 32), make([]byte, 64)); err != nil {
+		t.Fatalf("seed note: %v", err)
+	}
 	return tok
 }
 
@@ -44,13 +50,31 @@ func TestInsertEpoch_RefusesARemovedSigner(t *testing.T) {
 	}
 }
 
-func TestInsertEpoch_RefusesACoAdminSigner(t *testing.T) {
+// Membership alone is not signing authority, the admin's note is
+func TestInsertEpoch_RefusesASignerWithoutANote(t *testing.T) {
 	e := newRotationEnv(t)
-	signer := e.secondSigner(t, "co-admin")
+	if _, err := e.pool.Exec(context.Background(),
+		`UPDATE albums SET rotation_required = TRUE WHERE id = $1`, e.album); err != nil {
+		t.Fatal(err)
+	}
 
-	err := e.epochs.InsertEpoch(context.Background(), e.signedBy(1, signer, e.admin, e.member, signer))
-	if !errors.Is(err, epoch.ErrCallerNotAdmin) {
-		t.Fatalf("got %v, want ErrCallerNotAdmin", err)
+	err := e.epochs.InsertEpoch(context.Background(), e.signedBy(1, e.member, e.admin, e.member))
+	if !errors.Is(err, epoch.ErrCallerNoNote) {
+		t.Fatalf("got %v, want ErrCallerNoNote", err)
+	}
+	if !e.required(t) {
+		t.Fatal("a refused epoch must leave the rotation owed")
+	}
+}
+
+func TestInsertEpoch_RefusesAMemberWhenNothingIsOwed(t *testing.T) {
+	e := newRotationEnv(t)
+	signer := e.secondSigner(t, "member")
+	e.rotate(t, 1, e.admin, e.member, signer)
+
+	err := e.epochs.InsertEpoch(context.Background(), e.signedBy(2, signer, e.admin, e.member, signer))
+	if !errors.Is(err, epoch.ErrRotationNotOwed) {
+		t.Fatalf("got %v, want ErrRotationNotOwed", err)
 	}
 }
 
