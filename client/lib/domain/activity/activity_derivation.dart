@@ -102,6 +102,18 @@ List<ActivityEvent> deriveActivity({
       ));
     }
 
+    final mine = album.myRole == 'admin';
+    if (before.myRole != null &&
+        album.myRole != null &&
+        mine != (before.myRole == 'admin')) {
+      out.add(OwnerChanged(
+        id: 'owner:${album.albumId}:$seen',
+        albumId: album.albumId,
+        at: now,
+        nowMine: mine,
+      ));
+    }
+
     // A member sliding into a capped list is not evidence of a join
     final rosterKnown = before.membersComplete && album.membersComplete;
     final was = rosterKnown ? before.memberTokens.toSet() : const <String>{};

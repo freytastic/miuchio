@@ -122,6 +122,12 @@ LineCopy lineFor(ActivityEvent e, ActivityNames names) {
       ),
     InvitedToAlbum() => LineCopy(
         lead: 'You', rest: ' were added to $where', where: 'On your shelf'),
+    OwnerChanged() => LineCopy(
+        lead: 'You',
+        rest: e.nowMine ? "'re now the owner" : "'re no longer the owner",
+        where: where,
+        aside: e.nowMine ? 'You can now add and remove people.' : null,
+      ),
     RemovedFromAlbum() => LineCopy(
         lead: 'You',
         rest: "'re no longer in $where",

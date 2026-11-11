@@ -305,6 +305,7 @@ Map<String, dynamic> _toJson(ActivityEvent e) => {
           },
         MemberJoined() => {'kind': 'joined', 'member': e.memberToken},
         CoverChanged() => {'kind': 'cover', 'by': e.setBy},
+        OwnerChanged() => {'kind': 'owner', 'mine': e.nowMine},
         MemberLeft() => {
             'kind': 'left',
             'member': e.memberToken,
@@ -338,6 +339,8 @@ ActivityEvent? _fromJson(Map<String, dynamic> j) {
         id: id, albumId: albumId, at: at, memberToken: j['member'] as String),
     'cover' => CoverChanged(
         id: id, albumId: albumId, at: at, setBy: j['by'] as String),
+    'owner' => OwnerChanged(
+        id: id, albumId: albumId, at: at, nowMine: j['mine'] == true),
     'left' => MemberLeft(
         id: id,
         albumId: albumId,
