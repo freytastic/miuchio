@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:miuchio/data/api/album_api.dart';
+import 'package:miuchio/data/api/api_error.dart';
 import 'package:miuchio/data/api/media_api.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/media_catalog.dart';
@@ -37,6 +38,7 @@ import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/data/models/member_model.dart';
 import 'package:miuchio/diagnostics/trace.dart';
+import 'package:miuchio/e2ee/admin_handover.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
 import 'package:miuchio/e2ee/identity_trust.dart';
@@ -148,12 +150,107 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           onRename: _rename,
           onPeople: _openPeople,
           onAlbumInfo: _openAlbumInfo,
-          onAddSomeone: _isOwner ? _openAddMember : null,
-          onLeaveOrDelete: _isOwner ? _deleteAlbum : _leave,
+          onAddSomeone: _openAddMember,
+          // Decided when tapped, the album may change hands while this is open
+          onLeaveOrDelete: () => _isOwner ? _deleteAlbum() : _leave(),
+          onLeaveAsOwner: _successors.isEmpty ? null : _leaveAsOwner,
         ),
       ));
 
-  bool get _isOwner => _viewerIsAdmin || widget.album.myRole == 'admin';
+  // The roster once loaded, otherwise the listing, both follow a handover
+  bool get _isOwner {
+    final me = _me;
+    if (me != null) return me.role == 'admin';
+    final listed = context
+        .read<AppState>()
+        .albums
+        .where((a) => a.id == widget.album.id)
+        .firstOrNull;
+    return (listed ?? widget.album).myRole == 'admin';
+  }
+
+  // Only someone whose phone holds the album key can take it over
+  List<AlbumMember> get _successors => [
+        for (final m in _members)
+          if (!m.revoked && m.role != 'admin' && m.joined) m,
+      ];
+
+  Future<void> _makeOwner(AlbumMember m) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await confirmSheet(
+      context,
+      key: 'make-owner',
+      title: AlbumCopy.makeOwnerTitle(_memberName(m)),
+      body: AlbumCopy.makeOwnerBody,
+      confirm: AlbumCopy.makeOwner,
+      cancel: AlbumCopy.deleteCancel,
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    final note = await _handOver(m, leave: false);
+    if (note != null) messenger.showSnackBar(_note(note));
+    if (mounted) await _loadMembers();
+  }
+
+  Future<void> _leaveAsOwner() async {
+    final names = _resolvedNames();
+    final choices = [
+      for (final m in _successors)
+        SheetChoice(m, Icons.person_outline_rounded, _memberName(m),
+            lead: _face(m.memberToken, names[m.memberToken], 40)),
+    ];
+    if (choices.isEmpty) return;
+    final successor = await askChoice<AlbumMember>(context,
+        title: AlbumCopy.newOwnerTitle, choices: choices);
+    if (successor == null || !mounted) return;
+    final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final deletePhotos = await confirmLeave(context,
+        deletePhotos: context.read<AppState>().deleteMediaOnLeave);
+    if (deletePhotos == null || !mounted) return;
+    // We pop ourselves, so the removal notice must not pop again
+    _accessLost = true;
+    final note =
+        await _handOver(successor, leave: true, deletePhotos: deletePhotos);
+    if (note != null) {
+      _accessLost = false;
+      messenger.showSnackBar(_note(note));
+      return;
+    }
+    _closeAlbum(navigator, route);
+  }
+
+  // Null when the handover committed, otherwise what to tell the user
+  Future<String?> _handOver(AlbumMember m,
+      {required bool leave, bool deletePhotos = false}) async {
+    final albumId = uuidToBytes(widget.album.id);
+    final myToken = widget.album.memberToken;
+    if (albumId == null || myToken == null) return AlbumCopy.makeOwnerFailed;
+    final handover = context.read<AdminHandoverCoordinator>();
+    final state = context.read<AppState>();
+    final failed = leave ? AlbumCopy.leaveFailed : AlbumCopy.makeOwnerFailed;
+    try {
+      await handover.handOver(
+        albumId: albumId,
+        selfToken: base64.decode(base64.normalize(myToken)),
+        successorToken: base64.decode(base64.normalize(m.memberToken)),
+        leave: leave,
+        deleteMedia: deletePhotos,
+      );
+    } on ApiError catch (e) {
+      return e.code == 'E_SUCCESSOR_INELIGIBLE'
+          ? AlbumCopy.successorCantTakeOver
+          : failed;
+    } on HandoverException catch (e) {
+      return e.reason == 'not confirmed' ? AlbumCopy.leaveUnconfirmed : failed;
+    } catch (_) {
+      return failed;
+    }
+    state.refreshSummarySoon();
+    return null;
+  }
 
   AlbumMember? get _owner =>
       _members.where((m) => m.role == 'admin' && !m.revoked).firstOrNull;
@@ -163,6 +260,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final myToken = widget.album.memberToken;
     if (albumId == null || myToken == null) return;
     final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final removal = context.read<MemberRemovalCoordinator>();
     final deletePhotos = await confirmLeave(context,
@@ -180,16 +278,45 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     } catch (_) {
       // The server already let us go, a failed local wipe is retried by cleanup
     }
-    if (mounted) navigator.pop();
+    _closeAlbum(navigator, route);
+  }
+
+  // Closes this album and nothing else. A back gesture during a slow wipe may
+  // have closed it already, and a blind pop would then take the shelf with it
+  void _closeAlbum(NavigatorState navigator, Route<dynamic>? route) {
+    if (route == null || !route.isActive) return;
+    if (route.isCurrent) {
+      navigator.pop();
+    } else {
+      navigator.removeRoute(route);
+    }
   }
 
   Future<void> _deleteAlbum() async {
-    final albumId = uuidToBytes(widget.album.id);
-    if (albumId == null) return;
     final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final removal = context.read<MemberRemovalCoordinator>();
     final appState = context.read<AppState>();
+    // Someone who can take over makes deleting for everyone optional
+    if (_successors.isNotEmpty) {
+      final handOver = await askChoice<bool>(
+        context,
+        title: AlbumCopy.deleteOrHandOverTitle,
+        choices: const [
+          SheetChoice(true, Icons.person_outline_rounded,
+              AlbumCopy.handOverAndLeave,
+              detail: AlbumCopy.handOverAndLeaveNote),
+          SheetChoice(false, Icons.delete_outline_rounded,
+              AlbumCopy.deleteForEveryone,
+              detail: AlbumCopy.deleteForEveryoneNote),
+        ],
+      );
+      if (handOver == null || !mounted) return;
+      if (handOver) return _leaveAsOwner();
+    }
+    final albumId = uuidToBytes(widget.album.id);
+    if (albumId == null || !mounted) return;
     if (!await confirmSheet(
       context,
       key: 'album-delete',
@@ -203,7 +330,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     // Leave at once, the shelf hides the album until the server answers
     _accessLost = true;
     appState.setDeleting(widget.album.id, true);
-    navigator.pop();
+    _closeAlbum(navigator, route);
     messenger.showSnackBar(_note(AlbumCopy.deletingAlbum, brief: true));
     if (!await widget.albumService.deleteAlbum(widget.album.id)) {
       appState.setDeleting(widget.album.id, false);
@@ -284,7 +411,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final removal = context.read<MemberRemovalCoordinator>();
     void say(String text) => messenger.showSnackBar(_note(text));
     final name = _resolvedNames()[m.memberToken];
-    // The creator can't be removed, they delete the album instead
+    // The owner can't be removed, they hand the album on or delete it
     final canRemove = _viewerIsAdmin && m.role != 'admin';
     final action = await showPersonSheet(
       context,
@@ -293,6 +420,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       owner: m.role == 'admin',
       canVerify: _peerIk(m) != null,
       canRemove: canRemove,
+      canMakeOwner: _viewerIsAdmin && _successors.contains(m),
     );
     if (!mounted) return;
     switch (action) {
@@ -323,6 +451,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           case BlockChoice.blockOnly || null:
             break;
         }
+      case PersonAction.makeOwner:
+        await _makeOwner(m);
       case PersonAction.remove:
         await _removeMember(m, invited: false);
       case null:
@@ -661,7 +791,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       _accessLost = true;
       final nav = Navigator.of(context);
       final messenger = ScaffoldMessenger.of(context);
-      if (nav.canPop()) nav.pop();
+      _closeAlbum(nav, ModalRoute.of(context));
       messenger.showSnackBar(_note(s.wasDeleted(widget.album.id)
           ? 'This album was deleted'
           : 'You were removed from this album'));

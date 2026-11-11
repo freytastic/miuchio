@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -12,12 +14,14 @@ import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/data/models/member_model.dart';
 import 'package:miuchio/data/storage/name_cache.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
+import 'package:miuchio/e2ee/member_removal.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
 import 'package:miuchio/ui/people/people_screen.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
 import 'package:miuchio/ui/shelf/shelf_data.dart';
+import 'package:miuchio/ui/widgets/member_face.dart';
 
 import '../secure_store/mock_secure_key_store.dart';
 
@@ -69,10 +73,25 @@ AlbumMember _fakeMember(String token, String role) => AlbumMember(
       profile: MemberProfile(),
     );
 
+Never _unused() => throw UnimplementedError();
+
+// The person sheet reads it before any action is picked
+final _idleRemoval = MemberRemovalCoordinator(
+  revoke: (_, __, {deleteMedia = false}) async => _unused(),
+  activeTokens: (_) async => _unused(),
+  currentEpoch: (_) async => _unused(),
+  rotate: (_, __, ___) async => _unused(),
+  expectedIk: (_, __) async => _unused(),
+  dropDirectory: (_, __) => _unused(),
+  wipeLocalAlbum: (_) async => _unused(),
+  isRotationRequired: (_) async => _unused(),
+);
+
 Widget _wrap(Widget child, AlbumKeyStore aks, {NameCache? names}) =>
     MultiProvider(
       providers: [
         if (names != null) Provider<NameCache>.value(value: names),
+        Provider<MemberRemovalCoordinator>.value(value: _idleRemoval),
         ChangeNotifierProvider(create: (_) => AppState()),
         Provider<AlbumKeyStore>.value(value: aks),
         ChangeNotifierProvider<UploadQueueModel>.value(
@@ -312,6 +331,7 @@ void main() {
         revoked: false,
         joinedAt: DateTime(2024),
         profile: MemberProfile(nameCt: 'sealed'),
+        joined: true,
       );
 
   for (final (me, admin) in [('alicetoken123', true), ('bobtoken456', false)]) {
@@ -344,8 +364,97 @@ void main() {
       expect(find.byKey(const Key('person-safety')), findsOneWidget);
       expect(find.byKey(const Key('person-remove')),
           admin ? findsOneWidget : findsNothing);
+      expect(find.byKey(const Key('person-make-owner')),
+          admin ? findsOneWidget : findsNothing);
     });
   }
+
+  testWidgets('only someone who opened the album can be made owner',
+      (tester) async {
+    // Tall enough for the whole settings page
+    await tester.binding.setSurfaceSize(const Size(800, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final aks = await _emptyAks();
+    await tester.pumpWidget(_wrap(
+      AlbumDetailScreen(
+        album: _fakeAlbum(me: 'alicetoken123'),
+        albumService: _MockAlbumService([
+          joined('alicetoken123', 'admin'),
+          AlbumMember(
+            memberToken: 'bobtoken456',
+            role: 'member',
+            revoked: false,
+            joinedAt: DateTime(2024),
+            profile: MemberProfile(nameCt: 'sealed'),
+          ),
+        ]),
+        mediaApi: _StubMediaApi(const []),
+      ),
+      aks,
+      names: await names(tester),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip(AlbumCopy.settings).first);
+    await tester.pumpAndSettle();
+
+    // Nobody can take over yet, so the owner can only delete
+    expect(find.text(AlbumCopy.leaveAlbum), findsNothing);
+    expect(find.text(AlbumCopy.deleteAlbum), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('album-settings-people')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('person-bobtoken456')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('person-remove')), findsOneWidget);
+    expect(find.byKey(const Key('person-make-owner')), findsNothing);
+  });
+
+  testWidgets('an owner with someone to take over can also leave',
+      (tester) async {
+    // Tall enough for the whole settings page
+    await tester.binding.setSurfaceSize(const Size(800, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final aks = await _emptyAks();
+    await tester.pumpWidget(_wrap(
+      AlbumDetailScreen(
+        album: _fakeAlbum(me: 'alicetoken123'),
+        albumService: _MockAlbumService([
+          joined('alicetoken123', 'admin'),
+          joined('bobtoken456', 'member'),
+        ]),
+        mediaApi: _StubMediaApi(const []),
+      ),
+      aks,
+      names: await names(tester),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip(AlbumCopy.settings).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text(AlbumCopy.leaveAlbum), findsOneWidget);
+    expect(find.text(AlbumCopy.deleteAlbum), findsOneWidget);
+
+    // Deleting offers handing the album on first
+    await tester.tap(find.text(AlbumCopy.deleteAlbum));
+    await tester.pumpAndSettle();
+    expect(find.text(AlbumCopy.deleteOrHandOverTitle), findsOneWidget);
+    expect(find.text(AlbumCopy.deleteForEveryone), findsOneWidget);
+
+    // and the people who could take over show with their faces
+    await tester.tap(find.text(AlbumCopy.handOverAndLeave));
+    await tester.pumpAndSettle();
+    expect(find.text(AlbumCopy.newOwnerTitle), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find
+                .ancestor(
+                    of: find.text(AlbumCopy.newOwnerTitle),
+                    matching: find.byType(Column))
+                .first,
+            matching: find.byType(MemberFace)),
+        findsOneWidget);
+  });
 
   testWidgets("their photos goes back to the album filtered to them",
       (tester) async {
@@ -375,5 +484,80 @@ void main() {
 
     expect(find.byType(PeopleScreen), findsNothing);
     expect(find.text(AlbumCopy.filteredBy(null, 0)), findsOneWidget);
+  });
+
+  // A back gesture during a slow leave, then
+  // the leave finishing, left the app with no screen at all
+  testWidgets('a back gesture during a slow leave keeps the shelf',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final aks = await _emptyAks();
+    final wipe = Completer<void>();
+    // Leaving decodes the token, so it has to be real base64
+    final bob = base64.encode(List<int>.filled(32, 0xB0));
+    final removal = MemberRemovalCoordinator(
+      revoke: (_, __, {deleteMedia = false}) async => true,
+      activeTokens: (_) async => _unused(),
+      currentEpoch: (_) async => _unused(),
+      rotate: (_, __, ___) async => _unused(),
+      expectedIk: (_, __) async => _unused(),
+      dropDirectory: (_, __) {},
+      wipeLocalAlbum: (_) => wipe.future,
+      isRotationRequired: (_) async => false,
+    );
+    final album = AlbumModel(
+      id: '1574e8d1-0000-4000-8000-000000000001',
+      nameCt: null,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      memberToken: bob,
+    );
+    final screen = AlbumDetailScreen(
+      album: album,
+      albumService: _MockAlbumService([
+        joined('alicetoken123', 'admin'),
+        joined(bob, 'member'),
+      ]),
+      mediaApi: _StubMediaApi(const []),
+    );
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        Provider<NameCache>.value(value: await names(tester)),
+        Provider<MemberRemovalCoordinator>.value(value: removal),
+        ChangeNotifierProvider(create: (_) => AppState()),
+        Provider<AlbumKeyStore>.value(value: aks),
+        ChangeNotifierProvider<UploadQueueModel>.value(
+            value: idleUploadQueue()),
+      ],
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context)
+                  .push(MaterialPageRoute<void>(builder: (_) => screen)),
+              child: const Text('shelf'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('shelf'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip(AlbumCopy.settings).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AlbumCopy.leaveAlbum));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('album-leave-confirm')));
+    await tester.pump();
+
+    // Back while the wipe is still running, then the wipe ends mid animation
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(wipe.isCompleted, isFalse);
+    wipe.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('shelf'), findsOneWidget);
   });
 }

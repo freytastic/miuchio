@@ -24,6 +24,10 @@ class AlbumMember {
   final bool revoked;
   final DateTime joinedAt;
   final MemberProfile profile;
+  // The membership's join count, a rejoin on the same token raises it
+  final int generation;
+  // Proved the album key installed, only then can they take the album over
+  final bool joined;
 
   AlbumMember({
     required this.memberToken,
@@ -31,6 +35,8 @@ class AlbumMember {
     required this.revoked,
     required this.joinedAt,
     required this.profile,
+    this.generation = 1,
+    this.joined = false,
   });
 
   factory AlbumMember.fromJson(Map<String, dynamic> json) => AlbumMember(
@@ -40,5 +46,7 @@ class AlbumMember {
         joinedAt: DateTime.parse(json['joined_at'] as String),
         profile: MemberProfile.fromJson(
             json['profile'] as Map<String, dynamic>? ?? {}),
+        generation: (json['generation'] as num?)?.toInt() ?? 1,
+        joined: json['joined'] as bool? ?? false,
       );
 }

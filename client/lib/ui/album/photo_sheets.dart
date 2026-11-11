@@ -109,7 +109,7 @@ Future<bool?> confirmLeave(BuildContext context, {required bool deletePhotos}) =
     _paperSheet<bool>(
         context, (_) => _LeaveSheet(deletePhotos: deletePhotos));
 
-enum PersonAction { photos, safetyNumber, report, block, remove }
+enum PersonAction { photos, safetyNumber, report, block, makeOwner, remove }
 
 // Null when dismissed. Remove is left out for anyone who can't use it, while
 // a safety number not yet available stays visible but greyed
@@ -120,6 +120,7 @@ Future<PersonAction?> showPersonSheet(
   required bool owner,
   required bool canVerify,
   required bool canRemove,
+  bool canMakeOwner = false,
 }) =>
     _paperSheet<PersonAction>(
       context,
@@ -129,6 +130,7 @@ Future<PersonAction?> showPersonSheet(
         owner: owner,
         canVerify: canVerify,
         canRemove: canRemove,
+        canMakeOwner: canMakeOwner,
       ),
     );
 
@@ -137,8 +139,11 @@ class SheetChoice<T> {
   final IconData icon;
   final String title;
   final String? detail;
+  // Shown instead of the icon, such as a person's face
+  final Widget? lead;
 
-  const SheetChoice(this.value, this.icon, this.title, {this.detail});
+  const SheetChoice(this.value, this.icon, this.title,
+      {this.detail, this.lead});
 }
 
 // Null when dismissed
@@ -364,6 +369,7 @@ class _PersonSheet extends StatelessWidget {
   final bool owner;
   final bool canVerify;
   final bool canRemove;
+  final bool canMakeOwner;
 
   const _PersonSheet({
     required this.face,
@@ -371,6 +377,7 @@ class _PersonSheet extends StatelessWidget {
     required this.owner,
     required this.canVerify,
     required this.canRemove,
+    required this.canMakeOwner,
   });
 
   @override
@@ -399,7 +406,7 @@ class _PersonSheet extends StatelessWidget {
                           overflow: TextOverflow.ellipsis),
                       if (owner) ...[
                         const SizedBox(height: 2),
-                        Text(AlbumCopy.madeThisAlbum, style: Warm.meta),
+                        Text(AlbumCopy.ownsThisAlbum, style: Warm.meta),
                       ],
                     ],
                   ),
@@ -430,6 +437,12 @@ class _PersonSheet extends StatelessWidget {
               danger: true,
               onTap: () => pick(PersonAction.block),
             ),
+            if (canMakeOwner)
+              _PersonRow(
+                key: const Key('person-make-owner'),
+                label: AlbumCopy.makeOwner,
+                onTap: () => pick(PersonAction.makeOwner),
+              ),
             if (canRemove) ...[
               _PersonRow(
                 key: const Key('person-remove'),
@@ -500,15 +513,16 @@ class _ChoiceRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: const BoxDecoration(
-                  color: Warm.wellEmpty,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(choice.icon, size: 20, color: Warm.ink),
-              ),
+              choice.lead ??
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: Warm.wellEmpty,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(choice.icon, size: 20, color: Warm.ink),
+                  ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
