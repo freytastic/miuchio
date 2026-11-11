@@ -3,10 +3,12 @@ package invite
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"sort"
 
 	"github.com/freytastic/miuchio/internal/apierr"
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/handle"
 	"github.com/freytastic/miuchio/internal/repository"
 	"github.com/google/uuid"
@@ -32,7 +34,7 @@ type store interface {
 	CurrentEpoch(ctx context.Context, albumID uuid.UUID) (int, error)
 	DeliverMember(ctx context.Context, in DeliverMemberInput) ([]byte, error)
 	IKByMemberToken(ctx context.Context, memberToken []byte) ([]byte, error)
-	MarkReceived(ctx context.Context, memberToken []byte, epoch int) error
+	AckJoin(ctx context.Context, albumID uuid.UUID, memberToken []byte, epoch int, ekPub []byte) error
 }
 
 type Service struct{ repo store }
@@ -53,6 +55,10 @@ type DeliverExistingUserInput struct {
 	EKPub           []byte
 	OPKIdxUsed      *int
 	Envelopes       []Envelope
+	// Vouches for the newcomer and proposes their member token
+	Note authority.SignedNote
+	// Reissued for current members the admin's term has no note for yet
+	ExtraNotes []authority.SignedNote
 }
 
 // DeliverMemberInput is the single tx write shape handed to the repo
@@ -63,6 +69,8 @@ type DeliverMemberInput struct {
 	EKPub       []byte
 	OPKIdxUsed  *int
 	Envelopes   []Envelope // ascending and contiguous from epoch 0
+	Note        authority.SignedNote
+	ExtraNotes  []authority.SignedNote
 }
 
 // Validates and delivers every historical MK wrap to the target membership
@@ -132,7 +140,17 @@ func (s *Service) DeliverExistingUser(ctx context.Context, albumID uuid.UUID, ca
 		EKPub:       in.EKPub,
 		OPKIdxUsed:  in.OPKIdxUsed,
 		Envelopes:   sorted,
+		Note:        in.Note,
+		ExtraNotes:  in.ExtraNotes,
 	})
+	var mismatch *TokenMismatchError
+	if errors.As(err, &mismatch) {
+		return nil, uuid.Nil, apierr.MemberTokenMismatch("the note must name this member token and generation").
+			WithDetail(map[string]any{
+				"member_token": base64.StdEncoding.EncodeToString(mismatch.Token),
+				"generation":   mismatch.Generation,
+			})
+	}
 	if errors.Is(err, ErrAlreadyMember) {
 		return nil, uuid.Nil, apierr.Conflict("target is already a member of this album")
 	}
@@ -152,6 +170,12 @@ func (s *Service) DeliverExistingUser(ctx context.Context, albumID uuid.UUID, ca
 		return nil, uuid.Nil, apierr.NotFound("user not found")
 	case errors.Is(err, ErrBlocked):
 		return nil, uuid.Nil, apierr.Blocked("this person can't be added")
+	case errors.Is(err, ErrNoteInvalid):
+		return nil, uuid.Nil, apierr.Validation("a note does not match the album's current members and keys")
+	case errors.Is(err, ErrNoteSig):
+		return nil, uuid.Nil, apierr.SigInvalid("note signature verification failed")
+	case errors.Is(err, ErrNotesMissing):
+		return nil, uuid.Nil, apierr.Validation("every current member needs a note from this admin")
 	}
 	if err != nil {
 		return nil, uuid.Nil, err

@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/freytastic/miuchio/internal/apierr"
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/middleware"
 	"github.com/freytastic/miuchio/internal/ws"
 	"github.com/google/uuid"
@@ -48,10 +49,12 @@ type envelopeItem struct {
 }
 
 type deliverReq struct {
-	TargetMiuchioID string         `json:"target_miuchio_id"`
-	EKPub           string         `json:"ek_pub"`
-	OPKIdxUsed      *int           `json:"opk_idx_used"`
-	Envelopes       []envelopeItem `json:"envelopes"`
+	TargetMiuchioID string               `json:"target_miuchio_id"`
+	EKPub           string               `json:"ek_pub"`
+	OPKIdxUsed      *int                 `json:"opk_idx_used"`
+	Envelopes       []envelopeItem       `json:"envelopes"`
+	Note            *authority.NoteJSON  `json:"note"`
+	ExtraNotes      []authority.NoteJSON `json:"extra_notes"`
 }
 
 // DeliverExistingUser handles POST /api/v1/albums/{id}/invites/existing-user
@@ -101,11 +104,30 @@ func (h *Handler) DeliverExistingUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.Note == nil {
+		apierr.Write(w, r, apierr.Validation("note is required"))
+		return
+	}
+	note, err := req.Note.Decode(albumID)
+	if err != nil {
+		apierr.Write(w, r, err)
+		return
+	}
+	extraNotes := make([]authority.SignedNote, len(req.ExtraNotes))
+	for i, item := range req.ExtraNotes {
+		if extraNotes[i], err = item.Decode(albumID); err != nil {
+			apierr.Write(w, r, err)
+			return
+		}
+	}
+
 	token, targetUserID, err := h.svc.DeliverExistingUser(r.Context(), albumID, callerToken, callerRole, DeliverExistingUserInput{
 		TargetMiuchioID: req.TargetMiuchioID,
 		EKPub:           ekPub,
 		OPKIdxUsed:      req.OPKIdxUsed,
 		Envelopes:       envelopes,
+		Note:            note,
+		ExtraNotes:      extraNotes,
 	})
 	if err != nil {
 		apierr.Write(w, r, err)

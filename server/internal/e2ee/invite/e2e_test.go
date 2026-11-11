@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/freytastic/miuchio/internal/e2ee/authority"
 	"github.com/freytastic/miuchio/internal/middleware"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -45,13 +46,19 @@ func TestInviteE2E(t *testing.T) {
 	// First 8 uuid hex chars upper cased: a valid (unique) Crockford handle
 	bobMiuchioID := strings.ToUpper(bobID.String()[:8])
 	bobIKPub, bobIKPriv, _ := ed25519.GenerateKey(rand.Reader)
+	adminIKPub, adminIKPriv, _ := ed25519.GenerateKey(rand.Reader)
+	adminLK, bobLK := randToken(t), randToken(t)
+	sign := func(n authority.Note) authority.NoteJSON {
+		n.AlbumID = albumID
+		return authority.NotesJSON([]authority.SignedNote{{Note: n, Sig: ed25519.Sign(adminIKPriv, authority.NoteMsg(n))}})[0]
+	}
 
 	// admin user + identity
-	mustExec(t, pool, `INSERT INTO users (id, email_hmac, miuchio_id, ik_pub) VALUES ($1,$2,$3,$4)`,
-		adminID, adminID[:], adminID.String(), []byte("admin-ik"))
+	mustExec(t, pool, `INSERT INTO users (id, email_hmac, miuchio_id, ik_pub, lk_pub) VALUES ($1,$2,$3,$4,$5)`,
+		adminID, adminID[:], adminID.String(), []byte(adminIKPub), adminLK)
 	// bob user + real IK + a fresh OPK
-	mustExec(t, pool, `INSERT INTO users (id, email_hmac, miuchio_id, ik_pub) VALUES ($1,$2,$3,$4)`,
-		bobID, bobID[:], bobMiuchioID, []byte(bobIKPub))
+	mustExec(t, pool, `INSERT INTO users (id, email_hmac, miuchio_id, ik_pub, lk_pub) VALUES ($1,$2,$3,$4,$5)`,
+		bobID, bobID[:], bobMiuchioID, []byte(bobIKPub), bobLK)
 	mustExec(t, pool, `INSERT INTO one_time_prekeys (user_id, opk_idx, key_pub) VALUES ($1, 5, $2)`,
 		bobID, make([]byte, 32))
 	// album with two epochs (current = 1) → deliver must cover 0..1
@@ -73,6 +80,11 @@ func TestInviteE2E(t *testing.T) {
 		 (album_id, epoch, recipient_token, ek_pub, wrap_nonce, wrap_tag_ct, sender_token, sender_sig)
 		 SELECT $1, e, $2, $3, $4, $5, $2, $6 FROM generate_series(0, 1) e`,
 		albumID, adminToken, make([]byte, 32), make([]byte, 12), make([]byte, 48), make([]byte, 64))
+	creatorNote := authority.Note{AlbumID: albumID, MemberToken: adminToken, Generation: 1, IKPub: adminIKPub, LKPub: adminLK}
+	mustExec(t, pool,
+		`INSERT INTO member_notes (album_id, member_token, generation, issuer_term, ik_pub, lk_pub, sig)
+		 VALUES ($1, $2, 1, 0, $3, $4, $5)`,
+		albumID, adminToken, []byte(adminIKPub), adminLK, ed25519.Sign(adminIKPriv, authority.NoteMsg(creatorNote)))
 	t.Cleanup(func() {
 		mustExec(t, pool, `DELETE FROM album_members WHERE album_id=$1`, albumID)
 		mustExec(t, pool, `DELETE FROM album_epoch_wraps WHERE album_id=$1`, albumID)
@@ -86,7 +98,9 @@ func TestInviteE2E(t *testing.T) {
 	ekPubAdmin := make([]byte, 32)
 	ekPubAdmin[0] = 0x77
 	idx := 5
+	proposed := randToken(t)
 	deliverBody, _ := json.Marshal(map[string]any{
+		"note":              sign(authority.Note{MemberToken: proposed, Generation: 1, IKPub: bobIKPub, LKPub: bobLK}),
 		"target_miuchio_id": strings.ToLower(bobMiuchioID), // lower case to exercise Normalize
 		"ek_pub":            b64(ekPubAdmin),
 		"opk_idx_used":      idx,
@@ -105,8 +119,8 @@ func TestInviteE2E(t *testing.T) {
 	}
 	json.Unmarshal(rec.Body.Bytes(), &dr)
 	bobToken, _ := base64.StdEncoding.DecodeString(dr.MemberToken)
-	if len(bobToken) != 32 {
-		t.Fatalf("member_token len=%d", len(bobToken))
+	if !bytes.Equal(bobToken, proposed) {
+		t.Fatal("a first time member should take the token the admin signed")
 	}
 
 	// member_token must be unrelated to the user_id on the wire
