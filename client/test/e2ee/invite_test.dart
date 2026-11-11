@@ -4,7 +4,11 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart' as cg;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:miuchio/crypto/primitives.dart';
+import 'package:miuchio/e2ee/album_authority.dart';
 import 'package:miuchio/e2ee/album_keys.dart';
+import 'package:miuchio/e2ee/authority_records.dart';
+import 'package:miuchio/e2ee/epoch_rotator.dart' show IdentityMismatchException;
+import 'package:miuchio/e2ee/identity.dart';
 import 'package:miuchio/e2ee/invite.dart';
 import 'package:miuchio/e2ee/invite_api.dart';
 import 'package:miuchio/e2ee/prekey_api.dart';
@@ -14,6 +18,7 @@ import 'package:miuchio/secure_store/key_handle_adapter.dart';
 
 import '../_sodium_setup.dart';
 import '_admin_test_helpers.dart';
+import '_authority_test_helpers.dart';
 
 class _ByHandlePrekeyApi implements PrekeyApi {
   final PrekeyBundle bundle;
@@ -58,6 +63,11 @@ class _CaptureInviteApi implements InviteApi {
   Uint8List? ekPub;
   int? opkIdx;
   List<DeliverEnvelope> envelopes = const [];
+  final List<SignedNote> notes = [];
+  List<SignedNote> extraNotes = const [];
+  // Set to answer the first delivery the way the server does for a returning
+  // member, with the token and generation it already holds
+  MemberTokenMismatch? mismatch;
 
   @override
   Future<Uint8List> deliverExistingUser({
@@ -66,13 +76,22 @@ class _CaptureInviteApi implements InviteApi {
     required Uint8List ekPub,
     int? opkIdx,
     required List<DeliverEnvelope> envelopes,
+    required SignedNote note,
+    List<SignedNote> extraNotes = const [],
   }) async {
     this.albumId = albumId;
     this.targetMiuchioId = targetMiuchioId;
     this.ekPub = ekPub;
     this.opkIdx = opkIdx;
     this.envelopes = envelopes;
-    return Uint8List.fromList(List.filled(32, 0xAB));
+    notes.add(note);
+    this.extraNotes = extraNotes;
+    final m = mismatch;
+    if (m != null) {
+      mismatch = null;
+      throw m;
+    }
+    return note.note.memberToken;
   }
 
   @override
@@ -101,6 +120,26 @@ Future<Uint8List> _senderMsg(
   buf.setRange(20, buf.length, wrap);
   final h = await cg.Sha256().hash(buf);
   return Uint8List.fromList(h.bytes);
+}
+
+final _aliceToken = Uint8List.fromList(List.filled(32, 0xA1));
+
+// Alice made the album, so her own note at term 0 is all the server holds
+Future<({AlbumAuthority authority, FakeAuthorityApi api})> _creator(
+    IdentityService alice, Uint8List albumId) async {
+  final api = FakeAuthorityApi()
+    ..notes = [
+      await noteFor(alice,
+          albumId: albumId, memberToken: _aliceToken, member: alice),
+    ];
+  final authority = memoryAuthority(api).authority;
+  await authority.anchorCreator(
+    albumId: albumId,
+    selfToken: _aliceToken,
+    ikPub: await alice.currentIkPub(),
+    lkPub: await alice.currentLkPub(),
+  );
+  return (authority: authority, api: api);
 }
 
 void main() {
@@ -143,6 +182,8 @@ void main() {
       invites: capture,
       identity: alice.svc,
       aks: aliceAks,
+      authority: (await _creator(alice.svc, albumId)).authority,
+      selfToken: (_) => _aliceToken,
       now: () => fixed,
     );
 
@@ -151,6 +192,17 @@ void main() {
     expect(token.length, 32);
     expect(capture.targetMiuchioId, 'K7F29QXM');
     expect(capture.envelopes.length, 3);
+
+    // The note vouches for the bundle's keys under the token proposed
+    final note = capture.notes.single;
+    expect(note.note.memberToken, equals(token));
+    expect(note.note.generation, 1);
+    expect(note.note.issuerTerm, 0);
+    expect(note.note.ikPub, equals(bobBundle.ikPub));
+    expect(note.note.lkPub, equals(bobBundle.lkPub));
+    expect(await Sign.verify(aliceIkPub, note.note.signedBytes(), note.sig),
+        isTrue);
+    expect(capture.extraNotes, isEmpty);
 
     for (var i = 0; i < 3; i++) {
       final env = capture.envelopes[i];
@@ -208,6 +260,8 @@ void main() {
       invites: _CaptureInviteApi(),
       identity: alice.svc,
       aks: aliceAks,
+      authority: (await _creator(alice.svc, albumId)).authority,
+      selfToken: (_) => _aliceToken,
       pinner: pinner,
       now: () => fixed,
     ).inviteExistingUser(miuchioId: 'K7F29QXM', albumId: albumId);
@@ -217,7 +271,7 @@ void main() {
     expect(pins[_pinKey(albumId, token)], equals(bobBundle.ikPub));
   });
 
-  test('does not clobber an existing pin on re-invite', () async {
+  test('a returning member showing another identity key is refused', () async {
     final alice = await newResponderIdentity(now: fixed);
     final bob = await newResponderIdentity(now: fixed);
     final aliceAks = AlbumKeyStore(alice.store);
@@ -227,8 +281,8 @@ void main() {
     final bobBundle =
         await buildResponderBundle(responder: bob.svc, spkTs: spkTs);
 
-    // the server reuses the same token when re-inviting a previously kicked
-    // member (0xAB..): pre-seed a prior baseline for it
+    // A kicked member comes back on the token they held, pinned to a key
+    // that is not the one in this bundle
     final reusedToken = Uint8List.fromList(List.filled(32, 0xAB));
     final priorIk = Uint8List.fromList(List.filled(32, 0x77));
     final pins = <String, Uint8List>{_pinKey(albumId, reusedToken): priorIk};
@@ -236,18 +290,158 @@ void main() {
       pinnedIk: (a, t) => pins[_pinKey(a, t)],
       pin: (a, t, ik) async => pins[_pinKey(a, t)] = ik,
     );
+    final capture = _CaptureInviteApi()
+      ..mismatch = MemberTokenMismatch(memberToken: reusedToken, generation: 2);
 
-    await InviteInitiator(
+    await expectLater(
+      InviteInitiator(
+        prekeys: _ByHandlePrekeyApi(bobBundle),
+        invites: capture,
+        identity: alice.svc,
+        aks: aliceAks,
+        authority: (await _creator(alice.svc, albumId)).authority,
+        selfToken: (_) => _aliceToken,
+        pinner: pinner,
+        now: () => fixed,
+      ).inviteExistingUser(miuchioId: 'K7F29QXM', albumId: albumId),
+      throwsA(isA<IdentityMismatchException>()),
+    );
+
+    // Nothing was vouched for the returning token, and the pin stands
+    expect(capture.notes, hasLength(1));
+    expect(pins[_pinKey(albumId, reusedToken)], equals(priorIk));
+  });
+
+  test('a returning member is vouched for on the token the server holds',
+      () async {
+    final alice = await newResponderIdentity(now: fixed);
+    final bob = await newResponderIdentity(now: fixed);
+    final aliceAks = AlbumKeyStore(alice.store);
+    await aliceAks.install(
+        albumId, 0, Uint8List.fromList(List.filled(32, 0x55)));
+    final bobBundle =
+        await buildResponderBundle(responder: bob.svc, spkTs: spkTs);
+
+    final reusedToken = Uint8List.fromList(List.filled(32, 0xAB));
+    final pins = <String, Uint8List>{
+      _pinKey(albumId, reusedToken): bobBundle.ikPub,
+    };
+    final capture = _CaptureInviteApi()
+      ..mismatch = MemberTokenMismatch(memberToken: reusedToken, generation: 3);
+
+    final token = await InviteInitiator(
       prekeys: _ByHandlePrekeyApi(bobBundle),
-      invites: _CaptureInviteApi(),
+      invites: capture,
       identity: alice.svc,
       aks: aliceAks,
-      pinner: pinner,
+      authority: (await _creator(alice.svc, albumId)).authority,
+      selfToken: (_) => _aliceToken,
+      pinner: InviteIdentityPinner(
+        pinnedIk: (a, t) => pins[_pinKey(a, t)],
+        pin: (a, t, ik) async => pins[_pinKey(a, t)] = ik,
+      ),
       now: () => fixed,
     ).inviteExistingUser(miuchioId: 'K7F29QXM', albumId: albumId);
 
-    // the prior baseline stands : a substituting server still trips 'changed'
-    expect(pins[_pinKey(albumId, reusedToken)], equals(priorIk));
+    expect(token, equals(reusedToken));
+    expect(capture.notes, hasLength(2));
+    final retry = capture.notes.last;
+    expect(retry.note.memberToken, equals(reusedToken));
+    expect(retry.note.generation, 3);
+    expect(
+        await Sign.verify(await alice.svc.currentIkPub(),
+            retry.note.signedBytes(), retry.sig),
+        isTrue);
+  });
+
+  test('after a handover every member is vouched for again under the new term',
+      () async {
+    final alice = await newResponderIdentity(now: fixed);
+    final bob = await newResponderIdentity(now: fixed);
+    final carol = await newResponderIdentity(now: fixed);
+    final bobToken = Uint8List.fromList(List.filled(32, 0xB2));
+    final bobAks = AlbumKeyStore(bob.store);
+    await bobAks.install(albumId, 0, Uint8List.fromList(List.filled(32, 0x55)));
+
+    final aliceNote = await noteFor(alice.svc,
+        albumId: albumId, memberToken: _aliceToken, member: alice.svc);
+    final api = FakeAuthorityApi()
+      ..adminTerm = 1
+      ..notes = [
+        aliceNote,
+        await noteFor(alice.svc,
+            albumId: albumId, memberToken: bobToken, member: bob.svc),
+      ];
+    api.handovers = [
+      await nextHandover(alice.svc,
+          albumId: albumId,
+          chain: const [],
+          oldToken: _aliceToken,
+          newToken: bobToken,
+          newAdmin: bob.svc),
+    ];
+    // Alice invited Bob, then handed the album to him
+    final authority = memoryAuthority(api).authority;
+    await authority.adoptAnchor(albumId, aliceNote);
+
+    final capture = _CaptureInviteApi();
+    await InviteInitiator(
+      prekeys: _ByHandlePrekeyApi(
+          await buildResponderBundle(responder: carol.svc, spkTs: spkTs)),
+      invites: capture,
+      identity: bob.svc,
+      aks: bobAks,
+      authority: authority,
+      selfToken: (_) => bobToken,
+      now: () => fixed,
+    ).inviteExistingUser(miuchioId: 'K7F29QXM', albumId: albumId);
+
+    expect(capture.notes.single.note.issuerTerm, 1);
+    final bobIk = await bob.svc.currentIkPub();
+    final reissued = {
+      for (final n in capture.extraNotes)
+        AlbumAuthority.tokenHex(n.note.memberToken): n,
+    };
+    expect(reissued.keys, {
+      AlbumAuthority.tokenHex(_aliceToken),
+      AlbumAuthority.tokenHex(bobToken),
+    });
+    for (final n in capture.extraNotes) {
+      expect(n.note.issuerTerm, 1);
+      expect(await Sign.verify(bobIk, n.note.signedBytes(), n.sig), isTrue);
+    }
+    expect(reissued[AlbumAuthority.tokenHex(_aliceToken)]!.note.ikPub,
+        await alice.svc.currentIkPub());
+  });
+
+  test('a member no trusted admin vouched for stops the invite', () async {
+    final alice = await newResponderIdentity(now: fixed);
+    final bob = await newResponderIdentity(now: fixed);
+    final mallory = await newResponderIdentity(now: fixed);
+    final aliceAks = AlbumKeyStore(alice.store);
+    await aliceAks.install(
+        albumId, 0, Uint8List.fromList(List.filled(32, 0x55)));
+    final creator = await _creator(alice.svc, albumId);
+    creator.api.notes.add(await noteFor(mallory.svc,
+        albumId: albumId,
+        memberToken: Uint8List.fromList(List.filled(32, 0x99)),
+        member: mallory.svc));
+    final capture = _CaptureInviteApi();
+
+    await expectLater(
+      InviteInitiator(
+        prekeys: _ByHandlePrekeyApi(
+            await buildResponderBundle(responder: bob.svc, spkTs: spkTs)),
+        invites: capture,
+        identity: alice.svc,
+        aks: aliceAks,
+        authority: creator.authority,
+        selfToken: (_) => _aliceToken,
+        now: () => fixed,
+      ).inviteExistingUser(miuchioId: 'K7F29QXM', albumId: albumId),
+      throwsA(isA<IdentityMismatchException>()),
+    );
+    expect(capture.notes, isEmpty);
   });
 
   test('tampered AAD (wrong epoch) fails authentication', () async {
@@ -265,6 +459,8 @@ void main() {
       invites: capture,
       identity: alice.svc,
       aks: aliceAks,
+      authority: (await _creator(alice.svc, albumId)).authority,
+      selfToken: (_) => _aliceToken,
       now: () => fixed,
     ).inviteExistingUser(miuchioId: 'K7F29QXM', albumId: albumId);
 

@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sodium/sodium_sumo.dart' show SodiumSumo, SodiumSumoInit;
 
@@ -18,6 +20,7 @@ import 'package:miuchio/app/device_wipe.dart';
 import 'package:miuchio/app/key_recovery.dart';
 import 'package:miuchio/app/name_resolvers.dart';
 import 'package:miuchio/app/realtime_router.dart';
+import 'package:miuchio/app/rotation_roster.dart';
 import 'package:miuchio/app/sign_in_wiring.dart';
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/uuid_bytes.dart';
@@ -39,6 +42,7 @@ import 'package:miuchio/data/storage/avatar_cache.dart';
 import 'package:miuchio/data/storage/cache_root_key.dart';
 import 'package:miuchio/data/storage/cover_cache.dart';
 import 'package:miuchio/data/storage/deletion_marker.dart';
+import 'package:miuchio/data/storage/handover_marker.dart';
 import 'package:miuchio/data/storage/identity_pin_store.dart';
 import 'package:miuchio/data/storage/install_guard.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
@@ -72,6 +76,11 @@ import 'package:miuchio/e2ee/album_keys.dart';
 import 'package:miuchio/e2ee/display_name.dart';
 import 'package:miuchio/e2ee/epoch_api.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
+import 'package:miuchio/e2ee/sender_resolver.dart';
+import 'package:miuchio/e2ee/admin_handover.dart';
+import 'package:miuchio/e2ee/album_authority.dart';
+import 'package:miuchio/e2ee/authority_api.dart';
+import 'package:miuchio/data/api/authority_json_client.dart';
 import 'package:miuchio/e2ee/epoch_rotator.dart';
 import 'package:miuchio/e2ee/expected_ik_resolver.dart';
 import 'package:miuchio/e2ee/identity.dart';
@@ -167,14 +176,6 @@ void main() async {
   });
   final epochApi = HttpEpochApi(data_epoch.ApiClientEpochJsonClient(apiClient));
   final inviteApi = HttpInviteApi(ApiClientInviteJsonClient(apiClient));
-  final epochRotator = EpochRotator(
-    epochs: epochApi,
-    prekeys: prekeyApi,
-    identity: identityService,
-    aks: albumKeyStore,
-    // Rotations fetch member bundles by token when user IDs are hidden
-    memberBundles: prekeyApi,
-  );
   final mediaApi = MediaApi(apiClient);
   final cacheRootKey = await loadOrCreateCacheRootKey(secureKeyStore);
   unawaited(DebugLog.attach(cacheRootKey));
@@ -213,6 +214,34 @@ void main() async {
       await identityPinStore.clearCreating(albumIdStr);
     }
   }
+  Uint8List? selfTokenOf(Uint8List albumId) {
+    final t = appState.selfMemberToken(uuidFromBytes(albumId));
+    return t == null ? null : base64.decode(base64.normalize(t));
+  }
+
+  final authorityApi =
+      HttpAuthorityApi(ApiClientAuthorityJsonClient(apiClient));
+  // Shares the pin store's file, so an album's anchor is wiped with its pins
+  final albumAuthority = AlbumAuthority(
+    api: authorityApi,
+    load: (albumId) => identityPinStore.authority(hexAlbumId(albumId)),
+    save: (albumId, json) =>
+        identityPinStore.saveAuthority(hexAlbumId(albumId), json),
+  );
+  final epochRotator = EpochRotator(
+    epochs: epochApi,
+    prekeys: prekeyApi,
+    identity: identityService,
+    aks: albumKeyStore,
+    // Rotations fetch member bundles by token when user IDs are hidden
+    memberBundles: prekeyApi,
+    authority: albumAuthority,
+  );
+  final rotationRoster = RotationRoster(
+    authority: albumAuthority,
+    identity: identityService,
+    selfToken: selfTokenOf,
+  );
   late final ActivityStore activityStore;
   late final ActivitySync activitySync;
   // Recompute unread state after repeated alarms or restarts
@@ -239,6 +268,8 @@ void main() async {
     invites: inviteApi,
     identity: identityService,
     aks: albumKeyStore,
+    authority: albumAuthority,
+    selfToken: selfTokenOf,
     pinner: InviteIdentityPinner(
       pinnedIk: (albumId, token) =>
           identityPinStore.pinnedIk(hexAlbumId(albumId), base64.encode(token)),
@@ -357,10 +388,7 @@ void main() async {
   });
 
   final expectedIkResolver = ExpectedIkResolver.responder(
-    selfToken: (albumId) {
-      final t = appState.selfMemberToken(uuidFromBytes(albumId));
-      return t == null ? null : base64.decode(base64.normalize(t));
-    },
+    selfToken: selfTokenOf,
     pinned: (albumId, token) =>
         identityPinStore.pinnedIk(hexAlbumId(albumId), base64.encode(token)),
     // Roster discovery must never grant epoch signing authority
@@ -380,6 +408,11 @@ void main() async {
     identity: identityService,
     store: albumKeyStore,
     directory: memberDirectory,
+    senders: AuthoritySenders(
+      authority: albumAuthority,
+      identity: identityService,
+      selfToken: selfTokenOf,
+    ),
     signerGate: expectedIkResolver,
     invites: inviteApi,
   );
@@ -429,17 +462,18 @@ void main() async {
     revoke: (albumId, token, {deleteMedia = false}) => albumService.removeMember(
         uuidFromBytes(albumId), base64.encode(token),
         deleteMedia: deleteMedia),
-    activeTokens: (albumId) async {
-      final members = await albumService.listMembers(uuidFromBytes(albumId));
-      return [
-        for (final m in members)
-          if (!m.revoked) base64.decode(base64.normalize(m.memberToken)),
-      ];
+    activeTokens: rotationRoster.activeTokens,
+    // The server's number, after catching up to it: a phone back from a long
+    // absence would otherwise propose an epoch the album already passed
+    currentEpoch: (albumId) async {
+      await epochProcessor.catchUp(albumId);
+      final cur = await epochApi.getCurrentEpoch(uuidFromBytes(albumId));
+      if (cur == null) throw StateError('album has no epoch to rotate from');
+      return cur.currentEpoch;
     },
-    currentEpoch: (albumId) => albumKeyStore.latestEpoch(albumId),
     rotate: (albumId, epoch, recipients) => epochRotator.rotate(
         albumIdBytes: albumId, epoch: epoch, recipients: recipients),
-    expectedIk: expectedIkResolver.call,
+    expectedIk: rotationRoster.expectedIk,
     dropDirectory: (albumId, token) => memberDirectory.drop(albumId, token),
     wipeLocalAlbum: (albumId) => wipeLocalAlbum(albumId),
     isRotationRequired: isRotationRequired,
@@ -454,8 +488,18 @@ void main() async {
   );
   rotationRecovery = RotationRecoveryScheduler(
     isRotationRequired: isRotationRequired,
-    canRotate: (albumId) => appState.isAdminOf(uuidFromBytes(albumId)),
-    recover: memberRemoval.recoverIfPending,
+    // Any member an admin vouched for may settle an owed rotation, and the
+    // server checks the note. This only needs a place to start trust from
+    canRotate: albumAuthority.hasAnchor,
+    recover: (albumId) async {
+      // Phones opening together would each spend the others' one time
+      // prekeys on a race only one can win, so all but the admin hang back
+      if (!appState.isAdminOf(uuidFromBytes(albumId))) {
+        await Future<void>.delayed(
+            Duration(milliseconds: 500 + Random.secure().nextInt(2500)));
+      }
+      return memberRemoval.recoverIfPending(albumId);
+    },
     reconcile: reconcileAlbumKeys,
   );
   rotationRecovery.status.listen((s) {
@@ -492,6 +536,7 @@ void main() async {
     albumCleanup: albumCleanup,
     memberRemoval: memberRemoval,
     rotationRecovery: rotationRecovery,
+    authority: albumAuthority,
     onAlbumDeleted: onAlbumDeleted,
   );
   realtimeService.stream.listen(realtimeRouter.handle);
@@ -633,6 +678,14 @@ void main() async {
     ],
     leftovers: () => wipeLeftovers(secureKeyStore),
   );
+  final adminHandover = AdminHandoverCoordinator(
+    api: authorityApi,
+    authority: albumAuthority,
+    identity: identityService,
+    marker: await HandoverMarkerFile.open(),
+    wipeLocalAlbum: memberRemoval.onSelfRemoved,
+    newOperationId: const Uuid().v4,
+  );
   final accountDeletion = AccountDeletion(
     api: HttpAccountDeletionApi(apiClient),
     marker: deletionMarker,
@@ -642,6 +695,7 @@ void main() async {
 
   realtimeService.connected.listen((_) {
     unawaited(albumCleanup.drain());
+    unawaited(adminHandover.resume());
     unawaited(realtimeRouter.catchUpAfterReconnect());
   });
 
@@ -661,6 +715,7 @@ void main() async {
         Provider<EpochProcessor>.value(value: epochProcessor),
         Provider<EpochRotator>.value(value: epochRotator),
         Provider<MemberRemovalCoordinator>.value(value: memberRemoval),
+        Provider<AdminHandoverCoordinator>.value(value: adminHandover),
         Provider<RotationRecoveryScheduler>.value(value: rotationRecovery),
         Provider<DisplayNamePublisher>.value(value: displayNamePublisher),
         Provider<NameCache>.value(value: nameCache),

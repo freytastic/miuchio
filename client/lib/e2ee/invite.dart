@@ -6,7 +6,11 @@ import 'package:miuchio/crypto/uuid_bytes.dart';
 import 'package:miuchio/crypto/wire_format.dart';
 import 'package:miuchio/secure_store/key_handle_adapter.dart';
 
+import 'album_authority.dart';
 import 'album_keys.dart';
+import 'authority_records.dart';
+import 'epoch_rotator.dart' show IdentityMismatchException;
+import 'expected_ik_resolver.dart' show SelfTokenLookup;
 import 'identity.dart';
 import 'invite_api.dart';
 import 'prekey_api.dart';
@@ -29,6 +33,9 @@ class InviteIdentityPinner {
   })  : _pinnedIk = pinnedIk,
         _pin = pin;
 
+  Uint8List? known(Uint8List albumId, Uint8List memberToken) =>
+      _pinnedIk(albumId, memberToken);
+
   // Never replaces an existing pin, so a substitution at re invite still trips
   // the change alarm
   Future<void> anchor(
@@ -45,6 +52,8 @@ class InviteInitiator {
   final InviteApi _invites;
   final IdentityService _identity;
   final AlbumKeyStore _aks;
+  final AlbumAuthority _authority;
+  final SelfTokenLookup _selfToken;
   final InviteIdentityPinner? _pinner;
   final Now _now;
 
@@ -53,12 +62,16 @@ class InviteInitiator {
     required InviteApi invites,
     required IdentityService identity,
     required AlbumKeyStore aks,
+    required AlbumAuthority authority,
+    required SelfTokenLookup selfToken,
     InviteIdentityPinner? pinner,
     Now? now,
   })  : _prekeys = prekeys,
         _invites = invites,
         _identity = identity,
         _aks = aks,
+        _authority = authority,
+        _selfToken = selfToken,
         _pinner = pinner,
         _now = now ?? DateTime.now;
 
@@ -100,15 +113,35 @@ class InviteInitiator {
         senderMsgs.add(await _senderMsg(albumId, e, wrap));
       }
 
+      final reissued = await _notesOwed(albumId);
+      MemberNote newcomer(Uint8List token, int generation) => MemberNote(
+            albumId: albumId,
+            memberToken: token,
+            generation: generation,
+            ikPub: bundle.ikPub,
+            lkPub: bundle.lkPub,
+            issuerTerm: reissued.term,
+          );
+      var note = newcomer(Csprng.bytes(32), 1);
+
       // One keystore read signs every message
-      final senderSigs = await _identity.useIk<List<Uint8List>>((seed) async {
+      final signed = await _identity
+          .useIk<({List<Uint8List> sender, List<Uint8List> notes})>(
+              (seed) async {
         final kp = await KeyHandleAdapter.toEd25519(seed);
-        final sigs = <Uint8List>[];
-        for (final m in senderMsgs) {
-          sigs.add(await Sign.sign(kp, m));
-        }
-        return sigs;
+        return (
+          sender: [for (final m in senderMsgs) await Sign.sign(kp, m)],
+          notes: [
+            for (final n in [note, ...reissued.notes])
+              await Sign.sign(kp, n.signedBytes()),
+          ],
+        );
       });
+      final senderSigs = signed.sender;
+      final extraNotes = [
+        for (var i = 0; i < reissued.notes.length; i++)
+          SignedNote(reissued.notes[i], signed.notes[i + 1]),
+      ];
 
       final envelopes = <DeliverEnvelope>[
         for (var i = 0; i < epochs.length; i++)
@@ -120,18 +153,79 @@ class InviteInitiator {
           ),
       ];
 
-      final token = await _invites.deliverExistingUser(
-        albumId: uuidFromBytes(albumId),
-        targetMiuchioId: miuchioId,
-        ekPub: init.ekPub,
-        opkIdx: init.opkIdx,
-        envelopes: envelopes,
-      );
+      Future<Uint8List> deliver(SignedNote signedNote) =>
+          _invites.deliverExistingUser(
+            albumId: uuidFromBytes(albumId),
+            targetMiuchioId: miuchioId,
+            ekPub: init.ekPub,
+            opkIdx: init.opkIdx,
+            envelopes: envelopes,
+            note: signedNote,
+            extraNotes: extraNotes,
+          );
+
+      Uint8List token;
+      try {
+        token = await deliver(SignedNote(note, signed.notes[0]));
+      } on MemberTokenMismatch catch (returning) {
+        // An account never replaces its identity key, so a returning member
+        // showing another one is a substituted bundle. Nothing is vouched for
+        final known = _pinner?.known(albumId, returning.memberToken);
+        if (known != null && !_eq(known, bundle.ikPub)) {
+          throw IdentityMismatchException(returning.memberToken);
+        }
+        note = newcomer(returning.memberToken, returning.generation);
+        final sig = await _identity.useIk<Uint8List>((seed) async => Sign.sign(
+            await KeyHandleAdapter.toEd25519(seed), note.signedBytes()));
+        token = await deliver(SignedNote(note, sig));
+      }
       await _pinner?.anchor(albumId, token, bundle.ikPub);
       return token;
     } finally {
       init.sharedSecret.fillRange(0, init.sharedSecret.length, 0);
     }
+  }
+
+  // Notes under the current admin term for every member who lacks one, this
+  // device included. After a handover that is everyone, which is what lets
+  // the newcomer verify members it can only know through its inviter. Keys
+  // are copied from notes already verified, never from the roster
+  Future<({int term, List<MemberNote> notes})> _notesOwed(
+      Uint8List albumId) async {
+    final roster = await _authority.verifiedRoster(albumId);
+    if (roster.unverified.isNotEmpty) {
+      throw IdentityMismatchException(_unhex(roster.unverified.first));
+    }
+    final self = _selfToken(albumId);
+    final notes = <MemberNote>[];
+    for (final e in roster.members.entries) {
+      if (e.value.issuerTerms.contains(roster.term)) continue;
+      final token = _unhex(e.key);
+      final mine = self != null && _eq(self, token);
+      notes.add(MemberNote(
+        albumId: albumId,
+        memberToken: token,
+        generation: e.value.generation,
+        ikPub: mine ? await _identity.currentIkPub() : e.value.ikPub,
+        lkPub: mine ? await _identity.currentLkPub() : e.value.lkPub,
+        issuerTerm: roster.term,
+      ));
+    }
+    return (term: roster.term, notes: notes);
+  }
+
+  static Uint8List _unhex(String s) => Uint8List.fromList([
+        for (var i = 0; i < s.length; i += 2)
+          int.parse(s.substring(i, i + 2), radix: 16),
+      ]);
+
+  static bool _eq(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    var d = 0;
+    for (var i = 0; i < a.length; i++) {
+      d |= a[i] ^ b[i];
+    }
+    return d == 0;
   }
 
   // aad = album_id ‖ u32_be(epoch)

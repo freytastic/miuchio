@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'authority_records.dart';
 import 'wrap_envelope.dart';
 
 class EpochCurrent {
@@ -9,10 +10,13 @@ class EpochCurrent {
   // Set by every revoke, cleared only by the next committed epoch. Feeds the
   // app level rotation recovery
   final bool rotationRequired;
+  // False until the server holds this membership's join receipt
+  final bool joinAcked;
   const EpochCurrent({
     required this.currentEpoch,
     required this.startedAt,
     this.rotationRequired = false,
+    this.joinAcked = true,
   });
 }
 
@@ -37,11 +41,14 @@ class SetEpochRequest {
   final Uint8List memberSetHash;
   final List<SetEpochWrap> wraps;
   final Uint8List envelopeSig;
+  // The creator's self signed note, sent with epoch 0 only
+  final SignedNote? signerNote;
   const SetEpochRequest({
     required this.epoch,
     required this.memberSetHash,
     required this.wraps,
     required this.envelopeSig,
+    this.signerNote,
   });
 }
 
@@ -84,6 +91,7 @@ class HttpEpochApi implements EpochApi {
       rotationRequired:
           (body['rotation_required'] ?? body['pending_rotation']) as bool? ??
               false,
+      joinAcked: body['join_acked'] as bool? ?? true,
     );
   }
 
@@ -113,6 +121,7 @@ class HttpEpochApi implements EpochApi {
       'member_set_hash': base64Encode(req.memberSetHash),
       'wraps': wraps,
       'envelope_sig': base64Encode(req.envelopeSig),
+      if (req.signerNote != null) 'signer_note': req.signerNote!.toJson(),
     });
   }
 }

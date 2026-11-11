@@ -15,6 +15,7 @@ import 'package:miuchio/e2ee/x3dh_session.dart';
 
 import '../_sodium_setup.dart';
 import '_admin_test_helpers.dart';
+import '_authority_test_helpers.dart';
 
 Uint8List _albumId([int seed = 0xA1]) =>
     Uint8List.fromList(List<int>.filled(16, seed));
@@ -199,6 +200,42 @@ void main() {
       expect(req.wraps[0].senderSig.length, 64);
       expect(req.envelopeSig.length, 64);
       expect(req.memberSetHash.length, 32);
+    });
+
+    test('vouches for the creator at term 0 and anchors there first', () async {
+      final c = await _newCreatorStack();
+      final opkPub = await _opkPubFrom(c.svc, 0);
+      final bundle = await buildResponderBundle(
+        responder: c.svc,
+        spkTs: _spkTs,
+        opk: (idx: 0, keyPub: opkPub),
+      );
+      final authority = memoryAuthority(FakeAuthorityApi()).authority;
+      final caps = _CaptureEpochApi();
+
+      await EpochRotator(
+        epochs: caps,
+        prekeys: _StubPrekeyApi((_) => bundle),
+        identity: c.svc,
+        aks: c.aks,
+        authority: authority,
+        now: () => _now,
+      ).bootstrap(
+        albumIdBytes: _albumId(),
+        creatorMemberToken: c.senderToken,
+        creatorUserId: 'creator-user-id',
+      );
+
+      final note = caps.lastRequest!.signerNote!;
+      final ik = await c.svc.currentIkPub();
+      expect(note.note.memberToken, equals(c.senderToken));
+      expect(note.note.issuerTerm, 0);
+      expect(note.note.generation, 1);
+      expect(note.note.ikPub, equals(ik));
+      expect(await Sign.verify(ik, note.note.signedBytes(), note.sig), isTrue);
+      final chain = authority.chain(_albumId())!;
+      expect(chain.anchorTerm, 0);
+      expect(chain.currentAdmin.token, equals(c.senderToken));
     });
 
     test('self wrap is decryptable via the responder path', () async {

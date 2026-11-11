@@ -9,6 +9,7 @@ import 'package:miuchio/data/models/album_summary.dart';
 import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/domain/activity/activity_sync.dart';
 import 'package:miuchio/domain/albums/album_cleanup.dart';
+import 'package:miuchio/e2ee/album_authority.dart';
 import 'package:miuchio/e2ee/epoch_processor.dart';
 import 'package:miuchio/e2ee/identity.dart';
 import 'package:miuchio/e2ee/media_record.dart';
@@ -26,6 +27,7 @@ class RealtimeRouter {
   final AlbumCleanupQueue albumCleanup;
   final MemberRemovalCoordinator memberRemoval;
   final RotationRecoveryScheduler rotationRecovery;
+  final AlbumAuthority authority;
   final void Function(String albumId) onAlbumDeleted;
 
   RealtimeRouter({
@@ -37,6 +39,7 @@ class RealtimeRouter {
     required this.albumCleanup,
     required this.memberRemoval,
     required this.rotationRecovery,
+    required this.authority,
     required this.onAlbumDeleted,
   });
 
@@ -60,6 +63,8 @@ class RealtimeRouter {
         appState.notifyMemberChanged(albumStr);
       case 'e2ee.member_revoked':
         _memberRevoked(ev.payload);
+      case 'e2ee.admin_changed':
+        _adminChanged(ev.payload);
       // Carries only the album id, the listing says what changed
       case 'e2ee.album_updated':
         appState.refreshSummarySoon();
@@ -76,6 +81,23 @@ class RealtimeRouter {
     epochProcessor
         .handleEvent(albumId: albumId, epoch: epoch, joined: joined)
         .catchError((_) {});
+  }
+
+  // The role on screen is the server's word either way. A record that fails
+  // to verify only keeps this device trusting the admin it knew, so keys
+  // the new admin vouches for are refused until the chain checks out
+  void _adminChanged(Map<String, dynamic> payload) {
+    final albumStr = payload['album_id'] as String?;
+    if (albumStr == null) return;
+    final albumId = uuidToBytes(albumStr);
+    if (albumId == null) return;
+    unawaited(() async {
+      try {
+        await authority.sync(albumId);
+      } catch (_) {}
+      appState.refreshSummarySoon();
+      appState.notifyMemberChanged(albumStr);
+    }());
   }
 
   void _mediaAdded(Map<String, dynamic> payload) {
