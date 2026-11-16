@@ -180,9 +180,7 @@ abstract class PerfProbe {
 
   static void _onTimings(List<FrameTiming> timings) {
     if (timings.isEmpty) return;
-    final hz =
-        PlatformDispatcher.instance.displays.firstOrNull?.refreshRate ?? 60;
-    final budgetUs = 1e6 / (hz <= 0 ? 60 : hz);
+    final budgetUs = 1e6 / _refreshHz(timings);
     if (!_clocked) {
       _clocked = true;
       final last =
@@ -231,6 +229,34 @@ abstract class PerfProbe {
       _builds.clear();
     }
   }
+
+  // Android reports only the startup rate, and skipped frames mimic a slower
+  // panel, so the fastest rate seen between frames wins and sticks
+  static double _refreshHz(List<FrameTiming> timings) {
+    final starts = [
+      for (final t in timings) t.timestampInMicroseconds(FramePhase.vsyncStart)
+    ]..sort();
+    final votes = <double, int>{};
+    for (var i = 1; i < starts.length; i++) {
+      final gap = starts[i] - starts[i - 1];
+      for (final hz in _rates) {
+        if ((gap * hz / 1e6 - 1).abs() < .1) {
+          votes[hz] = (votes[hz] ?? 0) + 1;
+        }
+      }
+    }
+    for (final MapEntry(key: hz, value: n) in votes.entries) {
+      // A single short gap is a late callback
+      if (n >= 2 && hz > _hz) _hz = hz;
+    }
+    if (_hz > 0) return _hz;
+    final reported =
+        PlatformDispatcher.instance.displays.firstOrNull?.refreshRate;
+    return reported == null || reported <= 0 ? 60 : reported;
+  }
+
+  static const List<double> _rates = [60, 90, 120, 144];
+  static double _hz = 0;
 
   static void _report(
       String screen, List<FrameTiming> timings, double budgetUs) {
