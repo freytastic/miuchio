@@ -10,6 +10,7 @@ import 'package:miuchio/e2ee/prekey_api.dart' show HandleNotFoundException;
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/blur_scrim.dart';
 import 'package:miuchio/ui/widgets/caret_blink.dart';
+import 'package:miuchio/ui/widgets/peek_route.dart';
 import 'package:miuchio/ui/widgets/member_face.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
@@ -46,8 +47,7 @@ class AddPeopleSheet extends StatefulWidget {
     required String? myMiuchioId,
     required SendInvite onInvite,
   }) async {
-    final added = await Navigator.of(context).push(PageRouteBuilder<bool>(
-      opaque: false,
+    final added = await Navigator.of(context).push(GlassRoute<bool>(
       barrierColor: Colors.transparent,
       transitionDuration: Warm.springSnappy,
       reverseTransitionDuration: Warm.springSnappy,

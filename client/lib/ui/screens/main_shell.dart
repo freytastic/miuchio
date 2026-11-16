@@ -16,14 +16,14 @@ import 'package:miuchio/ui/shelf/album_chooser.dart';
 import 'package:miuchio/ui/shelf/profile_screen.dart';
 import 'package:miuchio/ui/shelf/shelf_screen.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/peek_route.dart';
 
 class MainShell extends StatelessWidget {
   const MainShell({super.key});
 
   // The glass sheet rises over the shelf, which stays visible behind it
   // Every other screen opens as a MaterialPageRoute for the platform's back
-  static Route<void> _rise(Widget page) => PageRouteBuilder<void>(
-        opaque: false,
+  static Route<void> _rise(Widget page) => GlassRoute<void>(
         pageBuilder: (_, __, ___) => page,
         transitionsBuilder: (_, a, __, child) => SlideTransition(
           position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)

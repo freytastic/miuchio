@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/album/album_copy.dart';
 import 'package:miuchio/ui/album/photo_peek.dart';
+import 'package:miuchio/ui/widgets/frozen_backdrop.dart';
 
 MediaRecord _shot({int blob = 1400000, DateTime? at}) => MediaRecord(
       id: 'm1',
@@ -183,7 +184,20 @@ void main() {
           .opacity,
       0,
     );
-    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byType(FrozenBackdrop), findsOneWidget);
+  });
+
+  testWidgets('the screen behind rests while the peek is open and returns '
+      'as it leaves', (tester) async {
+    await push(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('hold'), findsNothing);
+    expect(find.text('hold', skipOffstage: false), findsOneWidget);
+
+    Navigator.of(tester.element(find.byType(PhotoPeek))).pop();
+    await tester.pump();
+    expect(find.text('hold'), findsOneWidget,
+        reason: 'changes made behind the peek must show while it closes');
   });
 
   testWidgets('only tapping outside closes the peek', (tester) async {

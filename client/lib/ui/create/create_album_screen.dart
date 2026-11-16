@@ -184,21 +184,21 @@ class _CreateAlbumScreenState extends State<CreateAlbumScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
+    return GlassSheet(
+      child: Scaffold(
         backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Warm.glassInk),
-        title: const Text(CreateCopy.title,
-            style: TextStyle(
-                color: Warm.glassInk,
-                fontSize: 18,
-                fontWeight: FontWeight.w700)),
-      ),
-      body: GlassSheet(
-        child: SafeArea(
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Warm.glassInk),
+          title: const Text(CreateCopy.title,
+              style: TextStyle(
+                  color: Warm.glassInk,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+        ),
+        body: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),

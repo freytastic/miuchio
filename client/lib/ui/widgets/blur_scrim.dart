@@ -1,8 +1,6 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
-import 'package:miuchio/diagnostics/fx.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/frozen_backdrop.dart';
 
 class BlurScrim extends StatelessWidget {
   final Animation<double> progress;
@@ -22,23 +20,18 @@ class BlurScrim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget scrim = Fx.noBlur
-        ? ColoredBox(color: color)
-        : BackdropFilter(
-            blendMode: BlendMode.src,
-            filter: ui.ImageFilter.compose(
-              outer: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-              inner: ui.ColorFilter.matrix(Warm.saturation(saturation)),
-            ),
-            child: ColoredBox(color: color),
-          );
-    if (onTap != null) {
-      scrim = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: scrim,
-      );
-    }
-    return FadeTransition(opacity: progress, child: scrim);
+    final scrim = FrozenBackdrop(
+      sigma: sigma,
+      saturation: saturation,
+      color: color,
+      opacity: progress,
+      blendMode: BlendMode.src,
+    );
+    if (onTap == null) return scrim;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: scrim,
+    );
   }
 }
