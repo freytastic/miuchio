@@ -140,7 +140,7 @@ void main() {
     expect(run().toSet(), hasLength(2));
   });
 
-  test('each row carries its uploader\'s newest three photos', () {
+  test('each row carries its uploader\'s newest four photos', () {
     final out = attribute([
       shot('n5', 'noor', 6),
       shot('s1', 'sam', 5),
@@ -151,7 +151,7 @@ void main() {
     ], after: 0, through: 6);
 
     final noor = out.firstWhere((e) => e.uploaderToken == 'noor');
-    expect(noor.previews.map((r) => r.id), ['n5', 'n4', 'n3']);
+    expect(noor.previews.map((r) => r.id), ['n5', 'n4', 'n3', 'n2']);
     expect(out.firstWhere((e) => e.uploaderToken == 'sam').previews.single.id,
         's1');
   });

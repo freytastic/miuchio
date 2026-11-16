@@ -7,7 +7,7 @@ import 'package:miuchio/data/storage/activity_store.dart';
 import 'package:miuchio/domain/activity/activity_event.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
-import 'package:miuchio/ui/widgets/warm_button.dart';
+import 'package:miuchio/ui/widgets/page_bar.dart';
 
 import 'activity_card.dart';
 import 'activity_copy.dart';
@@ -20,6 +20,7 @@ class ActivityScreen extends StatefulWidget {
   final ActivityNames names;
   final Future<void> Function()? refresh;
   final ActivityThumb? thumb;
+  final ActivityAlbumPhoto? albumPhoto;
   final void Function(String albumId)? onOpenAlbum;
   // Only persisted verification resolves the alerted key
   final Future<void> Function(SafetyNumberChanged event)? onCompare;
@@ -31,6 +32,7 @@ class ActivityScreen extends StatefulWidget {
     required this.names,
     this.refresh,
     this.thumb,
+    this.albumPhoto,
     this.onOpenAlbum,
     this.onCompare,
     this.onUnreadChanged,
@@ -46,11 +48,18 @@ class _ActivityScreenState extends State<ActivityScreen> {
   bool _loading = true;
   // Hide answered cards while dismissal is still being saved
   final Set<String> _quieted = {};
+  final ScrollController _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   void _select(ActivityLane lane) {
@@ -143,66 +152,95 @@ class _ActivityScreenState extends State<ActivityScreen> {
       backgroundColor: Warm.ground,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding:
-              const EdgeInsets.fromLTRB(Warm.pagePad, 21, Warm.pagePad, 48),
-          children: [
-            const Align(alignment: Alignment.centerLeft, child: _Back()),
-            const SizedBox(height: 27),
-            _Heading(say: say),
-            const SizedBox(height: 20),
-            _Segmented(
-              lane: _lane,
-              onSelect: _select,
-              securityMeta:
-                  needs.isEmpty ? 'Up to date' : '${needs.length} to review',
-              albumsMeta: '$photos photo${photos == 1 ? '' : 's'}',
-              securityAttention:
-                  needs.isNotEmpty || security.any((r) => !r.seen),
-              albumsAttention: albums.any((r) => !r.seen),
+        child: CustomScrollView(
+          controller: _scroll,
+          slivers: [
+            PageBar(
+              scroll: _scroll,
+              after: 120,
+              pad: Warm.pagePad,
+              backKey: const ValueKey('activity-back'),
+              title: const Text('Activity'),
+            ),
+            SliverPadding(
+              padding:
+                  const EdgeInsets.fromLTRB(Warm.pagePad, 36, Warm.pagePad, 0),
+              sliver: SliverList.list(children: [
+                _Heading(say: say),
+                const SizedBox(height: 20),
+                _Segmented(
+                  lane: _lane,
+                  onSelect: _select,
+                  securityMeta: needs.isEmpty
+                      ? 'Up to date'
+                      : '${needs.length} to review',
+                  albumsMeta: '$photos photo${photos == 1 ? '' : 's'}',
+                  securityAttention:
+                      needs.isNotEmpty || security.any((r) => !r.seen),
+                  albumsAttention: albums.any((r) => !r.seen),
+                ),
+              ]),
             ),
             if (!_loading)
-              AnimatedSwitcher(
-                duration: _swap,
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                layoutBuilder: (current, previous) => Stack(
-                  alignment: Alignment.topCenter,
-                  children: [...previous, if (current != null) current],
+              _LaneFade(
+                lane: _lane,
+                sliver: SliverMainAxisGroup(
+                  key: ValueKey(_lane),
+                  slivers: _lane == ActivityLane.security
+                      ? _securitySlivers(needs, rest)
+                      : _albumsSlivers(albums),
                 ),
-                transitionBuilder: (child, a) => FadeTransition(
-                  opacity: a,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, 0.015),
-                      end: Offset.zero,
-                    ).animate(a),
-                    child: child,
-                  ),
-                ),
-                child: _lane == ActivityLane.security
-                    ? _SecurityPanel(
-                        key: const ValueKey(ActivityLane.security),
-                        needs: needs,
-                        rest: rest,
-                        names: widget.names,
-                        onQuiet: _handleQuiet,
-                        onGo: _handleGo,
-                        onOpenAlbum: widget.onOpenAlbum,
-                      )
-                    : _AlbumsPanel(
-                        key: const ValueKey(ActivityLane.albums),
-                        rows: albums,
-                        names: widget.names,
-                        thumb: widget.thumb,
-                        onOpenAlbum: widget.onOpenAlbum,
-                      ),
               ),
+            const SliverToBoxAdapter(child: SizedBox(height: 48)),
           ],
         ),
       ),
     );
   }
+
+  List<Widget> _securitySlivers(
+      List<StoredActivity> needs, List<StoredActivity> rest) {
+    final names = widget.names;
+    return [
+      if (needs.isEmpty && rest.isEmpty)
+        const SliverToBoxAdapter(
+            child:
+                _Blank('Nothing has changed about who can see your albums.')),
+      if (needs.isNotEmpty)
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(Warm.pagePad, 30, Warm.pagePad, 0),
+          sliver: SliverList.list(children: [
+            for (var i = 0; i < needs.length; i++)
+              _Enter(
+                key: ValueKey(needs[i].event.id),
+                index: i,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: ActivityCard(
+                    copy: cardCopyFor(needs[i].event, names),
+                    alarm: needs[i].event is SafetyNumberChanged,
+                    face: _personToken(needs[i].event) != null
+                        ? _face(needs[i].event, names, widget.albumPhoto,
+                            alarm: needs[i].event is SafetyNumberChanged)
+                        : null,
+                    onGo: () => _handleGo(needs[i].event),
+                    onQuiet: () => _handleQuiet(needs[i].event),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      ..._grouped(rest, names, widget.onOpenAlbum, null, widget.albumPhoto),
+    ];
+  }
+
+  List<Widget> _albumsSlivers(List<StoredActivity> rows) => [
+        if (rows.isEmpty)
+          const SliverToBoxAdapter(
+              child: _Blank('Nothing has been added to your albums yet.')),
+        ..._grouped(rows, widget.names, widget.onOpenAlbum, widget.thumb,
+            widget.albumPhoto),
+      ];
 
   void _handleQuiet(ActivityEvent e) => _answer(e);
 
@@ -227,20 +265,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
       default:
         break;
     }
-  }
-}
-
-class _Back extends StatelessWidget {
-  const _Back();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      key: ValueKey('activity-back'),
-      width: 48,
-      height: 48,
-      child: Align(alignment: Alignment.centerLeft, child: WarmBack()),
-    );
   }
 }
 
@@ -280,7 +304,7 @@ class _Heading extends StatelessWidget {
   }
 }
 
-class _Segmented extends StatelessWidget {
+class _Segmented extends StatefulWidget {
   final ActivityLane lane;
   final void Function(ActivityLane lane) onSelect;
   final String securityMeta;
@@ -298,25 +322,67 @@ class _Segmented extends StatelessWidget {
   });
 
   @override
+  State<_Segmented> createState() => _SegmentedState();
+}
+
+class _SegmentedState extends State<_Segmented> {
+  final _albumsKey = GlobalKey();
+  // Where the Albums tab starts, read after layout so the line can slide to it
+  double _albumsLeft = 0;
+
+  void _measure() {
+    final tab = _albumsKey.currentContext?.findRenderObject() as RenderBox?;
+    final row = context.findRenderObject() as RenderBox?;
+    if (tab == null || row == null || !tab.hasSize) return;
+    final left = tab.localToGlobal(Offset.zero, ancestor: row).dx;
+    if (left != _albumsLeft) setState(() => _albumsLeft = left);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Row(
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _measure();
+    });
+    final albums = widget.lane == ActivityLane.albums;
+    return Stack(
       children: [
-        _Tab(
-          label: 'Security',
-          meta: securityMeta,
-          active: lane == ActivityLane.security,
-          attention: securityAttention,
-          attentionKey: const ValueKey('attention-security'),
-          onTap: () => onSelect(ActivityLane.security),
+        Row(
+          children: [
+            _Tab(
+              label: 'Security',
+              meta: widget.securityMeta,
+              active: !albums,
+              attention: widget.securityAttention,
+              attentionKey: const ValueKey('attention-security'),
+              onTap: () => widget.onSelect(ActivityLane.security),
+            ),
+            const SizedBox(width: 26),
+            _Tab(
+              key: _albumsKey,
+              label: 'Albums',
+              meta: widget.albumsMeta,
+              active: albums,
+              attention: widget.albumsAttention,
+              attentionKey: const ValueKey('attention-albums'),
+              onTap: () => widget.onSelect(ActivityLane.albums),
+            ),
+          ],
         ),
-        const SizedBox(width: 26),
-        _Tab(
-          label: 'Albums',
-          meta: albumsMeta,
-          active: lane == ActivityLane.albums,
-          attention: albumsAttention,
-          attentionKey: const ValueKey('attention-albums'),
-          onTap: () => onSelect(ActivityLane.albums),
+        AnimatedPositioned(
+          duration: Warm.springSnappy,
+          curve: Warm.easeOut,
+          left: albums ? _albumsLeft : 0,
+          bottom: 0,
+          child: IgnorePointer(
+            child: Container(
+              width: 18,
+              height: 2.5,
+              decoration: BoxDecoration(
+                color: Warm.ink,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -332,6 +398,7 @@ class _Tab extends StatelessWidget {
   final VoidCallback onTap;
 
   const _Tab({
+    super.key,
     required this.label,
     required this.meta,
     required this.active,
@@ -352,50 +419,31 @@ class _Tab extends StatelessWidget {
         onTap: onTap,
         child: SizedBox(
           height: 44,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedDefaultTextStyle(
-                      duration: _swap,
-                      style: Warm.acTab
-                          .copyWith(color: active ? Warm.ink : Warm.inkFaint),
-                      child: Text(label, maxLines: 1),
-                    ),
-                    if (attention) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        key: attentionKey,
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Warm.warn,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Positioned(
-                left: 0,
-                bottom: 0,
-                child: AnimatedContainer(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedDefaultTextStyle(
                   duration: _swap,
-                  curve: Curves.easeOutCubic,
-                  width: active ? 18 : 0,
-                  height: 2.5,
-                  decoration: BoxDecoration(
-                    color: Warm.ink,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                  style: Warm.acTab
+                      .copyWith(color: active ? Warm.ink : Warm.inkFaint),
+                  child: Text(label, maxLines: 1),
                 ),
-              ),
-            ],
+                if (attention) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    key: attentionKey,
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Warm.warn,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -403,117 +451,64 @@ class _Tab extends StatelessWidget {
   }
 }
 
-class _SecurityPanel extends StatelessWidget {
-  final List<StoredActivity> needs;
-  final List<StoredActivity> rest;
-  final ActivityNames names;
-  final void Function(ActivityEvent e) onQuiet;
-  final void Function(ActivityEvent e) onGo;
-  final void Function(String albumId)? onOpenAlbum;
-
-  const _SecurityPanel({
-    super.key,
-    required this.needs,
-    required this.rest,
-    required this.names,
-    required this.onQuiet,
-    required this.onGo,
-    this.onOpenAlbum,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (needs.isEmpty && rest.isEmpty)
-          const _Blank('Nothing has changed about who can see your albums.'),
-        if (needs.isNotEmpty) const SizedBox(height: 30),
-        for (var i = 0; i < needs.length; i++)
-          _Enter(
-            key: ValueKey(needs[i].event.id),
-            index: i,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ActivityCard(
-                copy: cardCopyFor(needs[i].event, names),
-                alarm: needs[i].event is SafetyNumberChanged,
-                face: _personToken(needs[i].event) != null
-                    ? _face(needs[i].event, names,
-                        alarm: needs[i].event is SafetyNumberChanged)
-                    : null,
-                onGo: () => onGo(needs[i].event),
-                onQuiet: () => onQuiet(needs[i].event),
-              ),
-            ),
-          ),
-        ..._grouped(rest, names, onOpenAlbum, null),
-      ],
-    );
-  }
-}
-
-class _AlbumsPanel extends StatelessWidget {
-  final List<StoredActivity> rows;
-  final ActivityNames names;
-  final ActivityThumb? thumb;
-  final void Function(String albumId)? onOpenAlbum;
-
-  const _AlbumsPanel({
-    super.key,
-    required this.rows,
-    required this.names,
-    this.thumb,
-    this.onOpenAlbum,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (rows.isEmpty)
-          const _Blank('Nothing has been added to your albums yet.'),
-        ..._grouped(rows, names, onOpenAlbum, thumb),
-      ],
-    );
-  }
-}
-
+// One section per day, its label sticking under the bar while its rows pass
 List<Widget> _grouped(
   List<StoredActivity> rows,
   ActivityNames names,
   void Function(String albumId)? onOpenAlbum,
   ActivityThumb? thumb,
+  ActivityAlbumPhoto? albumPhoto,
 ) {
-  final out = <Widget>[];
-  String? lastDay;
-  var i = 0;
+  final days = <(String, List<StoredActivity>)>[];
   for (final r in rows) {
     final day = dayLabel(r.event.at);
-    if (day != lastDay) {
-      out.add(Padding(
-        padding: const EdgeInsets.only(top: 30, bottom: 13),
-        child: Text(day.toUpperCase(), style: Warm.acDay),
-      ));
-      lastDay = day;
+    if (days.isNotEmpty && days.last.$1 == day) {
+      days.last.$2.add(r);
+    } else {
+      days.add((day, [r]));
     }
-    final e = r.event;
-    final previews = e is PhotosAdded ? e.previews : const <MediaRecord>[];
-    out.add(_Enter(
-      key: ValueKey(e.id),
-      index: i++,
-      child: ActivityRow(
-        line: lineFor(e, names),
-        face: _face(e, names),
-        previews: previews,
-        more: e is PhotosAdded ? math.max(0, e.count - previews.length) : 0,
-        thumb: thumb,
-        onTap: onOpenAlbum == null ? null : () => onOpenAlbum(e.albumId),
-      ),
-    ));
   }
-  return out;
+  var i = 0;
+  return [
+    for (final (day, rows) in days)
+      SliverMainAxisGroup(slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 18)),
+        PinnedLabel(
+          padding: const EdgeInsets.fromLTRB(Warm.pagePad, 12, Warm.pagePad, 9),
+          child: Text(day.toUpperCase(), style: Warm.acDay),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(Warm.pagePad, 4, Warm.pagePad, 0),
+          sliver: SliverList.list(children: [
+            for (final r in rows)
+              _row(r.event, i++, names, onOpenAlbum, thumb, albumPhoto),
+          ]),
+        ),
+      ]),
+  ];
+}
+
+Widget _row(
+  ActivityEvent e,
+  int index,
+  ActivityNames names,
+  void Function(String albumId)? onOpenAlbum,
+  ActivityThumb? thumb,
+  ActivityAlbumPhoto? albumPhoto,
+) {
+  final previews = e is PhotosAdded ? e.previews : const <MediaRecord>[];
+  return _Enter(
+    key: ValueKey(e.id),
+    index: index,
+    child: ActivityRow(
+      line: lineFor(e, names),
+      face: _face(e, names, albumPhoto, badge: true),
+      previews: previews,
+      more: e is PhotosAdded ? math.max(0, e.count - previews.length) : 0,
+      thumb: thumb,
+      onTap: onOpenAlbum == null ? null : () => onOpenAlbum(e.albumId),
+    ),
+  );
 }
 
 String? _personToken(ActivityEvent e) => switch (e) {
@@ -525,14 +520,73 @@ String? _personToken(ActivityEvent e) => switch (e) {
       _ => null,
     };
 
-ActivityFace _face(ActivityEvent e, ActivityNames names, {bool alarm = false}) {
+// What happened, as a small mark on the face, since the person is the face
+IconData? _mark(ActivityEvent e) => switch (e) {
+      MemberJoined() => Icons.person_add_alt_rounded,
+      MemberLeft() => Icons.logout_rounded,
+      CoverChanged() => Icons.photo_outlined,
+      PhotosAdded() => Icons.add_photo_alternate_outlined,
+      SafetyNumberChanged() => Icons.fingerprint_rounded,
+      _ => null,
+    };
+
+// Events about you have no face, so their glyph stands in for one
+IconData? _glyph(ActivityEvent e) => switch (e) {
+      OwnerChanged() => Icons.verified_user_outlined,
+      InvitedToAlbum() => Icons.photo_album_outlined,
+      RemovedFromAlbum() => Icons.block_rounded,
+      _ => null,
+    };
+
+ActivityFace _face(
+    ActivityEvent e, ActivityNames names, ActivityAlbumPhoto? albumPhoto,
+    {bool alarm = false, bool badge = false}) {
   final token = _personToken(e);
   return ActivityFace(
+    // Ownership is about the album, so the album's newest photo shows it
+    albumPhoto: e is OwnerChanged ? albumPhoto?.call(e.albumId) : null,
     albumId: e.albumId,
     name: token == null ? null : names.memberName(e.albumId, token),
     token: token,
     alarm: alarm,
+    glyph: token == null ? _glyph(e) : null,
+    mark: badge && token != null ? _mark(e) : null,
+    markWarn: e is SafetyNumberChanged && !e.verified,
   );
+}
+
+class _LaneFade extends StatefulWidget {
+  final ActivityLane lane;
+  final Widget sliver;
+
+  const _LaneFade({required this.lane, required this.sliver});
+
+  @override
+  State<_LaneFade> createState() => _LaneFadeState();
+}
+
+class _LaneFadeState extends State<_LaneFade>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _in =
+      AnimationController(vsync: this, duration: _swap, value: 1);
+  late final Animation<double> _opacity =
+      CurvedAnimation(parent: _in, curve: Curves.easeOutCubic);
+
+  @override
+  void didUpdateWidget(_LaneFade old) {
+    super.didUpdateWidget(old);
+    if (old.lane != widget.lane) _in.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _in.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      SliverFadeTransition(opacity: _opacity, sliver: widget.sliver);
 }
 
 class _Enter extends StatelessWidget {
@@ -562,7 +616,7 @@ class _Blank extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 60),
+      padding: const EdgeInsets.fromLTRB(Warm.pagePad, 60, Warm.pagePad, 0),
       child: Text(line, style: Warm.acBlank),
     );
   }
