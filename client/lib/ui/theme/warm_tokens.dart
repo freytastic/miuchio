@@ -91,6 +91,11 @@ abstract class Warm {
   static const double otpCellHeight = 56;
   static const double otpCellRadius = 14;
 
+  // Pushed pages pin their back button here; sticky labels sit right below
+  static const double pageBarHeight = 60;
+  // Nearly solid so the bar reads without a blur, which old phones pay for
+  static const Color barGround = Color(0xF5F6F3EE);
+
   // Spacing
   static const double pagePad = 40;
   static const double headingToLead = 22;
@@ -216,6 +221,11 @@ abstract class Warm {
       _t(13, 560, letterSpacing: 0.052, color: inkFaint);
   static TextStyle get avatarInitial => _t(14, 600, color: inkSoft);
 
+  // Album day sections
+  static TextStyle get albumDay => _t(13.5, 600, letterSpacing: -0.15);
+  static TextStyle get albumDayCount => _t(12, 500,
+      color: inkFaint, features: const [FontFeature.tabularFigures()]);
+
   // Shelf view picker
   static TextStyle get viewSaid => _t(12.5, 560, color: inkFaint);
 
@@ -266,6 +276,7 @@ abstract class Warm {
   static TextStyle get version => _t(12, 450, color: inkFaint);
 
   // Settings pages
+  static TextStyle get pageBarTitle => _t(15, 650, letterSpacing: -0.2);
   static TextStyle get pageTitle => _t(30, 620, letterSpacing: -0.9);
   static TextStyle get pageLead =>
       _t(16, 400, letterSpacing: -0.16, height: 1.45, color: inkSoft);
