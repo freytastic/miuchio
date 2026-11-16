@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
@@ -9,6 +11,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:miuchio/crypto/primitives.dart';
 import 'package:miuchio/crypto/wire_format.dart';
 import 'package:miuchio/data/models/album_model.dart';
+import 'package:miuchio/diagnostics/trace.dart';
 import 'package:miuchio/domain/albums/album_cleanup.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 
@@ -147,7 +150,44 @@ class MediaSealedCache
     return cache;
   }
 
-  Future<void> close() => _db.close();
+  Future<void> close() async {
+    await _flushTouches();
+    await _db.close();
+  }
+
+  // Access times only order eviction, so they are batched off the display path
+  final Set<String> _touched = {};
+  Timer? _touchTimer;
+  static const Duration _touchDelay = Duration(seconds: 2);
+  static const int _touchChunk = 500;
+
+  void _touch(String mediaId) {
+    _touched.add(mediaId);
+    _touchTimer ??= Timer(_touchDelay, () => unawaited(_flushTouches()));
+  }
+
+  Future<void> _flushTouches() async {
+    _touchTimer?.cancel();
+    _touchTimer = null;
+    if (_touched.isEmpty) return;
+    final ids = _touched.toList();
+    _touched.clear();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    try {
+      await _db.transaction((txn) async {
+        for (var i = 0; i < ids.length; i += _touchChunk) {
+          final chunk = ids.sublist(i, math.min(i + _touchChunk, ids.length));
+          await txn.rawUpdate(
+            'UPDATE media_records SET last_access = ? WHERE media_id IN '
+            '(${List.filled(chunk.length, '?').join(', ')})',
+            [now, ...chunk],
+          );
+        }
+      });
+    } catch (_) {
+      // A lost access time only shifts eviction order
+    }
+  }
 
   @override
   Future<List<AlbumModel>> loadAlbums() async {
@@ -374,15 +414,14 @@ class MediaSealedCache
     if (!f.existsSync()) return null;
     Uint8List wire;
     try {
-      wire = await f.readAsBytes();
+      wire = await Trace.measure('media.l2File', f.readAsBytes);
     } catch (_) {
       return null;
     }
     try {
-      final pt = await Aead.decrypt(wire: wire, key: _cacheKey, aad: _aad(k));
-      await _db.update('media_records',
-          {'last_access': DateTime.now().millisecondsSinceEpoch},
-          where: 'media_id = ?', whereArgs: [k.mediaId]);
+      final pt = await Trace.measure('media.l2Open',
+          () => Aead.decrypt(wire: wire, key: _cacheKey, aad: _aad(k)));
+      _touch(k.mediaId);
       return pt;
     } on AeadAuthFailed {
       // Tampered or sealed under another key, purge and miss
@@ -433,6 +472,7 @@ class MediaSealedCache
 
   // Photo pressure must not evict thumbnails
   Future<void> _evictIfOverBudget() async {
+    await _flushTouches();
     await _evictDisposable();
     await _evictDurable();
     // Keep metadata only rows so albums remain available offline
