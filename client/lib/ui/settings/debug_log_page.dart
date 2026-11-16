@@ -8,6 +8,7 @@ import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/settings/debug_log_copy.dart';
 import 'package:miuchio/ui/settings/settings_page.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
+import 'package:miuchio/ui/widgets/pressable_scale.dart';
 
 const String _mono = 'monospace';
 
@@ -103,21 +104,40 @@ class _DebugLogPageState extends State<DebugLogPage> {
       ],
       children: [
         const SettingsLead(DebugLogCopy.lead),
-        const SizedBox(height: 18),
-        _ActionRow(
-          title: DebugLogCopy.shareLog,
-          onTap: all.isEmpty ? null : _review,
-        ),
-        const _ActionRow(title: DebugLogCopy.send, value: DebugLogCopy.soon),
-        _ActionRow(
-          title: DebugLogCopy.clear,
-          warn: true,
-          chevron: false,
-          onTap: all.isEmpty ? null : _clear,
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            _Tool(
+              icon: Icons.ios_share_rounded,
+              label: DebugLogCopy.share,
+              onTap: all.isEmpty ? null : _review,
+            ),
+            const SizedBox(width: 10),
+            const _Tool(
+              icon: Icons.arrow_outward_rounded,
+              label: DebugLogCopy.send,
+              soon: true,
+            ),
+            const SizedBox(width: 10),
+            _Tool(
+              icon: Icons.delete_outline_rounded,
+              label: DebugLogCopy.clearShort,
+              warn: true,
+              onTap: all.isEmpty ? null : _clear,
+            ),
+          ],
         ),
         const SizedBox(height: 22),
-        _Filter(
-          problemsOnly: _problemsOnly,
+        SettingsPills<bool>(
+          options: [
+            (DebugLogCopy.all, false, null),
+            (
+              DebugLogCopy.problems,
+              true,
+              all.where((e) => e.level != DebugLevel.info).length
+            ),
+          ],
+          value: _problemsOnly,
           onChanged: (v) => setState(() => _problemsOnly = v),
         ),
       ],
@@ -240,44 +260,63 @@ class _LevelMark extends StatelessWidget {
   }
 }
 
-class _Filter extends StatelessWidget {
-  final bool problemsOnly;
-  final ValueChanged<bool> onChanged;
+class _Tool extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool warn;
+  final bool soon;
+  final VoidCallback? onTap;
 
-  const _Filter({required this.problemsOnly, required this.onChanged});
+  const _Tool({
+    required this.icon,
+    required this.label,
+    this.warn = false,
+    this.soon = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    Widget pill(String label, bool selected, bool value) => Semantics(
-          button: true,
-          selected: selected,
-          child: GestureDetector(
-            onTap: () {
-              if (selected) return;
-              HapticFeedback.selectionClick();
-              onChanged(value);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              decoration: BoxDecoration(
-                color: selected ? Warm.ink : const Color(0x00000000),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: selected ? Warm.ink : Warm.inkGhost, width: 1),
-              ),
-              child: Text(label,
-                  style: Warm.meta
-                      .copyWith(color: selected ? Warm.ctaInk : Warm.inkSoft)),
+    final color = onTap == null
+        ? Warm.inkFaint
+        : warn
+            ? Warm.warn
+            : Warm.ink;
+    return Expanded(
+      child: Semantics(
+        button: true,
+        enabled: onTap != null,
+        label: label,
+        excludeSemantics: true,
+        child: PressableScale(
+          onTap: onTap,
+          haptic: true,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 10),
+            decoration: BoxDecoration(
+              color: Warm.groundLift,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                Icon(icon, size: 20, color: color),
+                const SizedBox(height: 6),
+                Text(label,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    style: Warm.meta.copyWith(
+                        fontWeight: FontWeight.w500,
+                        fontVariations: const [FontVariation('wght', 560)],
+                        color: color)),
+                if (soon)
+                  Text(DebugLogCopy.soon,
+                      style: Warm.sectionLabel
+                          .copyWith(fontSize: 10.5, letterSpacing: 0)),
+              ],
             ),
           ),
-        );
-    return Row(
-      children: [
-        pill(DebugLogCopy.all, !problemsOnly, false),
-        const SizedBox(width: 8),
-        pill(DebugLogCopy.problems, problemsOnly, true),
-      ],
+        ),
+      ),
     );
   }
 }
@@ -286,15 +325,11 @@ class _Filter extends StatelessWidget {
 // a muted row instead of a stray button
 class _ActionRow extends StatelessWidget {
   final String title;
-  final String? value;
-  final bool warn;
   final bool chevron;
   final VoidCallback? onTap;
 
   const _ActionRow({
     required this.title,
-    this.value,
-    this.warn = false,
     this.chevron = true,
     this.onTap,
   });
@@ -302,11 +337,7 @@ class _ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    final color = !enabled
-        ? Warm.inkFaint
-        : warn
-            ? Warm.warn
-            : Warm.ink;
+    final color = enabled ? Warm.ink : Warm.inkFaint;
     return Semantics(
       button: true,
       enabled: enabled,
@@ -325,9 +356,6 @@ class _ActionRow extends StatelessWidget {
               Expanded(
                 child: Text(title, style: Warm.rowTitle.copyWith(color: color)),
               ),
-              if (value != null)
-                Text(value!,
-                    style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
               if (enabled && chevron)
                 const Icon(Icons.chevron_right_rounded,
                     size: 17, color: Warm.inkGhost),

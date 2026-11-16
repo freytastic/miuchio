@@ -173,6 +173,12 @@ abstract final class AlbumCopy {
   static const deletePhotos = 'Delete my photos';
   static const deletePhotosNote = "They're deleted for everyone. Copies people "
       'saved stay on their phones.';
+  // Beside a picture of the album, the notes only add what it can't show
+  static const keepPhotosShort = 'Still count toward your storage.';
+  static const deletePhotosShort = 'Copies people saved stay on their phones.';
+  static const leaveYours = 'You';
+  static const leaveKeptSay = 'Everyone can still see them';
+  static const leaveGoneSay = 'Gone for everyone';
   static const leaveCancel = 'Stay';
   static const leaveFailed = "Couldn't leave the album.";
 

@@ -51,10 +51,9 @@ abstract final class SafetyCopy {
   static const blockedEmpty = "You haven't blocked anyone.";
   static const blockedLoadFailed = "Couldn't load your blocked list.";
   static const blockedSomeone = 'Someone you blocked';
-  static String blockedOn(String day) => 'Blocked $day';
+  static String blockedSince(String day) => 'Since $day';
   static const unblock = 'Unblock';
-  static String unblockTitle(String? name) =>
-      name == null ? 'Unblock this person?' : 'Unblock $name?';
+  static const unblockArmed = 'Unblock?';
   static const unblockBody = 'You can add each other again.';
   static const unblockFailed = "Couldn't unblock them. Try again.";
 

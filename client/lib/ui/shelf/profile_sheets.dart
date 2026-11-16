@@ -3,47 +3,68 @@ part of 'profile_screen.dart';
 enum _PhotoChoice { pick, remove }
 
 class _PhotoSheet extends StatelessWidget {
-  final bool hasPhoto;
+  final Uint8List? photo;
 
-  const _PhotoSheet({required this.hasPhoto});
+  const _PhotoSheet({required this.photo});
 
   static Future<_PhotoChoice?> show(BuildContext context,
-          {required bool hasPhoto}) =>
+          {required Uint8List? photo}) =>
       showModalBottomSheet<_PhotoChoice>(
         context: context,
         backgroundColor: Warm.ground,
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
-        builder: (_) => _PhotoSheet(hasPhoto: hasPhoto),
+        builder: (_) => _PhotoSheet(photo: photo),
       );
 
   @override
   Widget build(BuildContext context) {
+    final hasPhoto = photo != null;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 22),
+        padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const _Grip(),
-            const SizedBox(height: 10),
-            _SheetRow(
-              icon: Icons.photo_outlined,
-              label: hasPhoto ? 'Choose a new photo' : 'Choose a photo',
-              onTap: () => Navigator.of(context).pop(_PhotoChoice.pick),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _Face(photo: photo, size: 58, iconSize: 26),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Profile photo',
+                          style: Warm.cardTitle.copyWith(letterSpacing: -0.3)),
+                      const SizedBox(height: 2),
+                      Text('Only people in your albums can see it.',
+                          style: Warm.rowValue.copyWith(color: Warm.inkFaint)),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            if (hasPhoto)
-              _SheetRow(
-                icon: Icons.delete_outline_rounded,
-                label: 'Remove photo',
-                warn: true,
-                onTap: () => Navigator.of(context).pop(_PhotoChoice.remove),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
-              child: Text('Only people in your albums can see it.',
-                  style: Warm.pageSoft),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                _SheetAction(
+                  icon: Icons.photo_outlined,
+                  label: hasPhoto ? 'New photo' : 'Choose photo',
+                  onTap: () => Navigator.of(context).pop(_PhotoChoice.pick),
+                ),
+                if (hasPhoto) ...[
+                  const SizedBox(width: 10),
+                  _SheetAction(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Remove',
+                    warn: true,
+                    onTap: () => Navigator.of(context).pop(_PhotoChoice.remove),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
@@ -52,13 +73,13 @@ class _PhotoSheet extends StatelessWidget {
   }
 }
 
-class _SheetRow extends StatelessWidget {
+class _SheetAction extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool warn;
   final VoidCallback onTap;
 
-  const _SheetRow({
+  const _SheetAction({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -68,19 +89,28 @@ class _SheetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = warn ? Warm.warn : Warm.ink;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 54,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Row(
-            children: [
-              Icon(icon, size: 20, color: color),
-              const SizedBox(width: 14),
-              Text(label, style: Warm.sheetRow.copyWith(color: color)),
-            ],
+    return Expanded(
+      child: Semantics(
+        button: true,
+        label: label,
+        excludeSemantics: true,
+        child: PressableScale(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(8, 16, 8, 14),
+            decoration: BoxDecoration(
+              color: Warm.groundLift,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: Warm.stoneShadow,
+            ),
+            child: Column(
+              children: [
+                Icon(icon, size: 22, color: color),
+                const SizedBox(height: 7),
+                Text(label,
+                    style: Warm.rowTitle.copyWith(fontSize: 14, color: color)),
+              ],
+            ),
           ),
         ),
       ),

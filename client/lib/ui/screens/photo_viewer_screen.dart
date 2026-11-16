@@ -10,6 +10,35 @@ import 'package:miuchio/ui/album/photo_sheets.dart';
 import 'package:miuchio/ui/widgets/encrypted_image.dart';
 import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
 
+// The album shows through only while a pull is under way, so the rest of the
+// time it is not painted, and a pull that closes fades the viewer out instead
+// of sliding it away
+class PhotoViewerRoute<T> extends MaterialPageRoute<T> {
+  PhotoViewerRoute({required super.builder});
+
+  static const _fadeOut = Duration(milliseconds: 200);
+
+  bool _fade = false;
+
+  void _reveal(bool on) {
+    if (overlayEntries.isNotEmpty) overlayEntries.first.opaque = !on;
+  }
+
+  void _closeByPull() {
+    _fade = true;
+    controller?.reverseDuration = _fadeOut;
+    navigator?.pop();
+  }
+
+  @override
+  Widget buildTransitions(BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation, Widget child) =>
+      _fade
+          ? FadeTransition(opacity: animation, child: child)
+          : super
+              .buildTransitions(context, animation, secondaryAnimation, child);
+}
+
 class PhotoViewerScreen extends StatefulWidget {
   final List<MediaRecord> records;
   final int initialIndex;
@@ -40,9 +69,14 @@ class PhotoViewerScreen extends StatefulWidget {
   State<PhotoViewerScreen> createState() => _PhotoViewerScreenState();
 }
 
-class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
+class _PhotoViewerScreenState extends State<PhotoViewerScreen>
+    with SingleTickerProviderStateMixin {
   static const _swipe = 70.0;
   static const _flick = 520.0;
+  // Pull down past this, or flick, to put the photo back
+  static const _pullClose = 110.0;
+  static const _pullFlick = 600.0;
+  static const _pullFade = 420.0;
 
   late final List<MediaRecord> _records = [...widget.records];
   late final PageController _pages =
@@ -56,11 +90,32 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   int _fingers = 0;
   String? _lastDeleted;
   double _dragY = 0;
+  // The photo follows a downward drag, so only the pull repaints, not the page
+  final ValueNotifier<double> _pull = ValueNotifier(0);
+  bool _pulling = false;
+  late final AnimationController _settle;
+  double _settleFrom = 0;
 
   MediaRecord get _current => _records[_index];
 
   @override
+  void initState() {
+    super.initState();
+    _settle = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 320))
+      ..addListener(() => _pull.value =
+          _settleFrom * (1 - Warm.easeOut.transform(_settle.value)));
+  }
+
+  PhotoViewerRoute<dynamic>? get _route {
+    final route = ModalRoute.of(context);
+    return route is PhotoViewerRoute ? route : null;
+  }
+
+  @override
   void dispose() {
+    _settle.dispose();
+    _pull.dispose();
     _pages.dispose();
     super.dispose();
   }
@@ -88,18 +143,51 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   void _touch(int by) {
     final was = _fingers > 1;
     _fingers = (_fingers + by).clamp(0, 10);
-    if (was != _fingers > 1) setState(() {});
+    if (was == _fingers > 1) return;
+    // A pinch takes the gesture from a pull, which would otherwise stay put
+    if (_fingers > 1 && _pulling) {
+      _dragY = 0;
+      _putBack();
+    }
+    setState(() {});
+  }
+
+  // A drag during a settle carries on from where the photo is
+  void _onVerticalStart(DragStartDetails _) {
+    _settle.stop();
+    _dragY = _pull.value;
+  }
+
+  void _onVerticalUpdate(DragUpdateDetails d) {
+    _dragY += d.delta.dy;
+    if (!_pulling && _dragY > 0) {
+      _settle.stop();
+      _route?._reveal(true);
+      setState(() => _pulling = true);
+    }
+    if (_pulling) _pull.value = _dragY.clamp(0.0, double.infinity);
   }
 
   void _onVerticalEnd(DragEndDetails d) {
     final v = d.primaryVelocity ?? 0;
     final dy = _dragY;
     _dragY = 0;
-    if (dy < -_swipe || v < -_flick) {
-      _details();
-    } else if (dy > _swipe * 1.3 || v > _flick) {
-      Navigator.of(context).maybePop();
+    if (_pulling && (dy > _pullClose || v > _pullFlick)) {
+      final route = _route;
+      route == null ? Navigator.of(context).maybePop() : route._closeByPull();
+      return;
     }
+    if (_pulling) _putBack();
+    if (dy < -_swipe || v < -_flick) _details();
+  }
+
+  void _putBack() {
+    _settleFrom = _pull.value;
+    _settle.forward(from: 0).whenComplete(() {
+      if (!mounted || _pull.value > 0) return;
+      _route?._reveal(false);
+      setState(() => _pulling = false);
+    });
   }
 
   Future<void> _delete() async {
@@ -149,7 +237,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     }
     final record = _current;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -163,47 +251,65 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
+          ValueListenableBuilder<double>(
+            valueListenable: _pull,
+            builder: (_, pull, __) => ColoredBox(
+              color: Colors.black
+                  .withValues(alpha: (1 - pull / _pullFade).clamp(0.15, 1.0)),
+            ),
+          ),
           Listener(
             onPointerDown: (_) => _touch(1),
             onPointerUp: (_) => _touch(-1),
             onPointerCancel: (_) => _touch(-1),
             child: GestureDetector(
-              onVerticalDragUpdate: _held ? null : (d) => _dragY += d.delta.dy,
+              onVerticalDragStart: _held ? null : _onVerticalStart,
+              onVerticalDragUpdate: _held ? null : _onVerticalUpdate,
               onVerticalDragEnd: _held ? null : _onVerticalEnd,
-              child: PageView.builder(
-                key: const Key('photo-viewer-pages'),
-                controller: _pages,
-                // Let zoomed and pinched photos pan without changing pages
-                physics: _held
-                    ? const NeverScrollableScrollPhysics()
-                    : const PageScrollPhysics(),
-                itemCount: _records.length,
-                onPageChanged: (i) => setState(() {
-                  _index = i;
-                  _zoomed = false;
-                }),
-                itemBuilder: (context, i) => _ZoomPage(
-                  key: ValueKey(_records[i].id),
-                  onTap: () => setState(() => _chrome = !_chrome),
-                  onZoom: (zoomed) {
-                    if (zoomed == _zoomed) return;
-                    setState(() {
-                      _zoomed = zoomed;
-                      if (zoomed) _chrome = false;
-                    });
-                  },
-                  child: widget.imageBuilder?.call(_records[i], cap) ??
-                      _FullPhoto(
-                        record: _records[i],
-                        cache: widget.cache,
-                        cacheWidth: cap,
-                      ),
+              child: ValueListenableBuilder<double>(
+                valueListenable: _pull,
+                builder: (_, pull, child) => Transform.translate(
+                  offset: Offset(0, pull),
+                  child: Transform.scale(
+                    scale: 1 - pull.clamp(0.0, _pullFade) / 1400,
+                    child: child,
+                  ),
+                ),
+                child: PageView.builder(
+                  key: const Key('photo-viewer-pages'),
+                  controller: _pages,
+                  // Let zoomed and pinched photos pan without changing pages
+                  physics: _held
+                      ? const NeverScrollableScrollPhysics()
+                      : const PageScrollPhysics(),
+                  itemCount: _records.length,
+                  onPageChanged: (i) => setState(() {
+                    _index = i;
+                    _zoomed = false;
+                  }),
+                  itemBuilder: (context, i) => _ZoomPage(
+                    key: ValueKey(_records[i].id),
+                    onTap: () => setState(() => _chrome = !_chrome),
+                    onZoom: (zoomed) {
+                      if (zoomed == _zoomed) return;
+                      setState(() {
+                        _zoomed = zoomed;
+                        if (zoomed) _chrome = false;
+                      });
+                    },
+                    child: widget.imageBuilder?.call(_records[i], cap) ??
+                        _FullPhoto(
+                          record: _records[i],
+                          cache: widget.cache,
+                          cacheWidth: cap,
+                        ),
+                  ),
                 ),
               ),
             ),
           ),
           _Chrome(
-            visible: _chrome,
+            visible: _chrome && !_pulling,
             top: _TopBar(
               face: widget.faceOf(record.uploaderToken, 32),
               name: _nameOf(record) ?? AlbumCopy.unknownMember,

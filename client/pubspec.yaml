@@ -55,6 +55,7 @@ flutter:
   uses-material-design: true
   assets:
     - lib/assets/onboarding/
+    - lib/assets/leave/
     - lib/assets/wordmark/
   shaders:
     - shaders/wordmark.frag

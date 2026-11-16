@@ -62,8 +62,33 @@ class AlbumSettingsScreen extends StatefulWidget {
   State<AlbumSettingsScreen> createState() => _AlbumSettingsScreenState();
 }
 
-class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
+class _AlbumSettingsScreenState extends State<AlbumSettingsScreen>
+    with SingleTickerProviderStateMixin {
   bool _busy = false;
+  // A new cover develops onto the print like a fresh photo
+  late final AnimationController _develop;
+  late String? _cover = widget.album.cover?.coverId;
+
+  @override
+  void initState() {
+    super.initState();
+    _develop =
+        AnimationController(vsync: this, duration: Warm.develop, value: 1);
+  }
+
+  @override
+  void dispose() {
+    _develop.dispose();
+    super.dispose();
+  }
+
+  void _developIfNew(String? cover) {
+    if (cover == _cover) return;
+    _cover = cover;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _develop.forward(from: 0);
+    });
+  }
 
   String get _id => widget.album.id;
 
@@ -179,6 +204,7 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
     final locked = _busy ||
         album.rotationRequired ||
         state.keyBlockFor(album.id) != null;
+    _developIfNew(album.cover?.coverId);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Warm.overlayOnGround,
@@ -199,7 +225,7 @@ class _AlbumSettingsScreenState extends State<AlbumSettingsScreen> {
                   width: 220,
                   child: Opacity(
                     opacity: _busy ? 0.6 : 1,
-                    child: StillPrint(album: album),
+                    child: StillPrint(album: album, develop: _develop),
                   ),
                 ),
               ),

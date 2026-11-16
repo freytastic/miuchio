@@ -4,12 +4,17 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:provider/provider.dart';
 
-import 'upload_copy.dart';
 import 'upload_sheet.dart';
 
 // Keeps app scoped uploads reachable outside the album screen
 class UploadPill extends StatelessWidget {
-  const UploadPill({super.key});
+  // The open album's hooks, offered only for that album's own batch so a
+  // replacement pick can never land in another album
+  final String? albumId;
+  final VoidCallback? onPickMore;
+  final Future<void> Function(String batchId)? onDismiss;
+
+  const UploadPill({super.key, this.albumId, this.onPickMore, this.onDismiss});
 
   @override
   Widget build(BuildContext context) {
@@ -21,50 +26,53 @@ class UploadPill extends StatelessWidget {
     if (live.isEmpty) return const SizedBox.shrink();
     final batch = live.last;
     final failed = batch.settled;
+    final here = albumId != null && batch.albumId == albumId;
 
-    return PressableScale(
-      onTap: () => UploadSheet.show(context, batchId: batch.batchId),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
-        decoration: BoxDecoration(
-          color: Warm.paper,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Warm.shadow(0.10), blurRadius: 12)],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (failed)
-              const Icon(Icons.error_outline, size: 16, color: Warm.warn)
-            else
-              SizedBox(
-                width: 15,
-                height: 15,
-                child: CircularProgressIndicator(
-                  value: batch.fraction <= 0 ? null : batch.fraction,
-                  strokeWidth: 2,
-                  backgroundColor: Warm.wellEmpty,
-                  valueColor: const AlwaysStoppedAnimation<Color>(Warm.cta),
+    return Semantics(
+      button: true,
+      label: 'Upload details',
+      child: PressableScale(
+        onTap: () => UploadSheet.show(context,
+            batchId: batch.batchId,
+            onPickMore: here ? onPickMore : null,
+            onDismiss: here ? onDismiss : null),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
+          decoration: BoxDecoration(
+            color: Warm.paper,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: Warm.shadow(0.10), blurRadius: 12)],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (failed)
+                const Icon(Icons.error_outline, size: 16, color: Warm.warn)
+              else
+                SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(
+                    value: batch.fraction <= 0 ? null : batch.fraction,
+                    strokeWidth: 2,
+                    backgroundColor: Warm.wellEmpty,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Warm.cta),
+                  ),
                 ),
+              const SizedBox(width: 9),
+              Text(
+                failed
+                    ? '${batch.failedCount} didn’t send'
+                    : '${batch.doneCount + batch.failedCount + 1}'
+                        '/${batch.totalCount}',
+                style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Warm.ink,
+                    fontFeatures: [FontFeature.tabularFigures()]),
               ),
-            const SizedBox(width: 9),
-            Text(
-              failed
-                  ? '${batch.failedCount} didn’t send'
-                  : 'Adding ${batch.doneCount + batch.failedCount + 1}'
-                      ' of ${batch.totalCount}',
-              style: const TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w600, color: Warm.ink),
-            ),
-            if (!failed && formatRate(batch.bytesPerSecond).isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Text(formatRate(batch.bytesPerSecond),
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Warm.inkSoft)),
             ],
-          ],
+          ),
         ),
       ),
     );

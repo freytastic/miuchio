@@ -8,13 +8,15 @@ import 'album_stats.dart';
 // Returns null until the member name is decrypted
 typedef MemberNameLookup = String? Function(String memberToken);
 
-class AlbumInfoScreen extends StatelessWidget {
+class AlbumInfoScreen extends StatefulWidget {
   final String? albumId;
   final String albumName;
   final DateTime createdAt;
   final AlbumStats stats;
   final MemberNameLookup nameOf;
   final String? madeBy;
+  // Back in the album with only this person's photos
+  final void Function(String memberToken)? onFilter;
 
   const AlbumInfoScreen({
     super.key,
@@ -24,10 +26,21 @@ class AlbumInfoScreen extends StatelessWidget {
     required this.stats,
     required this.nameOf,
     this.madeBy,
+    this.onFilter,
   });
 
   @override
+  State<AlbumInfoScreen> createState() => _AlbumInfoScreenState();
+}
+
+class _AlbumInfoScreenState extends State<AlbumInfoScreen> {
+  String? _picked;
+
+  @override
   Widget build(BuildContext context) {
+    final stats = widget.stats;
+    final madeBy = widget.madeBy;
+    final onFilter = widget.onFilter;
     return Scaffold(
       backgroundColor: Warm.ground,
       appBar: AppBar(
@@ -41,10 +54,12 @@ class AlbumInfoScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
         children: [
-          Text(albumName, style: _title),
+          Text(widget.albumName, style: _title),
           const SizedBox(height: 22),
-          if (madeBy != null) _Fact(label: AlbumCopy.madeBy, value: madeBy!),
-          _Fact(label: AlbumCopy.infoCreated, value: _formatDate(createdAt)),
+          if (madeBy != null) _Fact(label: AlbumCopy.madeBy, value: madeBy),
+          _Fact(
+              label: AlbumCopy.infoCreated,
+              value: _formatDate(widget.createdAt)),
           _Fact(label: AlbumCopy.infoPhotos, value: '${stats.photoCount}'),
           _Fact(
               label: AlbumCopy.infoSize,
@@ -58,13 +73,17 @@ class AlbumInfoScreen extends StatelessWidget {
           else
             for (final entry in stats.byWeight)
               _UploaderRow(
-                albumId: albumId,
+                albumId: widget.albumId,
                 token: entry.key,
-                name: nameOf(entry.key),
+                name: widget.nameOf(entry.key),
                 tally: entry.value,
                 share: stats.totalBytes == 0
                     ? 0
                     : entry.value.bytes / stats.totalBytes,
+                dim: _picked != null && _picked != entry.key,
+                onTap: () => setState(
+                    () => _picked = _picked == entry.key ? null : entry.key),
+                onFilter: onFilter == null ? null : () => onFilter(entry.key),
               ),
         ],
       ),
@@ -128,6 +147,9 @@ class _UploaderRow extends StatelessWidget {
   final String? name;
   final UploaderTally tally;
   final double share;
+  final bool dim;
+  final VoidCallback onTap;
+  final VoidCallback? onFilter;
 
   const _UploaderRow({
     required this.albumId,
@@ -135,57 +157,87 @@ class _UploaderRow extends StatelessWidget {
     required this.name,
     required this.tally,
     required this.share,
+    required this.dim,
+    required this.onTap,
+    this.onFilter,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedOpacity(
+        duration: Warm.quick,
+        opacity: dim ? 0.4 : 1,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              MemberFace(
-                albumId: albumId,
-                token: token,
-                name: name,
-                size: 28,
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Warm.inkSoft,
-                    height: 1),
+              Row(
+                children: [
+                  MemberFace(
+                    albumId: albumId,
+                    token: token,
+                    name: name,
+                    size: 28,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Warm.inkSoft,
+                        height: 1),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      // Never show member tokens as names
+                      name ?? AlbumCopy.unknownMember,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Warm.ink),
+                    ),
+                  ),
+                  Text(
+                    '${tally.photos} · ${AlbumStats.formatBytes(tally.bytes)}',
+                    style: const TextStyle(fontSize: 12.5, color: Warm.inkSoft),
+                  ),
+                  if (onFilter != null)
+                    Semantics(
+                      button: true,
+                      label: AlbumCopy.onlyTheirPhotos(name),
+                      excludeSemantics: true,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onFilter,
+                        child: const SizedBox(
+                          width: 36,
+                          height: 30,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Icon(Icons.photo_library_outlined,
+                                size: 16, color: Warm.inkFaint),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  // Never show member tokens as names
-                  name ?? AlbumCopy.unknownMember,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Warm.ink),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: share.clamp(0.0, 1.0),
+                  minHeight: 3,
+                  backgroundColor: Warm.wellEmpty,
+                  valueColor: const AlwaysStoppedAnimation<Color>(Warm.cocoa),
                 ),
-              ),
-              Text(
-                '${tally.photos} · ${AlbumStats.formatBytes(tally.bytes)}',
-                style: const TextStyle(fontSize: 12.5, color: Warm.inkSoft),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: share.clamp(0.0, 1.0),
-              minHeight: 3,
-              backgroundColor: Warm.wellEmpty,
-              valueColor: const AlwaysStoppedAnimation<Color>(Warm.cocoa),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

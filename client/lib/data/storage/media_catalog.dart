@@ -3,7 +3,9 @@ import 'package:miuchio/e2ee/media_record.dart';
 
 // Cached album metadata used for local first rendering
 abstract class MediaCatalog {
-  Future<List<MediaRecord>> listRecordsForAlbum(String albumId);
+  // In album order, a page at a time when limit is given
+  Future<List<MediaRecord>> listRecordsForAlbum(String albumId,
+      {int? limit, int offset = 0});
 
   // Missing rows are removed, so records must be a complete server listing
   Future<void> reconcileAlbum(String albumId, List<MediaRecord> records);

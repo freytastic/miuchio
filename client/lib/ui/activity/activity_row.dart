@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/album/member_avatars.dart';
@@ -7,6 +9,8 @@ import 'package:miuchio/ui/widgets/member_face.dart';
 import 'activity_copy.dart';
 
 typedef ActivityThumb = Widget Function(MediaRecord record);
+// The album's newest photo, null while it is unknown or not yet opened
+typedef ActivityAlbumPhoto = Uint8List? Function(String albumId);
 
 class ActivityRow extends StatelessWidget {
   final LineCopy line;
@@ -60,14 +64,12 @@ class ActivityRow extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(line.where, style: Warm.acWhere),
                       if (line.aside != null) _Aside(line.aside!, line.warn),
+                      if (previews.isNotEmpty)
+                        _Strip(previews: previews, more: more, thumb: thumb),
                     ],
                   ),
                 ),
               ),
-              if (previews.isNotEmpty) ...[
-                const SizedBox(width: 12),
-                _Thumbs(previews: previews, more: more, thumb: thumb),
-              ],
             ],
           ),
         ),
@@ -99,45 +101,53 @@ class _Aside extends StatelessWidget {
   }
 }
 
-class _Thumbs extends StatelessWidget {
+class _Strip extends StatelessWidget {
   final List<MediaRecord> previews;
   final int more;
   final ActivityThumb? thumb;
-  const _Thumbs({required this.previews, required this.more, this.thumb});
+  const _Strip({required this.previews, required this.more, this.thumb});
+
+  static const double _tile = 58;
+  static const double _gap = 3;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 1),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < previews.length; i++) ...[
-            if (i > 0) const SizedBox(width: 2),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: SizedBox(
-                width: 30,
-                height: 30,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    const ColoredBox(color: Warm.wellEmpty),
-                    if (thumb != null) thumb!(previews[i]),
-                    if (i == previews.length - 1 && more > 0)
-                      ColoredBox(
-                        color: const Color(0x85181410),
-                        child: Center(
-                          child: Text('+$more', style: Warm.acMore),
+      padding: const EdgeInsets.only(top: 10),
+      // Shrinks on narrow phones rather than overflowing the line
+      child: LayoutBuilder(builder: (context, box) {
+        final n = previews.length;
+        final tile = ((box.maxWidth - _gap * (n - 1)) / n).clamp(0.0, _tile);
+        return Row(
+          children: [
+            for (var i = 0; i < n; i++) ...[
+              if (i > 0) const SizedBox(width: _gap),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  width: tile,
+                  height: tile,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      const ColoredBox(color: Warm.wellEmpty),
+                      if (thumb != null) thumb!(previews[i]),
+                      if (i == n - 1 && more > 0)
+                        ColoredBox(
+                          color: const Color(0x85181410),
+                          child: Center(
+                            child: Text('+$more',
+                                style: Warm.acMore.copyWith(fontSize: 12)),
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
-      ),
+        );
+      }),
     );
   }
 }
@@ -148,8 +158,23 @@ class ActivityFace extends StatelessWidget {
   final String? name;
   final String? token;
   final bool alarm;
-  const ActivityFace(
-      {super.key, this.albumId, this.name, this.token, this.alarm = false});
+  // Stands in for a face on events about you
+  final IconData? glyph;
+  // Stands in for the glyph when the album's own photo is at hand
+  final Uint8List? albumPhoto;
+  final IconData? mark;
+  final bool markWarn;
+  const ActivityFace({
+    super.key,
+    this.albumId,
+    this.name,
+    this.token,
+    this.alarm = false,
+    this.glyph,
+    this.albumPhoto,
+    this.mark,
+    this.markWarn = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -170,8 +195,10 @@ class ActivityFace extends StatelessWidget {
                 ? const Color(0x0F1C1917)
                 : MemberAvatars.hueFor(t).withValues(alpha: 0.95),
             // A changed key may be an impostor, so its card never shows a face
-            photo: alarm ? null : photo,
-            child: Text(initial, style: Warm.acFace),
+            photo: alarm ? null : albumPhoto ?? photo,
+            child: glyph != null && albumPhoto == null
+                ? Icon(glyph, size: 16, color: Warm.inkSoft)
+                : Text(initial, style: Warm.acFace),
           ),
           if (alarm)
             Positioned(
@@ -188,6 +215,23 @@ class ActivityFace extends StatelessWidget {
                 ),
                 child: const Icon(Icons.fingerprint_rounded,
                     size: 11, color: Warm.paper),
+              ),
+            )
+          else if (mark != null)
+            Positioned(
+              right: -3,
+              bottom: -3,
+              child: Container(
+                width: 19,
+                height: 19,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: markWarn ? Warm.warn : const Color(0xFFE7E1D7),
+                  border: Border.all(color: Warm.ground, width: 2),
+                ),
+                child: Icon(mark,
+                    size: 11, color: markWarn ? Warm.paper : Warm.inkSoft),
               ),
             ),
         ],

@@ -2,7 +2,7 @@ import 'package:miuchio/e2ee/media_record.dart';
 
 import 'activity_event.dart';
 
-const int kActivityPreviews = 3;
+const int kActivityPreviews = 4;
 
 // Splits sequenced uploads by uploader, or keeps the unnamed bundle
 List<PhotosAdded> attributeUploads({

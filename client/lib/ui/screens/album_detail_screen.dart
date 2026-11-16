@@ -33,7 +33,6 @@ import 'package:miuchio/ui/album/safety_flows.dart';
 import 'package:miuchio/ui/providers/latest_only.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/widgets/upload_pill.dart';
-import 'package:miuchio/ui/widgets/upload_sheet.dart';
 import 'package:miuchio/data/models/album_model.dart';
 import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/data/models/member_model.dart';
@@ -513,6 +512,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     }
     final people = _members.where((m) => !m.revoked).length;
     final owner = _owner;
+    final album = ModalRoute.of(context);
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => AlbumInfoScreen(
@@ -526,6 +526,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             : owner.memberToken == widget.album.memberToken
                 ? AlbumCopy.madeByYou
                 : names[owner.memberToken],
+        onFilter: (token) {
+          Navigator.of(context).popUntil((r) => r == album);
+          setState(() => _filterToken = token);
+        },
       ),
     ));
   }
@@ -596,7 +600,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final records = _shown;
     final index = records.indexWhere((r) => r.id == record.id);
     if (index < 0) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
+    await Navigator.of(context).push(PhotoViewerRoute<void>(
       builder: (_) => PhotoViewerScreen(
         records: records,
         initialIndex: index,
@@ -1288,15 +1292,18 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       unawaited(model.discardUnused([for (final s in staged) s.path]));
       return;
     }
-    final batchId = model.startBatch(
+    model.startBatch(
       albumId: widget.album.id,
       sources: staged,
     );
     if (picked.length > _maxBatch) {
       messenger.showSnackBar(_note('Adding the first $_maxBatch. Add the rest after.'));
     }
-    await UploadSheet.show(context,
-        batchId: batchId, onPickMore: _pickAndUpload, onDismiss: _dismissBatch);
+    // The new tiles develop at the top, the pill opens the details
+    if (_scroll.hasClients) {
+      unawaited(_scroll.animateTo(0,
+          duration: Warm.springSnappy, curve: Warm.easeOut));
+    }
   }
 
   @override
@@ -1460,7 +1467,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
               if (!_selection.active) {
                 return AlbumFoot(
                   onAdd: (syncing || keyBlock != null) ? null : _pickAndUpload,
-                  pill: const UploadPill(),
+                  pill: UploadPill(
+                      albumId: widget.album.id,
+                      onPickMore: _pickAndUpload,
+                      onDismiss: _dismissBatch),
                 );
               }
               final (picked, mine) = _picked(shown);

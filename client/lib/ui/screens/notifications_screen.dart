@@ -14,6 +14,7 @@ import 'package:miuchio/e2ee/identity_trust.dart';
 import 'package:miuchio/ui/activity/activity_copy.dart';
 import 'package:miuchio/ui/activity/activity_screen.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
+import 'package:miuchio/ui/shelf/shelf_data.dart';
 import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
 import 'package:miuchio/ui/widgets/safety_number_sheet.dart';
@@ -28,6 +29,7 @@ class NotificationsScreen extends StatelessWidget {
     final trust = context.read<IdentityTrust>();
     final sync = context.read<ActivitySync>();
     final safety = context.watch<SafetyStore>();
+    final covers = context.watch<ShelfCovers?>();
     final names = ActivityNames(
       memberName: (albumId, token) =>
           state.memberDisplayName(albumId, token) ?? 'Someone',
@@ -47,6 +49,14 @@ class NotificationsScreen extends StatelessWidget {
               cache: context.read<MediaCacheManager>(),
             )
           : const SizedBox.expand(),
+      albumPhoto: (albumId) {
+        final album = state.albums.where((a) => a.id == albumId).firstOrNull;
+        if (album == null || covers == null || !safety.accepted(albumId)) {
+          return null;
+        }
+        covers.ensureCover(albumId, album.previewMedia);
+        return covers.bytes(albumId, 0);
+      },
       names: names,
       onOpenAlbum: (albumId) => Navigator.of(context).pop(albumId),
       onCompare: (e) => _compare(context, e, names, store, trust),

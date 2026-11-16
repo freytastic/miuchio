@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:miuchio/ui/widgets/encrypted_thumbnail.dart';
 import 'package:provider/provider.dart';
 import 'package:miuchio/data/api/album_api.dart';
 import 'package:miuchio/data/api/api_client.dart';
@@ -31,8 +32,12 @@ class _FakeCatalog implements MediaCatalog {
   _FakeCatalog([Map<String, List<MediaRecord>>? seed]) : rows = seed ?? {};
 
   @override
-  Future<List<MediaRecord>> listRecordsForAlbum(String albumId) async =>
-      List.of(rows[albumId] ?? const []);
+  Future<List<MediaRecord>> listRecordsForAlbum(String albumId,
+          {int? limit, int offset = 0}) async =>
+      (rows[albumId] ?? const <MediaRecord>[])
+          .skip(offset)
+          .take(limit ?? 1 << 30)
+          .toList();
 
   @override
   Future<void> reconcileAlbum(String a, List<MediaRecord> records) async {
@@ -65,7 +70,7 @@ class _StubMediaApi extends MediaApi {
   void dispose() {}
 }
 
-MediaRecord _rec(String id) => MediaRecord(
+MediaRecord _rec(String id, {DateTime? at}) => MediaRecord(
       id: id,
       albumId: 'album-1',
       uploaderToken: 'tok',
@@ -76,7 +81,7 @@ MediaRecord _rec(String id) => MediaRecord(
       blobSha256: Uint8List(32),
       mediaType: 'photo',
       mimeType: 'image/jpeg',
-      createdAt: DateTime.utc(2026),
+      createdAt: at ?? DateTime.utc(2026),
       thumbWrapNonce: Uint8List(12),
       thumbWrapTagCT: Uint8List(48),
       thumbSize: 5,
@@ -162,6 +167,23 @@ void main() {
 
     gate.complete();
     await settle(tester);
+  });
+
+  // A grid per day built a first tile for every day, offscreen or not
+  testWidgets('an album over many days builds only the photos near the screen',
+      (tester) async {
+    final days = [
+      for (var i = 0; i < 300; i++)
+        _rec('d$i', at: DateTime.utc(2025, 1, 1).subtract(Duration(days: i))),
+    ];
+    await catalog.reconcileAlbum('album-1', days);
+    final api = _StubMediaApi(items: days);
+
+    await tester.pumpWidget(wrap(api));
+    await settle(tester);
+
+    expect(find.byType(SliverGrid), findsOneWidget);
+    expect(find.byType(EncryptedThumbnail).evaluate().length, lessThan(30));
   });
 
   testWidgets('a failed refresh keeps the cached album on screen',
