@@ -270,12 +270,15 @@ class MediaSealedCache
 
   // Ignore byte accounting placeholders without render metadata
   @override
-  Future<List<MediaRecord>> listRecordsForAlbum(String albumId) async {
+  Future<List<MediaRecord>> listRecordsForAlbum(String albumId,
+      {int? limit, int offset = 0}) async {
     final rows = await _db.query('media_records',
         columns: ['record_json'],
         where: 'album_id = ? AND length(record_json) > 2',
         whereArgs: [albumId],
-        orderBy: 'sort_index ASC');
+        orderBy: 'sort_index ASC',
+        limit: limit,
+        offset: limit == null ? null : offset);
     final out = <MediaRecord>[];
     for (final row in rows) {
       try {

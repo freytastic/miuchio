@@ -8,10 +8,10 @@ abstract class DebugLogCopy {
   static const String problems = 'Problems';
   static const String empty = 'No entries';
   static const String problemsEmpty = 'No problems';
-  static const String shareLog = 'Share log';
   static const String send = 'Send to Miuchio';
   static const String soon = 'Soon';
   static const String clear = 'Clear log';
+  static const String clearShort = 'Clear';
   static const String clearTitle = 'Clear log?';
   static const String clearBody = 'All entries will be deleted.';
   static const String clearCancel = 'Cancel';
