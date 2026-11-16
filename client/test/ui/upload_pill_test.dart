@@ -5,8 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:miuchio/domain/upload/upload_coordinator.dart';
 import 'package:miuchio/domain/upload/upload_item.dart';
 import 'package:miuchio/domain/upload/upload_ports.dart';
+import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/widgets/upload_pill.dart';
+import 'package:miuchio/ui/widgets/upload_sheet.dart';
 import 'package:provider/provider.dart';
 
 import '../domain/upload/fakes.dart';
@@ -46,10 +48,15 @@ void main() {
           }(),
       ];
 
-  Future<void> pump(WidgetTester tester) => tester.pumpWidget(
-        ChangeNotifierProvider<UploadQueueModel>.value(
-          value: model,
-          child: const MaterialApp(home: Scaffold(body: UploadPill())),
+  Future<void> pump(WidgetTester tester,
+          {UploadPill pill = const UploadPill()}) =>
+      tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<UploadQueueModel>.value(value: model),
+            ChangeNotifierProvider<AppState>(create: (_) => AppState()),
+          ],
+          child: MaterialApp(home: Scaffold(body: pill)),
         ),
       );
 
@@ -95,7 +102,7 @@ void main() {
     await tester.pump(Duration.zero);
     await tester.pump();
 
-    expect(find.text('Adding 2 of 3'), findsOneWidget);
+    expect(find.text('2/3'), findsOneWidget);
     uploader.holdReserve!.complete();
   });
 
@@ -109,5 +116,30 @@ void main() {
     await pump(tester);
 
     expect(find.text('2 didn’t send'), findsOneWidget);
+  });
+
+  // Replacements picked from another album's screen would reach other people
+  testWidgets('only the album a batch belongs to can pick replacements',
+      (tester) async {
+    uploader.failStage('putFile',
+        const UploadStageException(UploadFailureKind.transport, 'reset'),
+        times: 99);
+    model.startBatch(albumId: _album, sources: pick(1));
+    await tester.pump(Duration.zero);
+
+    for (final (open, offered) in [('album-2', false), (_album, true)]) {
+      await pump(tester,
+          pill: UploadPill(
+              albumId: open, onPickMore: () {}, onDismiss: (_) async {}));
+      await tester.pump();
+      await tester.tap(find.byType(UploadPill));
+      await tester.pumpAndSettle();
+
+      final sheet = tester.widget<UploadSheet>(find.byType(UploadSheet));
+      expect(sheet.onPickMore != null, offered, reason: open);
+      expect(sheet.onDismiss != null, offered, reason: open);
+      Navigator.of(tester.element(find.byType(UploadSheet))).pop();
+      await tester.pumpAndSettle();
+    }
   });
 }

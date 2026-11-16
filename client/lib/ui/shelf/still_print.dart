@@ -29,12 +29,14 @@ class StillPrint extends StatelessWidget {
   final AlbumModel album;
   final PrintSize size;
   final VoidCallback? onTap;
+  final Animation<double> develop;
 
   const StillPrint({
     super.key,
     required this.album,
     this.size = PrintSize.large,
     this.onTap,
+    this.develop = kAlwaysCompleteAnimation,
   });
 
   @override
@@ -61,7 +63,7 @@ class StillPrint extends StatelessWidget {
       members: album.memberPreviews,
       totalMembers: album.activeMemberCount,
       nameOf: (m) => state.memberDisplayName(album.id, m.memberToken),
-      develop: kAlwaysCompleteAnimation,
+      develop: develop,
       size: size,
       cover: image(0),
       behind: [image(1), image(2)].nonNulls.toList(),

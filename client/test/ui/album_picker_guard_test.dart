@@ -17,6 +17,7 @@ import 'package:miuchio/e2ee/media_record.dart';
 import 'package:miuchio/ui/providers/app_state.dart';
 import 'package:miuchio/ui/providers/upload_queue_model.dart';
 import 'package:miuchio/ui/screens/album_detail_screen.dart';
+import 'package:miuchio/ui/widgets/upload_pill.dart';
 import 'package:miuchio/ui/widgets/upload_sheet.dart';
 import 'package:provider/provider.dart';
 
@@ -38,7 +39,8 @@ class _EmptyMediaApi extends MediaApi {
 
 class _EmptyCatalog implements MediaCatalog {
   @override
-  Future<List<MediaRecord>> listRecordsForAlbum(String albumId) async =>
+  Future<List<MediaRecord>> listRecordsForAlbum(String albumId,
+          {int? limit, int offset = 0}) async =>
       const [];
   @override
   Future<void> reconcileAlbum(String a, List<MediaRecord> r) async {}
@@ -166,6 +168,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(opened, 1);
+    await tester.tap(find.byType(UploadPill));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(UploadSheet), findsOneWidget);
 
     final state = tester.state<State>(find.byType(UploadSheet));

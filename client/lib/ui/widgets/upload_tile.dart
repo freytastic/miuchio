@@ -48,21 +48,19 @@ class UploadTile extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           Container(color: Warm.wellEmpty),
-          Opacity(opacity: failed ? 0.35 : 0.62, child: _image(look.preview)),
-          if (failed)
+          if (failed) ...[
+            Opacity(opacity: 0.35, child: _image(look.preview)),
             Center(
               child: Icon(
                 canRetry ? Icons.refresh_rounded : Icons.block_outlined,
                 size: 22,
                 color: Warm.ink,
               ),
-            )
-          else
-            Positioned(
-              right: 5,
-              bottom: 5,
-              child: _Ring(value: look.percent / 100),
             ),
+          ] else ...[
+            _image(look.preview),
+            _Develop(value: look.percent / 100),
+          ],
         ],
       ),
     );
@@ -75,26 +73,35 @@ class UploadTile extends StatelessWidget {
   }
 }
 
-class _Ring extends StatelessWidget {
+// The photo develops out of milk as its bytes are sent, with a thin line
+// filling along the bottom, and without blur or desaturation since each costs
+// a layer per tile
+class _Develop extends StatelessWidget {
   final double value;
-  const _Ring({required this.value});
+  const _Develop({required this.value});
+
+  static const _milk = Color(0xFFF3EFE8);
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: Warm.shadow(0.35), blurRadius: 2)],
-        ),
-        child: CircularProgressIndicator(
-          value: value <= 0 ? null : value,
-          strokeWidth: 2.4,
-          backgroundColor: Colors.white24,
-          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-        ),
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: value),
+      duration: const Duration(milliseconds: 100),
+      builder: (context, f, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(color: _milk.withValues(alpha: 0.78 * (1 - f))),
+          Align(
+            alignment: Alignment.bottomLeft,
+            child: FractionallySizedBox(
+              widthFactor: f,
+              child: const SizedBox(
+                height: 2,
+                child: ColoredBox(color: Warm.cocoa),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

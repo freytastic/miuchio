@@ -77,7 +77,8 @@ class _RecordingCatalog implements MediaCatalog {
   final List<List<String>> reconciled = [];
 
   @override
-  Future<List<MediaRecord>> listRecordsForAlbum(String albumId) async =>
+  Future<List<MediaRecord>> listRecordsForAlbum(String albumId,
+          {int? limit, int offset = 0}) async =>
       const [];
 
   @override
