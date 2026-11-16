@@ -82,6 +82,10 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
       final s = _scaleFor(_zoom);
       _offset =
           Offset((viewport - n.width * s) / 2, (viewport - n.height * s) / 2);
+      // The slider and previews are built before the circle is measured
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
     }
     _offset = _clamp(_offset, _zoom);
   }
@@ -97,6 +101,17 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
     final zoom = (_startZoom * d.scale).clamp(1.0, _maxZoom);
     final picked = (_startFocal - _startOffset) / _scaleFor(_startZoom);
     final next = d.localFocalPoint - picked * _scaleFor(zoom);
+    setState(() {
+      _zoom = zoom;
+      _offset = _clamp(next, zoom);
+    });
+  }
+
+  // The slider zooms around the middle of the circle
+  void _zoomTo(double zoom) {
+    final centre = Offset(_viewport / 2, _viewport / 2);
+    final picked = (centre - _offset) / _scaleFor(_zoom);
+    final next = centre - picked * _scaleFor(zoom);
     setState(() {
       _zoom = zoom;
       _offset = _clamp(next, zoom);
@@ -142,7 +157,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
               const SizedBox(height: 8),
               Text('People in your albums see what is inside the circle.',
                   style: Warm.sub),
-              const SizedBox(height: 32),
+              const SizedBox(height: 22),
               Expanded(
                 child: Center(
                   child: _natural == null
@@ -154,7 +169,25 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
                         }),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 10),
+              _ZoomSlider(
+                zoom: _zoom,
+                onChanged: _natural == null || _viewport == 0 ? null : _zoomTo,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 22, bottom: 24),
+                child: ExcludeSemantics(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (final d in const [56.0, 36.0, 24.0]) ...[
+                        if (d != 56) const SizedBox(width: 16),
+                        _preview(d),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
               WarmButton(
                 key: const ValueKey('avatar-use'),
                 label: 'Use photo',
@@ -169,35 +202,16 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
   }
 
   Widget _stage() {
-    final n = _natural!;
-    final s = _scaleFor(_zoom);
     return GestureDetector(
       key: const ValueKey('avatar-stage'),
       onScaleStart: _onStart,
       onScaleUpdate: _onUpdate,
       child: SizedBox.square(
         dimension: _viewport,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+        child: ClipRect(
           child: Stack(
             children: [
-              Positioned(
-                left: _offset.dx,
-                top: _offset.dy,
-                width: n.width * s,
-                height: n.height * s,
-                child: Image(
-                  image: ResizeImage(
-                    MemoryImage(widget.source),
-                    width: _previewDecode,
-                    height: _previewDecode,
-                    policy: ResizeImagePolicy.fit,
-                  ),
-                  fit: BoxFit.fill,
-                  gaplessPlayback: true,
-                  filterQuality: FilterQuality.medium,
-                ),
-              ),
+              ..._photo(),
               const Positioned.fill(
                 child: IgnorePointer(child: CustomPaint(painter: _Mask())),
               ),
@@ -207,28 +221,108 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
       ),
     );
   }
+
+  // How it reads at the sizes people see you at
+  Widget _preview(double size) => Container(
+        width: size,
+        height: size,
+        clipBehavior: Clip.antiAlias,
+        decoration:
+            const BoxDecoration(color: Warm.wellEmpty, shape: BoxShape.circle),
+        child: _natural == null || _viewport == 0
+            ? null
+            : FittedBox(
+                child: SizedBox.square(
+                  dimension: _viewport,
+                  child: Stack(children: _photo()),
+                ),
+              ),
+      );
+
+  List<Widget> _photo() {
+    final n = _natural!;
+    final s = _scaleFor(_zoom);
+    return [
+      Positioned(
+        left: _offset.dx,
+        top: _offset.dy,
+        width: n.width * s,
+        height: n.height * s,
+        child: Image(
+          image: ResizeImage(
+            MemoryImage(widget.source),
+            width: _previewDecode,
+            height: _previewDecode,
+            policy: ResizeImagePolicy.fit,
+          ),
+          fit: BoxFit.fill,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.medium,
+        ),
+      ),
+    ];
+  }
 }
 
-// Dims everything outside the circle members will see
+class _ZoomSlider extends StatelessWidget {
+  final double zoom;
+  final ValueChanged<double>? onChanged;
+
+  const _ZoomSlider({required this.zoom, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.photo_outlined, size: 14, color: Warm.inkFaint),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              activeTrackColor: Warm.inkGhost,
+              inactiveTrackColor: Warm.inkGhost,
+              thumbColor: Warm.stoneTop,
+              overlayShape: SliderComponentShape.noOverlay,
+              thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 10, elevation: 1.5, pressedElevation: 3),
+              trackShape: const RoundedRectSliderTrackShape(),
+            ),
+            child: Slider(
+              value: zoom,
+              min: 1,
+              max: _maxZoom,
+              label: 'Zoom',
+              semanticFormatterCallback: (v) => '${v.toStringAsFixed(1)}x',
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+        const Icon(Icons.photo_outlined, size: 20, color: Warm.inkFaint),
+      ],
+    );
+  }
+}
+
+// Fades everything outside the circle members will see into the page
 class _Mask extends CustomPainter {
   const _Mask();
 
   @override
   void paint(Canvas canvas, Size size) {
     final circle = Rect.fromCircle(
-        center: size.center(Offset.zero), radius: size.shortestSide / 2 - 1);
+        center: size.center(Offset.zero), radius: size.shortestSide * 0.49);
     final outside = Path()
       ..fillType = PathFillType.evenOdd
       ..addRect(Offset.zero & size)
       ..addOval(circle);
     canvas.drawPath(
-        outside, Paint()..color = Warm.ground.withValues(alpha: 0.72));
+        outside, Paint()..color = Warm.ground.withValues(alpha: 0.93));
     canvas.drawOval(
       circle,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = const Color(0xCCFFFFFF),
+        ..strokeWidth = 1
+        ..color = const Color(0x241C1917),
     );
   }
 

@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:miuchio/data/api/user_api.dart';
 import 'package:miuchio/data/native/image_transcoder.dart';
-import 'package:miuchio/data/storage/media_cache_manager.dart';
 import 'package:miuchio/data/storage/own_avatar_store.dart';
 import 'package:miuchio/data/storage/picked_file.dart';
 import 'package:miuchio/domain/account/account_deletion.dart';
@@ -31,6 +33,8 @@ import 'package:miuchio/ui/theme/warm_tokens.dart';
 import 'package:miuchio/ui/widgets/external_link.dart';
 import 'package:miuchio/ui/widgets/grouped_list.dart';
 import 'package:miuchio/ui/widgets/miuchio_mark.dart';
+import 'package:miuchio/ui/widgets/page_bar.dart';
+import 'package:miuchio/ui/widgets/pressable_scale.dart';
 import 'package:miuchio/ui/widgets/print_card.dart';
 import 'package:miuchio/ui/widgets/upload_copy.dart';
 import 'package:miuchio/ui/widgets/warm_button.dart';
@@ -56,12 +60,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _verified;
   int? _stored;
   bool _preparing = false;
+  final ScrollController _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     unawaited(_loadVerified());
     unawaited(_loadStored());
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   // Derive verification from local rosters
@@ -82,15 +93,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) setState(() => _verified = summary);
   }
 
+  // Your space on the server, as the Storage page leads with
   Future<void> _loadStored() async {
-    final MediaCacheManager cache;
-    try {
-      cache = context.read<MediaCacheManager>();
-    } catch (_) {
-      return;
-    }
-    final u = await cache.usage();
-    if (mounted) setState(() => _stored = u.thumbs + u.full);
+    final account = await UserService().getStorage();
+    if (mounted && account != null) setState(() => _stored = account.used);
   }
 
   Future<void> _editName() async {
@@ -117,8 +123,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     unawaited(publisher.publishToAll(targets, name));
   }
 
-  Future<void> _editPhoto(bool hasPhoto) async {
-    final choice = await _PhotoSheet.show(context, hasPhoto: hasPhoto);
+  Future<void> _editPhoto(Uint8List? photo) async {
+    final choice = await _PhotoSheet.show(context, photo: photo);
     if (!mounted) return;
     switch (choice) {
       case _PhotoChoice.pick:
@@ -199,95 +205,111 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const _Ground(),
             SafeArea(
               bottom: false,
-              child: ListView(
+              child: CustomScrollView(
+                controller: _scroll,
                 physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics()),
-                padding: const EdgeInsets.only(bottom: 40),
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(Warm.pagePad - 8, 16, 0, 0),
-                    child: Align(
-                        alignment: Alignment.centerLeft, child: WarmBack()),
+                slivers: [
+                  PageBar(
+                    scroll: _scroll,
+                    after: 220,
+                    title: Row(
+                      children: [
+                        _BarFace(photo: photo),
+                        const SizedBox(width: 9),
+                        Flexible(
+                          child: Text(state.profileName.trim().isEmpty
+                              ? 'You'
+                              : state.profileName),
+                        ),
+                      ],
+                    ),
                   ),
-                  _You(
-                    photo: photo,
-                    name: state.profileName,
-                    busy: _preparing,
-                    onPhoto: () => _editPhoto(photo != null),
-                    onName: _editName,
+                  SliverPadding(
+                    padding: const EdgeInsets.only(bottom: 40),
+                    sliver: SliverList.list(children: [
+                      _You(
+                        photo: photo,
+                        name: state.profileName,
+                        busy: _preparing,
+                        onPhoto: () => _editPhoto(photo),
+                        onName: _editName,
+                      ),
+                      _Group(top: 30, children: [
+                        _IdRow(handle: state.miuchioId),
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.verified_user_outlined),
+                          title: 'Security codes',
+                          value: _verified,
+                          onTap: widget.onSafetyNumbers,
+                        ),
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.block_rounded),
+                          title: SafetyCopy.blockedTitle,
+                          onTap: () => _open(const BlockedPage()),
+                        ),
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.logout_rounded),
+                          title: 'When you leave',
+                          value: state.deleteMediaOnLeave
+                              ? 'Delete photos'
+                              : 'Keep photos',
+                          onTap: () => _open(const LeavingPage()),
+                        ),
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.cloud_outlined),
+                          title: 'Backup',
+                          value: 'Not yet',
+                          onTap: () => _open(const BackupPage()),
+                        ),
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.storage_rounded),
+                          title: 'Storage',
+                          value: _stored == null ? null : formatBytes(_stored!),
+                          onTap: _openStorage,
+                        ),
+                      ]),
+                      _Group(children: [
+                        SettingsRow(
+                          lead: SettingsRow.icon(
+                              Icons.chat_bubble_outline_rounded),
+                          title: 'Send feedback',
+                          external: true,
+                          onTap: () =>
+                              openExternalLink(context, '$_repoUrl/issues/new'),
+                        ),
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.receipt_long_outlined),
+                          title: DebugLogCopy.title,
+                          onTap: () => _open(const DebugLogPage()),
+                        ),
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.privacy_tip_outlined),
+                          title: 'Privacy policy',
+                          external: true,
+                          onTap: () =>
+                              openExternalLink(context, '$kSiteUrl/privacy'),
+                        ),
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.gavel_rounded),
+                          title: 'Terms',
+                          external: true,
+                          onTap: () =>
+                              openExternalLink(context, '$kSiteUrl/terms'),
+                        ),
+                      ]),
+                      _Group(children: [
+                        SettingsRow(
+                          lead: SettingsRow.icon(Icons.delete_outline_rounded,
+                              warn: true),
+                          title: 'Delete account',
+                          warn: true,
+                          onTap: _openDelete,
+                        ),
+                      ]),
+                      const _Foot(),
+                    ]),
                   ),
-                  _Group(top: 30, children: [
-                    _IdRow(handle: state.miuchioId),
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.verified_user_outlined),
-                      title: 'Security codes',
-                      value: _verified,
-                      onTap: widget.onSafetyNumbers,
-                    ),
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.block_rounded),
-                      title: SafetyCopy.blockedTitle,
-                      onTap: () => _open(const BlockedPage()),
-                    ),
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.logout_rounded),
-                      title: 'When you leave',
-                      value: state.deleteMediaOnLeave
-                          ? 'Delete photos'
-                          : 'Keep photos',
-                      onTap: () => _open(const LeavingPage()),
-                    ),
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.cloud_outlined),
-                      title: 'Backup',
-                      value: 'Not yet',
-                      onTap: () => _open(const BackupPage()),
-                    ),
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.storage_rounded),
-                      title: 'Storage',
-                      value: _stored == null ? null : formatBytes(_stored!),
-                      onTap: _openStorage,
-                    ),
-                  ]),
-                  _Group(children: [
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.chat_bubble_outline_rounded),
-                      title: 'Send feedback',
-                      external: true,
-                      onTap: () =>
-                          openExternalLink(context, '$_repoUrl/issues/new'),
-                    ),
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.receipt_long_outlined),
-                      title: DebugLogCopy.title,
-                      onTap: () => _open(const DebugLogPage()),
-                    ),
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.privacy_tip_outlined),
-                      title: 'Privacy policy',
-                      external: true,
-                      onTap: () =>
-                          openExternalLink(context, '$kSiteUrl/privacy'),
-                    ),
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.gavel_rounded),
-                      title: 'Terms',
-                      external: true,
-                      onTap: () =>
-                          openExternalLink(context, '$kSiteUrl/terms'),
-                    ),
-                  ]),
-                  _Group(children: [
-                    SettingsRow(
-                      lead: SettingsRow.icon(Icons.delete_outline_rounded,
-                          warn: true),
-                      title: 'Delete account',
-                      warn: true,
-                      onTap: _openDelete,
-                    ),
-                  ]),
-                  const _Foot(),
                 ],
               ),
             ),
@@ -336,7 +358,7 @@ class _You extends StatelessWidget {
   Widget build(BuildContext context) {
     final empty = name.trim().isEmpty;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Warm.pagePad, 18, Warm.pagePad, 0),
+      padding: const EdgeInsets.fromLTRB(Warm.pagePad, 14, Warm.pagePad, 0),
       child: Center(
         child: Transform.rotate(
           angle: -1.6 * 3.141592653589793 / 180,
@@ -404,6 +426,42 @@ class _You extends StatelessWidget {
         gaplessPlayback: true,
         errorBuilder: (_, __, ___) => const _NoFace(),
       );
+}
+
+class _Face extends StatelessWidget {
+  final Uint8List? photo;
+  final double size;
+  final double iconSize;
+
+  const _Face(
+      {required this.photo, required this.size, required this.iconSize});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        clipBehavior: Clip.antiAlias,
+        decoration: const BoxDecoration(
+            color: Color(0x0F1C1917), shape: BoxShape.circle),
+        child: photo == null
+            ? Icon(Icons.person_outline_rounded,
+                size: iconSize, color: Warm.inkSoft)
+            : Image.memory(photo!,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                cacheWidth:
+                    (size * MediaQuery.devicePixelRatioOf(context)).round()),
+      );
+}
+
+class _BarFace extends StatelessWidget {
+  final Uint8List? photo;
+
+  const _BarFace({required this.photo});
+
+  @override
+  Widget build(BuildContext context) =>
+      _Face(photo: photo, size: 26, iconSize: 15);
 }
 
 class _CameraBadge extends StatelessWidget {
@@ -510,8 +568,6 @@ class _IdRowState extends State<_IdRow> {
   @override
   Widget build(BuildContext context) {
     final h = widget.handle;
-    final value =
-        h == null ? '••••-••••' : (_shown ? formatHandle(h) : '••••-••••');
 
     return SizedBox(
       height: 52,
@@ -521,9 +577,13 @@ class _IdRowState extends State<_IdRow> {
           const SizedBox(width: kRowLead, child: Center(child: MiuchioMark())),
           const SizedBox(width: kRowGap),
           Expanded(
-            child: Text(_copied ? 'Copied' : 'Miuchio ID', style: Warm.rowTitle),
+            child: Text(_copied ? 'Copied' : 'Miuchio ID',
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: Warm.rowTitle),
           ),
-          Text(value, style: Warm.idValue.copyWith(color: Warm.inkSoft)),
+          _RollId(value: h == null ? null : formatHandle(h), shown: _shown),
           const SizedBox(width: 4),
           _IconButton(
             icon: _shown
@@ -542,6 +602,105 @@ class _IdRowState extends State<_IdRow> {
       ),
     );
   }
+}
+
+// Characters cycle and land one by one, left to right, like the ID decrypting
+class _RollId extends StatefulWidget {
+  final String? value;
+  final bool shown;
+
+  const _RollId({required this.value, required this.shown});
+
+  @override
+  State<_RollId> createState() => _RollIdState();
+}
+
+class _RollIdState extends State<_RollId> with SingleTickerProviderStateMixin {
+  static const _hidden = '••••-••••';
+  static const _glyphs = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
+  static const _baseMs = 260;
+  static const _stepMs = 55;
+
+  late final Ticker _ticker = createTicker(_tick);
+  final _random = math.Random();
+  String _text = _hidden;
+  List<double>? _widths;
+
+  @override
+  void didUpdateWidget(_RollId old) {
+    super.didUpdateWidget(old);
+    if (old.shown == widget.shown && old.value == widget.value) return;
+    _ticker.stop();
+    _widths = null;
+    if (widget.shown && widget.value != null) {
+      _ticker.start();
+    } else {
+      _text = _hidden;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  void _tick(Duration t) {
+    final value = widget.value!;
+    final ms = t.inMilliseconds;
+    var landed = 0;
+    final out = StringBuffer();
+    for (var i = 0; i < value.length; i++) {
+      final c = value[i];
+      if (c == '-' || ms >= _baseMs + landed * _stepMs) {
+        out.write(c);
+      } else {
+        out.write(_glyphs[_random.nextInt(_glyphs.length)]);
+      }
+      if (c != '-') landed++;
+    }
+    setState(() => _text = out.toString());
+    if (ms >= _baseMs + landed * _stepMs) _ticker.stop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Warm.idValue.copyWith(color: Warm.inkSoft);
+    final value = widget.value;
+    if (!_ticker.isActive || value == null) {
+      return Text(_text, maxLines: 1, softWrap: false, style: style);
+    }
+    // While rolling, each slot is as wide as the letter that lands in it, so
+    // landing never shifts the line and a wider passing glyph shrinks to fit
+    final widths = _widths ??= _measure(value, style);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < _text.length && i < widths.length; i++)
+          SizedBox(
+            width: widths[i],
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(_text[i], maxLines: 1, style: style),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+List<double> _measure(String value, TextStyle style) {
+  final widths = <double>[];
+  for (final c in value.characters) {
+    final painter = TextPainter(
+      text: TextSpan(text: c, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    widths.add(painter.width);
+    painter.dispose();
+  }
+  return widths;
 }
 
 class _IconButton extends StatelessWidget {
