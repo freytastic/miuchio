@@ -327,24 +327,10 @@ class _Scroll extends StatelessWidget {
               entered: entered,
               onOpenAlbum: onOpenAlbum,
             ),
-            const SliverToBoxAdapter(child: _FootMark()),
           ],
           const SliverToBoxAdapter(child: SizedBox(height: 148)),
         ],
       ),
-    );
-  }
-}
-
-class _FootMark extends StatelessWidget {
-  const _FootMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 38),
-      child: Text('Your photos are end-to-end encrypted',
-          textAlign: TextAlign.center, style: Warm.footMark),
     );
   }
 }
