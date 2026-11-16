@@ -14,12 +14,16 @@ class BakedPaint extends StatefulWidget {
   final double maxScale;
   final BakedPainter painter;
 
+  // Inset to an area always hidden under something opaque, never drawn
+  final EdgeInsets? covered;
+
   const BakedPaint({
     super.key,
     required this.id,
     required this.painter,
     this.overflow = EdgeInsets.zero,
     this.maxScale = 3,
+    this.covered,
   });
 
   // Lets an animation start only once the blur is baked, never live
@@ -142,7 +146,7 @@ class _BakedPaintState extends State<BakedPaint> {
       return CustomPaint(
         size: size,
         painter: image != null
-            ? _ImagePainter(image, widget.overflow)
+            ? _ImagePainter(image, widget.overflow, widget.covered)
             : _LivePainter(widget.painter, widget.id),
       );
     });
@@ -152,22 +156,44 @@ class _BakedPaintState extends State<BakedPaint> {
 class _ImagePainter extends CustomPainter {
   final ui.Image image;
   final EdgeInsets overflow;
+  final EdgeInsets? covered;
 
-  _ImagePainter(this.image, this.overflow);
+  _ImagePainter(this.image, this.overflow, this.covered);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final src = Rect.fromLTWH(
-        0, 0, image.width.toDouble(), image.height.toDouble());
     final dst = Rect.fromLTWH(-overflow.left, -overflow.top,
         size.width + overflow.horizontal, size.height + overflow.vertical);
-    canvas.drawImageRect(
-        image, src, dst, Paint()..filterQuality = FilterQuality.low);
+    final paint = Paint()..filterQuality = FilterQuality.low;
+    final hole = covered?.deflateRect(Offset.zero & size);
+    if (hole == null || hole.isEmpty) {
+      canvas.drawImageRect(image, _src(dst, dst), dst, paint);
+      return;
+    }
+    // Skips the covered middle, soft images are fill bound on slow GPUs
+    for (final part in [
+      Rect.fromLTRB(dst.left, dst.top, dst.right, hole.top),
+      Rect.fromLTRB(dst.left, hole.bottom, dst.right, dst.bottom),
+      Rect.fromLTRB(dst.left, hole.top, hole.left, hole.bottom),
+      Rect.fromLTRB(hole.right, hole.top, dst.right, hole.bottom),
+    ]) {
+      if (!part.isEmpty) {
+        canvas.drawImageRect(image, _src(part, dst), part, paint);
+      }
+    }
+  }
+
+  Rect _src(Rect part, Rect dst) {
+    final sx = image.width / dst.width, sy = image.height / dst.height;
+    return Rect.fromLTRB((part.left - dst.left) * sx, (part.top - dst.top) * sy,
+        (part.right - dst.left) * sx, (part.bottom - dst.top) * sy);
   }
 
   @override
   bool shouldRepaint(_ImagePainter old) =>
-      !identical(old.image, image) || old.overflow != overflow;
+      !identical(old.image, image) ||
+      old.overflow != overflow ||
+      old.covered != covered;
 }
 
 class _LivePainter extends CustomPainter {

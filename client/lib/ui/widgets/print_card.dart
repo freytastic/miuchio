@@ -113,6 +113,7 @@ class PrintCard extends StatelessWidget {
               id: _shadowId(soft),
               overflow: _reach(soft),
               maxScale: _bakeMaxScale,
+              covered: EdgeInsets.all(_radius.topLeft.x),
               painter: (canvas, size) => _paintShadows(canvas, size, soft),
             ),
           ),
@@ -131,11 +132,11 @@ class PrintCard extends StatelessWidget {
     }
   }
 
-  // Reserve three blur sigmas beyond the spread and offset
+  // Two sigmas, the tail beyond stays under half an 8 bit step
   static EdgeInsets _reach(List<BoxShadow> shadows) {
     var l = 0.0, t = 0.0, r = 0.0, b = 0.0;
     for (final s in shadows) {
-      final e = s.spreadRadius + 3 * s.blurSigma;
+      final e = s.spreadRadius + 2 * s.blurSigma;
       l = math.max(l, e - s.offset.dx);
       t = math.max(t, e - s.offset.dy);
       r = math.max(r, e + s.offset.dx);

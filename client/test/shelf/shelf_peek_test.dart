@@ -58,10 +58,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   }
 
+  // The shelf rests offstage behind an open peek
   double shelfOpacity(WidgetTester tester) => tester
       .widget<Opacity>(find
           .ancestor(
-              of: find.byType(AlbumPrint).first, matching: find.byType(Opacity))
+              of: find.byType(AlbumPrint, skipOffstage: false).first,
+              matching: find.byType(Opacity, skipOffstage: false))
           .first)
       .opacity;
 

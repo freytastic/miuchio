@@ -103,6 +103,21 @@ void main() {
     expect(f.existsSync(), isFalse);
   });
 
+  test('a read still counts for eviction before its access time is written',
+      () async {
+    for (var i = 1; i <= 3; i++) {
+      await cache.writeRecord(_rec('m$i'));
+      await cache.writeBlob(_fileK('m$i'), _bytes(300));
+      await Future.delayed(const Duration(milliseconds: 5));
+    }
+    expect(await cache.readBlob(_fileK('m1')), isNotNull);
+    await Future.delayed(const Duration(milliseconds: 5));
+    await cache.writeRecord(_rec('m4'));
+    await cache.writeBlob(_fileK('m4'), _bytes(300));
+    expect(await cache.readBlob(_fileK('m1')), isNotNull);
+    expect(await cache.readBlob(_fileK('m2')), isNull);
+  });
+
   test('eviction by last_access when over budget', () async {
     for (var i = 1; i <= 4; i++) {
       await cache.writeRecord(_rec('m$i'));
