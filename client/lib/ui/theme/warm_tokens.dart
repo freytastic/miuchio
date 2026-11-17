@@ -389,6 +389,8 @@ abstract class Warm {
   static const Color glassHairlineStrong = Color(0x38FFFFFF);
   // Raised warning color for the dark glass scrim
   static const Color warnGlass = Color(0xFFFFB4A6);
+  // Quieter warning for a destructive action among calm ones
+  static const Color warnGlassSoft = Color(0xFFECC5B7);
 
   static const double peekBlur = 18;
   static const double peekSaturation = 0.9;

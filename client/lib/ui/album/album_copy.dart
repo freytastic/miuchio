@@ -144,9 +144,9 @@ abstract final class AlbumCopy {
   static const deletingPhoto = 'Deleting the photo for everyone';
   static const unknownMember = 'Someone';
 
-  static const saveToPhone = 'Save to phone';
   static const saveSoon = 'Saving to your phone is coming soon.';
   static const heartSoon = 'Hearts are coming soon.';
+  static const commentSoon = 'Comments are coming soon.';
   static const heart = 'Heart';
   static const deleteForEveryone = 'Delete for everyone';
   static const factSize = 'size';
