@@ -143,7 +143,7 @@ void main() {
     expect(deletes, 1);
   });
 
-  testWidgets('one heart, and heart and save say they are not here yet',
+  testWidgets('one heart, and heart, save and comment say they are not here yet',
       (tester) async {
     await pump(tester);
     expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
@@ -153,9 +153,13 @@ void main() {
     await tester.pump();
     expect(find.text(AlbumCopy.heartSoon), findsOneWidget);
 
-    await tester.tap(find.text(AlbumCopy.saveToPhone));
+    await tester.tap(find.byKey(const Key('photo-peek-save')));
     await tester.pump();
     expect(find.text(AlbumCopy.saveSoon), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('photo-peek-say')));
+    await tester.pump();
+    expect(find.text(AlbumCopy.commentSoon), findsOneWidget);
     await tester.pumpAndSettle(const Duration(seconds: 3));
   });
 
