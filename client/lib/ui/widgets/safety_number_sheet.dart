@@ -200,9 +200,10 @@ class _SafetyNumberSheetState extends State<SafetyNumberSheet>
                   ? Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: Text(
-                        'If the numbers match on both phones, no one else '
-                        "can see your photos. Miuchio isn't told when you "
-                        'check.',
+                        'Your photos are encrypted either way. Matching '
+                        'numbers confirm the key your phone uses for $name '
+                        "really belongs to $name's phone. Miuchio isn't told "
+                        'when you check.',
                         textAlign: TextAlign.center,
                         style: Warm.pageSoft,
                       ),
