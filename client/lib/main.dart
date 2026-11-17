@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sodium/sodium_sumo.dart' show SodiumSumo, SodiumSumoInit;
 
+import 'package:miuchio/data/constants.dart';
 import 'package:miuchio/app/album_wipe.dart';
 import 'package:miuchio/app/app.dart';
 import 'package:miuchio/app/avatar_wiring.dart';
@@ -104,6 +105,14 @@ import 'package:miuchio/ui/shelf/shelf_view_preference.dart';
 // Composition root: builds every service once, in dependency order, and hands
 // them to the widget tree through providers
 void main() async {
+  // A store build missing the define would silently talk to the dev LAN,
+  // flash.sh opts its sideloaded release builds out
+  if (kReleaseMode &&
+      !const bool.fromEnvironment('MIUCHIO_DEV_BUILD') &&
+      !AppConstants.baseURL.startsWith('https://')) {
+    throw StateError(
+        'Release builds need --dart-define=API_BASE_URL=https://...');
+  }
   WidgetsFlutterBinding.ensureInitialized();
   PerfProbe.start();
   DebugLog.start();

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -184,7 +185,14 @@ class _LandingPageState extends State<LandingPage> {
   void _presentGateRefusal(AccountGateOutcome outcome, TerminalWipe wipe) {
     final Widget screen = switch (outcome) {
       AccountGateOutcome.lostDevice => AccountKeysLostScreen(
-          onDismiss: (_) => SystemNavigator.pop(),
+          // iOS ignores programmatic exits, so go back to sign in there
+          onDismiss: (ctx) => Platform.isIOS
+              ? Navigator.of(ctx).pushAndRemoveUntil(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const OnboardingScreen()),
+                  (_) => false,
+                )
+              : SystemNavigator.pop(),
           onDeleteAndStartOver: startDeletionFlow,
         ),
       AccountGateOutcome.connectionRequired => const ConnectionRequiredScreen(),
