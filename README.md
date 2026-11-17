@@ -4,13 +4,20 @@ A shared photo album for small groups, end-to-end encrypted. Photos are locked o
 
 [Website](https://www.miuchio.com) · [How it works](https://www.miuchio.com/how-it-works) · [Protocol](https://www.miuchio.com/protocol/overview) · [What Miuchio does not protect](https://www.miuchio.com/protocol/limits)
 
+<p align="center">
+  <img src="brand/screenshots/shelf.png" width="200" alt="The album shelf, with three albums shown as printed photos">
+  <img src="brand/screenshots/hike.png" width="200" alt="Inside a hiking album, a grid of nine shared photos">
+  <img src="brand/screenshots/viewer.png" width="200" alt="A sunset photo open full screen">
+  <img src="brand/screenshots/safety.png" width="200" alt="A safety number to compare with another member in person">
+</p>
+
 ## What Miuchio is
 
 Miuchio is meant for a family, a group of friends or the people from one trip: a quiet place to keep photos together, not a feed. Everyone in an album can add photos, and nobody outside it can open them, including the server.
 
 - **Photos, album titles, names and profile photos are encrypted** on the phone. The server only ever holds ciphertext.
 - **Location and camera details are removed** before a photo is encrypted. If that cannot be done, the photo is not uploaded.
-- **Your email address is not stored.** The database keeps only a keyed hash of it. People add you with a random Miuchio ID, never by email, phone number or contacts.
+- **The server does not keep your email address.** Its database stores only a keyed hash of it, and the address is used only to send sign in codes. People add you with a random Miuchio ID, never by email, phone number or contacts.
 - **Removing someone locks them out of what comes next.** The album moves to a new key that only the remaining members receive.
 - **You can check you have the right keys** by comparing a safety number with the other person.
 
@@ -20,7 +27,7 @@ The [How it works](https://www.miuchio.com/how-it-works) page walks through one 
 
 Miuchio is in its **testing phase**. Beta v1 is not on the App Store or Play Store yet, so expect some bugs in the UI and the odd glitch while you try it.
 
-- An album holds up to 10 people and has one admin, the person who created it.
+- An album holds up to 10 people and has one admin at a time. The admin starts as the person who created it and can hand the album over to another member.
 - There is no backup and no second device yet. Removing the app or losing your phone means losing access to your albums.
 - **The protocol and the code have not had an independent security review.** Do not rely on it yet where a failure would put someone at risk.
 
@@ -30,7 +37,7 @@ Every known limit is listed on [What Miuchio does not protect](https://www.miuch
 
 | Release | What it adds |
 | --- | --- |
-| **Beta v1** (in testing) | Encrypted albums, invites by Miuchio ID, removal with a new album key, safety numbers, encrypted names, titles and profile photos, an upload queue that survives the app closing, offline browsing of cached albums and photos, account deletion |
+| **Beta v1** (in testing) | Encrypted albums, invites by Miuchio ID, removal with a new album key, handing an album to another member, safety numbers, encrypted names, titles, profile photos and album covers, reporting and blocking, a choice to keep or delete your photos when you leave, an upload queue that survives the app closing, offline browsing of cached albums and photos, account deletion in the app or on the website |
 | **Beta v2** (planned) | Videos, comments and heart reactions |
 | **Beta v3** (planned) | Backup: save a backup before you remove the app and get your albums back afterwards |
 
@@ -57,12 +64,13 @@ The parts I designed myself, such as epochs, signed key changes, the upload free
 | `server/` | Go API server. Postgres for data, Redis for sign-in codes and rate limits, S3 compatible storage for encrypted files |
 | `server/internal/e2ee/` | The server's protocol checks: prekeys, epochs and invites |
 | `server/migrations/` | Database schema, applied automatically when the server starts |
-| `server/cmd/` | The server, plus generators for the known answer test vectors |
+| `server/cmd/` | The server, the moderation tool for reviewing reports, and generators for the known answer test vectors |
 | `client/` | Flutter app for Android and iPhone |
 | `client/lib/crypto/` | Primitives, the X3DH handshake and the wire formats |
 | `client/lib/e2ee/` | Epochs, invites, removal, trust and the photo pipeline |
 | `client/lib/secure_store/` | Key storage backed by the Android Keystore and the Secure Enclave |
-| `client/android/`, `client/ios/` | Native code for the key store and, on Android, photo processing |
+| `client/android/`, `client/ios/` | Native code for the key store and photo processing |
+| `brand/` | App icons and the screenshots in this README |
 | `test_vectors/` | Known answer tests that the Go server and the Dart app must both match byte for byte |
 | `tools/` | Development scripts for performance traces and onboarding animations |
 
@@ -120,6 +128,16 @@ docker compose logs -f server
 
 To try invites, removal or safety numbers, sign in on a second phone or emulator with another email and add each other with your Miuchio IDs.
 
+### Store builds
+
+`client/release.sh` makes the files for the stores. It refuses an address that is not `https://…/api/v1` and checks the server answers before building:
+
+```bash
+cd client
+./release.sh android https://api.example.com/api/v1   # needs android/key.properties with the Play upload key
+./release.sh ios https://api.example.com/api/v1
+```
+
 ### Configuration
 
 The server is configured with environment variables. `.env.example` lists the ones Docker Compose uses.
@@ -128,11 +146,15 @@ The server is configured with environment variables. `.env.example` lists the on
 | --- | --- |
 | `APP_ENV` | `dev` allows placeholder keys and enables test endpoints |
 | `DATABASE_URL`, `REDIS_URL`, `PORT` | Set by `docker-compose.yml`. `REDIS_URL` is a `host:port` address |
-| `RESEND_API_KEY` | Sends sign-in codes through [Resend](https://resend.com). Empty prints them to the log |
+| `RESEND_API_KEY` | Sends sign-in codes through [Resend](https://resend.com). Required outside dev. In dev, leaving it empty prints codes to the log |
+| `EMAIL_FROM` | Sender address on a domain verified with Resend. Required outside dev |
 | `MIUCHIO_EMAIL_HMAC_KEY` | Keys the hash that stands in for email addresses. Required outside dev |
 | `MIUCHIO_USER_LINK_KEY` | Keys the encrypted link between accounts and album memberships. Required outside dev |
-| `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT` | Storage address for the server, and the one used in links handed to phones |
+| `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT` | Storage address for the server, and the one used in links handed to phones. The second is optional when phones can reach the first |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_REGION`, `USE_PATH_STYLE` | Storage credentials and options |
+| `USER_STORAGE_QUOTA_MB`, `TOTAL_STORAGE_LIMIT_GB` | Upload limits per account and for the whole server, 1536 MB and 100 GB by default. `0` turns one off |
+| `MODERATION_EMAIL` | Receives a short alert, with no report content, when someone files a report. Optional |
+| `REVIEW_EMAIL`, `REVIEW_CODE` | A fixed sign in for app store reviewers. Off unless both are set, see `.env.example` for the required shape |
 
 Generate the two Miuchio keys with `openssl rand -base64 32`. Treat them like a database password and never change them on a server with real data: changing either one disconnects every existing account from its albums.
 
