@@ -10,7 +10,7 @@ The Flutter app for Android and iPhone. Setup, running and tests are described i
 | `lib/data/` | API client, local storage and the upload queue |
 | `lib/domain/` | Account, album, activity and upload logic |
 | `lib/ui/` | Screens and widgets |
-| `android/`, `ios/` | Native key store bridges and, on Android, photo processing |
+| `android/`, `ios/` | Native key store bridges and photo processing |
 | `test/`, `integration_test/` | Unit, widget and device tests |
 
 Run `flutter test` from this folder, because the cross-language tests read `../test_vectors/crypto_kat.json`.
