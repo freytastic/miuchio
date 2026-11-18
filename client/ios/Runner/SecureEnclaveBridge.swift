@@ -12,7 +12,7 @@ final class SecureEnclaveBridge: NSObject, FlutterPlugin {
     static let HKDF_INFO = "miuchio.envelope.v1"
     // App Group items keep their access group when an App Store transfer changes
     // the Team ID, so every query and add must name it
-    static let ACCESS_GROUP = "group.com.freytastic.miuchio"
+    static let ACCESS_GROUP = "group.com.freytastic.miuchio.keys"
 
     static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: CHANNEL, binaryMessenger: registrar.messenger())

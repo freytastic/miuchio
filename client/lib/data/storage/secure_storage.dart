@@ -8,7 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 // App Store transfer to another Team ID
 const FlutterSecureStorage appSecureStorage = FlutterSecureStorage(
   iOptions: IOSOptions(
-    groupId: 'group.com.freytastic.miuchio',
+    groupId: 'group.com.freytastic.miuchio.keys',
     accessibility: KeychainAccessibility.first_unlock_this_device,
   ),
 );
