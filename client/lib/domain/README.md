@@ -1,5 +1,5 @@
-Use cases that compose `crypto/` and `data/` and hand the UI a simple
-result. no Flutter imports
+# Domain
 
-If a screen needs to do more than render UI and call one method, the
-"more" belongs here, not in the screen
+Use cases that combine `crypto/` and `data/` and hand the UI a simple result. Code in this folder does not import Flutter.
+
+If a screen needs to do more than draw itself and call one method, that extra work belongs here.
