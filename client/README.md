@@ -1,6 +1,6 @@
 # Miuchio app
 
-The Flutter app for Android and iPhone. Setup, running and tests are described in the [main README](../README.md#running-locally).
+The Flutter app for Android and iPhone. Setup, running and tests are described in [docs/development.md](../docs/development.md).
 
 | Path | What is in it |
 | --- | --- |

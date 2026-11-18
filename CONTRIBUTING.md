@@ -16,7 +16,7 @@ Start with the [website](https://www.miuchio.com) for the design and reasoning b
 
 ## Setting up
 
-Follow [Running locally](README.md#running-locally) in the README to start the server and the app.
+Follow [docs/development.md](docs/development.md) to start the server and the app.
 
 ## Checking your change
 
@@ -34,7 +34,7 @@ flutter test
 
 `flutter test` must run from `client/`, because the cross-language tests read `../test_vectors/crypto_kat.json`.
 
-Some server tests need a real Postgres and Redis and skip themselves without them. They cover locking, races and replay, so run them if you touch the server's repositories, epochs, invites or prekeys. See [Tests](README.md#tests) for how.
+Some server tests need a real Postgres and Redis and skip themselves without them. They cover locking, races and replay, so run them if you touch the server's repositories, epochs, invites or prekeys. See [Tests](docs/development.md#tests) for how.
 
 ## Rules for the code
 

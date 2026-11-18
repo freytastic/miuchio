@@ -10,7 +10,9 @@ server/tmp/
 *.log
 
 .env
-/docs
+# Private plans and specs, except the public development guide
+/docs/*
+!/docs/development.md
 
 # client
 # Miscellaneous
