@@ -13,9 +13,9 @@ A shared photo album for small groups, end-to-end encrypted. Photos are encrypte
 
 ## What it does
 
-Miuchio is for a family, a group of friends or the people from one trip. Everyone in an album can add photos, and nobody outside it can open them, including the server.
+Miuchio is for a family, a group of friends or the people from one trip. Everyone in an album can add photos.
 
-- Photos, album titles, names and profile photos are encrypted on the phone. The server only holds ciphertext.
+- Photos, album titles, names and profile photos are encrypted on the phone.
 - Location and camera details are removed before a photo is encrypted. If that cannot be done, the photo is not uploaded.
 - The server does not store your email address, only a keyed hash of it. People add you with a random Miuchio ID, never by email, phone number or contacts.
 - Removing someone moves the album to a new key that only the remaining members receive.
