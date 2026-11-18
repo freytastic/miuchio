@@ -74,7 +74,7 @@ The server is configured with environment variables. `.env.example` lists the on
 | --- | --- |
 | `APP_ENV` | `dev` allows placeholder keys and enables test endpoints |
 | `DATABASE_URL`, `REDIS_URL`, `PORT` | Set by `docker-compose.yml`. `REDIS_URL` is a `host:port` address |
-| `RESEND_API_KEY` | Sends sign-in codes through [Resend](https://resend.com). Required outside dev. In dev, leaving it empty prints codes to the log |
+| `RESEND_API_KEY` | Sends sign in codes through [Resend](https://resend.com). Required outside dev. In dev, leaving it empty prints codes to the log |
 | `EMAIL_FROM` | Sender address on a domain verified with Resend. Required outside dev |
 | `MIUCHIO_EMAIL_HMAC_KEY` | Keys the hash that stands in for email addresses. Required outside dev |
 | `MIUCHIO_USER_LINK_KEY` | Keys the encrypted link between accounts and album memberships. Required outside dev |
