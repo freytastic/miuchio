@@ -129,7 +129,8 @@ class RotationBanner extends StatelessWidget {
                 'security code. Check codes with the people in this album, '
                 'then try again.'
             : 'New photos are paused. Try again in a moment.',
-      _ => 'New photos are paused until the owner opens Miuchio.',
+      _ => 'New photos are paused while the album gets a new key. '
+          'This happens on its own when someone in the album is online.',
     };
     return Container(
       width: double.infinity,

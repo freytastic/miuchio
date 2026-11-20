@@ -77,11 +77,11 @@ RotationStatus _status(RotationPhase phase, [RotationFailure? failure]) =>
     RotationStatus(albumId: Uint8List(16), phase: phase, failure: failure);
 
 void main() {
-  testWidgets('a member sees the album waiting for its admin', (tester) async {
+  testWidgets('a member sees the album waiting for a new key', (tester) async {
     await _pumpScreen(tester, _status(RotationPhase.waiting));
 
     expect(
-        find.textContaining('until the owner opens Miuchio'), findsOneWidget);
+        find.textContaining('while the album gets a new key'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Try again'), findsNothing);
   });
 
