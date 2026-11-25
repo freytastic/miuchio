@@ -2,7 +2,7 @@
 
 A shared photo album for small groups, end-to-end encrypted. Photos are encrypted on your phone before they are uploaded, and only the people in the album hold the keys. The server stores the encrypted copies and enforces the album's rules, but it is never given the keys to open them.
 
-[App Store](https://apps.apple.com/app/id6836493568) · [Android download](https://github.com/freytastic/miuchio/releases/latest) · [Website](https://www.miuchio.com) · [How it works](https://www.miuchio.com/how-it-works) · [Protocol](https://www.miuchio.com/protocol/overview) · [What Miuchio does not protect](https://www.miuchio.com/protocol/limits)
+[App Store](https://apps.apple.com/app/id6836493568) · [Google Play beta](https://www.miuchio.com/get-miuchio#google-play) · [Android download](https://github.com/freytastic/miuchio/releases/latest) · [Website](https://www.miuchio.com) · [How it works](https://www.miuchio.com/how-it-works) · [Protocol](https://www.miuchio.com/protocol/overview) · [What Miuchio does not protect](https://www.miuchio.com/protocol/limits)
 
 <p align="center">
   <img src="brand/screenshots/shelf.png" width="200" alt="The album shelf, with three albums shown as printed photos">
@@ -23,7 +23,7 @@ Miuchio is for a family, a group of friends or the people from one trip. Everyon
 
 ## Status
 
-Miuchio is in beta. The iPhone app is on the [App Store](https://apps.apple.com/app/id6836493568), and the Android app can be downloaded from the [latest release](https://github.com/freytastic/miuchio/releases/latest) here on GitHub. Google Play is coming soon. Expect some bugs while you try it.
+Miuchio is in beta. The iPhone app is on the [App Store](https://apps.apple.com/app/id6836493568). On Android you can [join the Google Play beta](https://www.miuchio.com/get-miuchio#google-play) or download the app from the [latest release](https://github.com/freytastic/miuchio/releases/latest) here on GitHub. Expect some bugs while you try it.
 
 - An album holds up to 10 people and has one owner, who can hand it to another member.
 - There is no backup and no second device yet. Removing the app or losing your phone means losing access to your albums.
